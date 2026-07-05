@@ -70,7 +70,7 @@ export default function AdminSidebar() {
     : (activeItem?.id ?? 'settings')
 
   return (
-    <aside className="min-w-0 bg-background rounded-lg border shadow-sm p-4 lg:sticky lg:top-[5.5rem] lg:self-start lg:h-[calc(100vh-6.5rem)] overflow-y-auto">
+    <aside className="min-w-0 bg-background border-r p-5 lg:sticky lg:top-[4.25rem] lg:self-start lg:h-[calc(100vh-4.25rem)] overflow-y-auto">
       <nav
         className={cn(`
           flex w-full max-w-full snap-x snap-mandatory gap-2 overflow-x-auto rounded-sm

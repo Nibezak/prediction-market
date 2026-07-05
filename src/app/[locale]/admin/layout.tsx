@@ -33,17 +33,21 @@ export default async function AdminLayout({ params, children }: LayoutProps<'/[l
     <AppKitProvider>
       <PlatformViewerState />
       <AdminHeader />
-      <main className="container py-4 lg:py-8">
-        <div className="grid min-w-0 gap-8 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-16">
+      <main className="min-h-[calc(100vh-4.25rem)] bg-background">
+        <div className="grid min-w-0 lg:grid-cols-[240px_1fr]">
           <AdminSidebar />
-          <div className="min-w-0 space-y-8">
-            <AdminBreadcrumb />
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-              {children}
+          <div className="flex min-w-0 flex-col px-4 py-6 md:px-8 lg:px-12 bg-muted/10 min-h-[calc(100vh-4.25rem)]">
+            <div className="w-full space-y-8 flex-1">
+              <AdminBreadcrumb />
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                {children}
+              </div>
+            </div>
+            <div className="mt-8">
+              <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
             </div>
           </div>
         </div>
-        <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
       </main>
     </AppKitProvider>
   )
