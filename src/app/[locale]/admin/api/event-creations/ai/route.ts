@@ -289,16 +289,111 @@ function normalizeRulesSample(text: string) {
   return truncateForPrompt(text.replace(/\s+/g, ' ').trim())
 }
 
+const RULES_DOMAIN_LABEL_PATTERN = String.raw`[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?`
+const RULES_GENERIC_DOMAIN_TLD_PATTERN = String.raw`[a-z][a-z0-9-]{1,62}`
+const RULES_COMMON_GENERIC_TLDS = [
+  'academy',
+  'accountants',
+  'agency',
+  'app',
+  'bet',
+  'biz',
+  'blog',
+  'cloud',
+  'club',
+  'com',
+  'dev',
+  'digital',
+  'edu',
+  'finance',
+  'gov',
+  'group',
+  'info',
+  'link',
+  'live',
+  'media',
+  'net',
+  'network',
+  'news',
+  'online',
+  'org',
+  'press',
+  'pro',
+  'site',
+  'social',
+  'sports',
+  'store',
+  'tech',
+  'today',
+  'world',
+  'xyz',
+].join('|')
+const RULES_REPAIR_DOMAIN_TLD_PATTERN = String.raw`(?:[a-z]{2}|${RULES_COMMON_GENERIC_TLDS})`
+
+function repairRulesPunctuationSpacing(text: string) {
+  const domainPattern = new RegExp(
+    String.raw`\b(?:${RULES_DOMAIN_LABEL_PATTERN}\s*\.\s*)+${RULES_REPAIR_DOMAIN_TLD_PATTERN}\b(?:\/[^\s)]*)?`,
+    'g',
+  )
+
+  return text
+    .replace(/\be\.\s+g\./gi, 'e.g.')
+    .replace(/\bi\.\s+e\./gi, 'i.e.')
+    .replace(/\b([ap])\.\s+m\./gi, (_, marker: string) => `${marker.toLowerCase()}.m.`)
+    .replace(/\bhttps?:\/\/\w[\w.~:/?#[\]@!$&'()*+,;=%-]*(?:\s*\.\s*\w[\w.~:/?#[\]@!$&'()*+,;=%-]*)+/g, match =>
+      match.replace(/\s*\.\s*/g, '.'))
+    .replace(domainPattern, match => match.replace(/\s*\.\s*/g, '.'))
+}
+
+function protectRulesFragment(
+  text: string,
+  pattern: RegExp,
+  replacements: string[],
+) {
+  return text.replace(pattern, (match) => {
+    let core = match
+    let trailing = ''
+    while (/[,;:!?]$/.test(core) || (core.endsWith('.') && !/\b(?:e\.g|i\.e|u\.s|u\.k|u\.n|a\.m|p\.m|etc)\.$/i.test(core))) {
+      trailing = `${core.at(-1) ?? ''}${trailing}`
+      core = core.slice(0, -1)
+    }
+
+    if (!core) {
+      return match
+    }
+
+    const token = `__RULES_PROTECTED_${replacements.length}__`
+    replacements.push(core)
+    return `${token}${trailing}`
+  })
+}
+
+function splitRulesSentences(text: string) {
+  const replacements: string[] = []
+  const domainPattern = new RegExp(
+    String.raw`\b(?:${RULES_DOMAIN_LABEL_PATTERN}\.)+${RULES_GENERIC_DOMAIN_TLD_PATTERN}\b(?:\/[^\s)]*)?`,
+    'gi',
+  )
+  const protectedText = [
+    (value: string) => protectRulesFragment(value, /\bhttps?:\/\/[^\s<>"')]+/gi, replacements),
+    (value: string) => protectRulesFragment(value, domainPattern, replacements),
+    (value: string) => protectRulesFragment(value, /\b(?:e\.g|i\.e|u\.s|u\.k|u\.n|a\.m|p\.m|etc)\./gi, replacements),
+    (value: string) => protectRulesFragment(value, /\b\d+\.\d+\b/g, replacements),
+  ].reduce((value, protect) => protect(value), text)
+
+  return (protectedText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [protectedText])
+    .map(sentence => sentence.replace(/__RULES_PROTECTED_(\d+)__/g, (_, index: string) => replacements[Number(index)] ?? ''))
+    .map(sentence => sentence.trim())
+    .filter(Boolean)
+}
+
 function stripInternalFieldSentences(text: string) {
   const normalized = text.replace(/\s+/g, ' ').trim()
   if (!normalized) {
     return normalized
   }
 
-  const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [normalized]
-  const cleaned = sentences
-    .map(sentence => sentence.trim())
-    .filter(Boolean)
+  const cleaned = splitRulesSentences(normalized)
     .filter((sentence) => {
       const lowered = sentence.toLowerCase()
       return !INTERNAL_RULES_TERMS.some(term => lowered.includes(term))
@@ -308,11 +403,13 @@ function stripInternalFieldSentences(text: string) {
 }
 
 function formatRulesLikePolymarket(text: string) {
-  const source = text
-    .replace(/\r\n/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  const source = repairRulesPunctuationSpacing(
+    text
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  )
   const stripped = stripInternalFieldSentences(source)
   const normalized = stripped.length >= 30 ? stripped : source
 
@@ -329,7 +426,7 @@ function formatRulesLikePolymarket(text: string) {
     return sections.join('\n\n')
   }
 
-  const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [normalized]
+  const sentences = splitRulesSentences(normalized)
   const chunks: string[] = []
   let current = ''
 
@@ -878,6 +975,7 @@ export async function POST(request: Request) {
               'Do not invent random timestamps unrelated to End date.',
               'Do not mention form/backend/internal field names.',
               'Never include terms like marketMode, binaryQuestion, multi_multiple, options array, endDateIso.',
+              'Do not insert spaces or line breaks inside URLs, domains, or abbreviations; keep examples like https://g1.globo.com and e.g. intact.',
               'Do not include markdown.',
             ].join(' '),
           },

@@ -106,6 +106,9 @@ interface EventLiveSeriesChartProps {
   isMobile: boolean
   seriesEvents?: EventSeriesEntry[]
   config: EventLiveChartConfig
+  chartWidth?: number
+  chartHeightOffset?: number
+  showSeriesControls?: boolean
 }
 
 export default function EventLiveSeriesChart({
@@ -113,6 +116,9 @@ export default function EventLiveSeriesChart({
   isMobile,
   seriesEvents = [],
   config,
+  chartWidth,
+  chartHeightOffset = 0,
+  showSeriesControls = true,
 }: EventLiveSeriesChartProps) {
   const subscriptionSymbol = useMemo(
     () => normalizeSubscriptionSymbol(config.topic, config.symbol),
@@ -128,6 +134,9 @@ export default function EventLiveSeriesChart({
       seriesEvents={seriesEvents}
       config={config}
       subscriptionSymbol={subscriptionSymbol}
+      chartWidth={chartWidth}
+      chartHeightOffset={chartHeightOffset}
+      showSeriesControls={showSeriesControls}
     />
   )
 }
@@ -138,6 +147,9 @@ interface EventLiveSeriesChartContentProps {
   seriesEvents: EventSeriesEntry[]
   config: EventLiveChartConfig
   subscriptionSymbol: string
+  chartWidth?: number
+  chartHeightOffset: number
+  showSeriesControls: boolean
 }
 
 function EventLiveSeriesChartContent({
@@ -146,10 +158,14 @@ function EventLiveSeriesChartContent({
   seriesEvents,
   config,
   subscriptionSymbol,
+  chartWidth: providedChartWidth,
+  chartHeightOffset,
+  showSeriesControls,
 }: EventLiveSeriesChartContentProps) {
   const site = useSiteIdentity()
   const { width: windowWidth } = useWindowSize()
   const liveColor = config.line_color || '#F59E0B'
+  const chartHeight = Math.max(260, LIVE_CHART_HEIGHT - Math.max(0, chartHeightOffset))
   const [activeView, setActiveView] = useState<'live' | 'market'>('live')
   const isLiveView = activeView === 'live'
   const startTimestamp = useMemo(() => parseUtcDate(event.start_date ?? null), [event.start_date])
@@ -220,7 +236,7 @@ function EventLiveSeriesChartContent({
     [config.display_name, config.display_symbol, liveColor],
   )
 
-  const chartWidth = useMemo(() => {
+  const fallbackChartWidth = useMemo(() => {
     if (!windowWidth) {
       return 900
     }
@@ -229,6 +245,9 @@ function EventLiveSeriesChartContent({
     }
     return Math.min(windowWidth * 0.55, 900)
   }, [isMobile, windowWidth])
+  const chartWidth = typeof providedChartWidth === 'number' && Number.isFinite(providedChartWidth) && providedChartWidth > 0
+    ? Math.max(1, Math.round(providedChartWidth))
+    : fallbackChartWidth
 
   const referenceOpeningPrice = useMemo(
     () => normalizeReferencePrice(referenceSnapshot?.opening_price, config.topic),
@@ -446,7 +465,6 @@ function EventLiveSeriesChartContent({
     if (currentPrice == null) {
       return null
     }
-    const chartHeight = LIVE_CHART_HEIGHT
     const marginTop = LIVE_CHART_MARGIN_TOP
     const marginBottom = LIVE_CHART_MARGIN_BOTTOM
     const innerHeight = chartHeight - marginTop - marginBottom
@@ -464,7 +482,6 @@ function EventLiveSeriesChartContent({
       return null
     }
 
-    const chartHeight = LIVE_CHART_HEIGHT
     const marginTop = LIVE_CHART_MARGIN_TOP
     const marginBottom = LIVE_CHART_MARGIN_BOTTOM
     const innerHeight = chartHeight - marginTop - marginBottom
@@ -621,7 +638,7 @@ function EventLiveSeriesChartContent({
                   data={renderData}
                   series={series}
                   width={chartWidth}
-                  height={LIVE_CHART_HEIGHT}
+                  height={chartHeight}
                   margin={{
                     top: LIVE_CHART_MARGIN_TOP,
                     right: LIVE_CHART_MARGIN_RIGHT,
@@ -691,24 +708,27 @@ function EventLiveSeriesChartContent({
               event={event}
               isMobile={isMobile}
               seriesEvents={seriesEvents}
+              chartWidth={providedChartWidth}
               showControls={false}
               showSeriesNavigation={false}
             />
           )}
 
-      <EventSeriesPills
-        currentEventSlug={event.slug}
-        seriesEvents={seriesEvents}
-        variant="live"
-        rightSlot={(
-          <EventLiveSeriesViewSwitch
-            activeView={activeView}
-            setActiveView={setActiveView}
-            liveColor={liveColor}
-            config={config}
-          />
-        )}
-      />
+      {showSeriesControls && (
+        <EventSeriesPills
+          currentEventSlug={event.slug}
+          seriesEvents={seriesEvents}
+          variant="live"
+          rightSlot={(
+            <EventLiveSeriesViewSwitch
+              activeView={activeView}
+              setActiveView={setActiveView}
+              liveColor={liveColor}
+              config={config}
+            />
+          )}
+        />
+      )}
     </div>
   )
 }

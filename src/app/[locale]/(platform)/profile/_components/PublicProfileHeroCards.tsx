@@ -452,7 +452,7 @@ function usePnlChartIds() {
 }
 
 function usePnlActiveTimeframe() {
-  const [activeTimeframe, setActiveTimeframe] = useState<(typeof PNL_TIMEFRAMES)[number]>('ALL')
+  const [activeTimeframe, setActiveTimeframe] = useState<(typeof PNL_TIMEFRAMES)[number]>('1D')
   return { activeTimeframe, setActiveTimeframe }
 }
 

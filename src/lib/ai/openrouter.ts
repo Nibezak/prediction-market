@@ -12,6 +12,7 @@ interface OpenRouterModelInfo {
   description?: string
   context_length?: number
   context_window?: number
+  supported_parameters?: string[]
 }
 
 interface OpenRouterChoice {
@@ -32,12 +33,15 @@ interface OpenRouterModelsResponse {
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS_API_URL = 'https://openrouter.ai/api/v1/models'
 const OPENROUTER_RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
+const OPENROUTER_WEB_SEARCH_PARAMETER = 'web_search_options'
 
 interface RequestCompletionOptions {
   temperature?: number
   maxTokens?: number
   model?: string
   apiKey?: string
+  webSearch?: boolean
+  webSearchContextSize?: 'low' | 'medium' | 'high'
 }
 
 async function buildOpenRouterHeaders(apiKey: string) {
@@ -67,16 +71,25 @@ export async function requestOpenRouterCompletion(messages: OpenRouterMessage[],
   const model = options?.model
   const headers = await buildOpenRouterHeaders(apiKey)
 
+  const requestBody = {
+    model,
+    messages,
+    temperature: options?.temperature ?? 0.7,
+    max_tokens: options?.maxTokens ?? 600,
+    ...(options?.webSearch
+      ? {
+          web_search_options: {
+            search_context_size: options.webSearchContextSize ?? 'medium',
+          },
+        }
+      : {}),
+  }
+
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
     headers,
     signal: AbortSignal.timeout(45_000),
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.maxTokens ?? 600,
-    }),
+    body: JSON.stringify(requestBody),
   })
 
   if (!response.ok) {
@@ -120,6 +133,11 @@ function isTransientOpenRouterFetchError(error: unknown) {
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function supportsOpenRouterWebSearch(model: OpenRouterModelInfo) {
+  return Array.isArray(model.supported_parameters)
+    && model.supported_parameters.includes(OPENROUTER_WEB_SEARCH_PARAMETER)
 }
 
 export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModelSummary[]> {
@@ -175,6 +193,7 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
   const models = Array.isArray(payload.data) ? payload.data : []
 
   return models
+    .filter(supportsOpenRouterWebSearch)
     .map<OpenRouterModelSummary>((model) => {
       const contextLength = typeof model.context_length === 'number'
         ? model.context_length
