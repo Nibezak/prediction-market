@@ -284,6 +284,33 @@ function resolveMarketDisplayPrice(
 }
 
 async function fetchPriceBatch(endpoint: string, tokenIds: string[]): Promise<FetchPriceBatchResult> {
+  if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' && typeof window === 'undefined') {
+    const data: PriceApiResponse = {}
+    for (const tokenId of tokenIds) {
+      try {
+        const rows = await db.execute<{ price_micro: string }>(sql`
+          SELECT price_micro
+          FROM tellwise_clob_trades
+          WHERE token_id = ${tokenId}
+          ORDER BY timestamp DESC
+          LIMIT 1
+        `)
+        const priceMicro = rows[0]?.price_micro ? BigInt(rows[0].price_micro) : 500000n
+        const basePrice = Number(priceMicro) / 1000000
+        const buyPrice = Math.max(0.01, Math.min(0.99, basePrice + 0.01)).toFixed(2)
+        const sellPrice = Math.max(0.01, Math.min(0.99, basePrice - 0.01)).toFixed(2)
+        data[tokenId] = {
+          BUY: buyPrice,
+          SELL: sellPrice,
+        }
+      }
+      catch (error) {
+        console.error('Failed to query local outcome price directly:', error)
+      }
+    }
+    return { data, aborted: false }
+  }
+
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -316,6 +343,29 @@ async function fetchLastTradePrices(tokenIds: string[]): Promise<Map<string, num
 
   if (!uniqueTokenIds.length) {
     return new Map()
+  }
+
+  if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' && typeof window === 'undefined') {
+    const lastTradeMap = new Map<string, number>()
+    for (const tokenId of uniqueTokenIds) {
+      try {
+        const rows = await db.execute<{ price_micro: string }>(sql`
+          SELECT price_micro
+          FROM tellwise_clob_trades
+          WHERE token_id = ${tokenId}
+          ORDER BY timestamp DESC
+          LIMIT 1
+        `)
+        const priceMicro = rows[0]?.price_micro ? BigInt(rows[0].price_micro) : 500000n
+        const price = Number(priceMicro) / 1000000
+        lastTradeMap.set(tokenId, price)
+      }
+      catch (error) {
+        console.error('Failed to query local last trade price directly:', error)
+        lastTradeMap.set(tokenId, 0.5)
+      }
+    }
+    return lastTradeMap
   }
 
   const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/last-trades-prices`
