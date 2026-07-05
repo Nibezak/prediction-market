@@ -23,13 +23,13 @@ export async function GET(req: NextRequest, ctx: any) {
     }
   }
 
-  return handler.GET(req, ctx)
+  return handler.GET(req)
 }
 
 export async function POST(req: NextRequest, ctx: any) {
   const url = new URL(req.url)
   if (url.pathname.endsWith('/sign-out')) {
-    const authResponse = await handler.POST(req, ctx)
+    const authResponse = await handler.POST(req)
     const response = new NextResponse(authResponse.body, {
       status: authResponse.status,
       statusText: authResponse.statusText,
@@ -40,5 +40,5 @@ export async function POST(req: NextRequest, ctx: any) {
     return response
   }
 
-  return handler.POST(req, ctx)
+  return handler.POST(req)
 }
