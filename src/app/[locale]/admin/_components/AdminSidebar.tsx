@@ -70,81 +70,79 @@ export default function AdminSidebar() {
     : (activeItem?.id ?? 'settings')
 
   return (
-    <aside className="min-w-0 bg-background border-r p-5 lg:sticky lg:top-[4.25rem] lg:self-start lg:h-[calc(100vh-4.25rem)] overflow-y-auto">
-      <nav
-        className={cn(`
-          flex w-full max-w-full snap-x snap-mandatory gap-2 overflow-x-auto rounded-sm
-          lg:grid lg:gap-2 lg:overflow-visible lg:rounded-none lg:bg-transparent
-        `)}
-      >
-        <Accordion type="multiple" defaultValue={[active]} className="w-full space-y-1">
-          {adminMenuItems.map(item => {
-            const isActive = active === item.id
-            
-            if (item.subItems && item.subItems.length > 0) {
-              return (
-                <AccordionItem value={item.id} key={item.id} className="border-none">
-                  <AccordionTrigger
-                    className={cn(
-                      `hover:no-underline hover:bg-accent/50 rounded-md px-3 py-2 flex items-center justify-between transition-colors`,
-                      { 'bg-accent/30 font-medium': isActive }
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <item.icon className={cn("size-5", isActive ? "text-primary" : "text-muted-foreground")} />
-                      <span className={cn(isActive ? "text-foreground" : "text-muted-foreground")}>{item.label}</span>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-1 pb-0 pl-10 pr-0 space-y-1">
-                    {item.subItems.map(subItem => {
-                      const isSubActive = pathname === subItem.href
-                      return (
-                        <Button
-                          key={subItem.id}
-                          type="button"
-                          variant="ghost"
-                          className={cn(
-                            `w-full justify-start h-9 px-3 gap-2 text-sm transition-colors`,
-                            { 'bg-accent font-medium text-foreground': isSubActive, 'text-muted-foreground': !isSubActive }
-                          )}
-                          asChild
-                        >
-                          <AppLink intentPrefetch href={subItem.href}>
-                            {subItem.icon && <subItem.icon className="size-4" />}
-                            <span>{subItem.label}</span>
-                          </AppLink>
-                        </Button>
-                      )
-                    })}
-                  </AccordionContent>
-                </AccordionItem>
-              )
-            }
-
+    <nav
+      className={cn(`
+        flex w-full max-w-full snap-x snap-mandatory gap-2 overflow-x-auto rounded-sm
+        lg:grid lg:gap-2 lg:overflow-visible lg:rounded-none lg:bg-transparent
+      `)}
+    >
+      <Accordion type="multiple" defaultValue={[active]} className="w-full space-y-1">
+        {adminMenuItems.map(item => {
+          const isActive = active === item.id
+          
+          if (item.subItems && item.subItems.length > 0) {
             return (
               <AccordionItem value={item.id} key={item.id} className="border-none">
-                <Button
-                  type="button"
-                  variant="ghost"
+                <AccordionTrigger
                   className={cn(
-                    `
-                      w-full h-auto flex-col gap-1.5 px-3 py-2.5 text-foreground justify-start
-                      lg:h-11 lg:flex-row lg:gap-3 lg:px-3 lg:py-2
-                    `,
-                    { 'bg-accent font-medium': isActive, 'hover:bg-accent/50 text-muted-foreground hover:text-foreground': !isActive }
+                    `hover:no-underline hover:bg-accent/50 rounded-md px-3 py-2 flex items-center justify-between transition-colors`,
+                    { 'bg-accent/30 font-medium': isActive }
                   )}
-                  asChild
                 >
-                  <AppLink intentPrefetch href={item.href}>
+                  <div className="flex items-center gap-3">
                     <item.icon className={cn("size-5", isActive ? "text-primary" : "text-muted-foreground")} />
-                    <span>{item.label}</span>
-                  </AppLink>
-                </Button>
+                    <span className={cn(isActive ? "text-foreground" : "text-muted-foreground")}>{item.label}</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-1 pb-0 pl-10 pr-0 space-y-1">
+                  {item.subItems.map(subItem => {
+                    const isSubActive = pathname === subItem.href
+                    return (
+                      <Button
+                        key={subItem.id}
+                        type="button"
+                        variant="ghost"
+                        className={cn(
+                          `w-full justify-start h-9 px-3 gap-2 text-sm transition-colors`,
+                          { 'bg-accent font-medium text-foreground': isSubActive, 'text-muted-foreground': !isSubActive }
+                        )}
+                        asChild
+                      >
+                        <AppLink intentPrefetch href={subItem.href}>
+                          {subItem.icon && <subItem.icon className="size-4" />}
+                          <span>{subItem.label}</span>
+                        </AppLink>
+                      </Button>
+                    )
+                  })}
+                </AccordionContent>
               </AccordionItem>
             )
-          })}
-        </Accordion>
-      </nav>
-    </aside>
+          }
+
+          return (
+            <AccordionItem value={item.id} key={item.id} className="border-none">
+              <Button
+                type="button"
+                variant="ghost"
+                className={cn(
+                  `
+                    w-full h-auto flex-col gap-1.5 px-3 py-2.5 text-foreground justify-start
+                    lg:h-11 lg:flex-row lg:gap-3 lg:px-3 lg:py-2
+                  `,
+                  { 'bg-accent font-medium': isActive, 'hover:bg-accent/50 text-muted-foreground hover:text-foreground': !isActive }
+                )}
+                asChild
+              >
+                <AppLink intentPrefetch href={item.href}>
+                  <item.icon className={cn("size-5", isActive ? "text-primary" : "text-muted-foreground")} />
+                  <span>{item.label}</span>
+                </AppLink>
+              </Button>
+            </AccordionItem>
+          )
+        })}
+      </Accordion>
+    </nav>
   )
 }

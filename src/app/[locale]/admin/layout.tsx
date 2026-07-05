@@ -6,6 +6,7 @@ import PlatformViewerState from '@/app/[locale]/(platform)/_components/PlatformV
 import AdminBreadcrumb from '@/app/[locale]/admin/_components/AdminBreadcrumb'
 import AdminHeader from '@/app/[locale]/admin/_components/AdminHeader'
 import AdminSidebar from '@/app/[locale]/admin/_components/AdminSidebar'
+import ResponsiveAdminLayout from '@/app/[locale]/admin/_components/ResponsiveAdminLayout'
 import CopyVersion from '@/app/[locale]/admin/_components/CopyVersion'
 import AppKitProvider from '@/providers/AppKitProvider'
 
@@ -33,22 +34,13 @@ export default async function AdminLayout({ params, children }: LayoutProps<'/[l
     <AppKitProvider>
       <PlatformViewerState />
       <AdminHeader />
-      <main className="min-h-[calc(100vh-4.25rem)] bg-background">
-        <div className="grid min-w-0 lg:grid-cols-[240px_1fr]">
-          <AdminSidebar />
-          <div className="flex min-w-0 flex-col px-4 py-6 md:px-8 lg:px-12 bg-muted/10 min-h-[calc(100vh-4.25rem)]">
-            <div className="w-full space-y-8 flex-1">
-              <AdminBreadcrumb />
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                {children}
-              </div>
-            </div>
-            <div className="mt-8">
-              <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
-            </div>
-          </div>
+      <ResponsiveAdminLayout sidebar={<AdminSidebar />}>
+        <AdminBreadcrumb />
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 flex-1">
+          {children}
         </div>
-      </main>
+        <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
+      </ResponsiveAdminLayout>
     </AppKitProvider>
   )
 }

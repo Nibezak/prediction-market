@@ -221,7 +221,7 @@ export default function CopyVersion({ forkRepositoryUrl }: CopyVersionProps) {
   }
 
   return (
-    <div className="bottom-2 mt-4 flex items-center gap-1 text-muted-foreground lg:fixed">
+    <div className="mt-auto pt-4 flex items-center gap-1 text-[11px] text-muted-foreground/50 font-medium">
       {upstreamCommitForWarning && (
         <ForkSyncWarning
           currentCommitSha={commitSha}
@@ -233,16 +233,15 @@ export default function CopyVersion({ forkRepositoryUrl }: CopyVersionProps) {
         type="button"
         variant="ghost"
         size="sm"
-        className="group font-mono"
+        className="group font-mono text-[11px] h-7 px-2 text-muted-foreground/50 hover:text-foreground"
         title={copied ? 'Copied' : 'Copy version payload'}
         onClick={() => void copyVersionPayload()}
       >
-        v.
-        {commitSha}
+        v.1.0.2
         {copied
-          ? <CheckIcon className="text-yes" />
+          ? <CheckIcon className="text-yes size-3 ml-1" />
           : (
-              <CopyIcon className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+              <CopyIcon className="size-3 ml-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
             )}
       </Button>
     </div>
