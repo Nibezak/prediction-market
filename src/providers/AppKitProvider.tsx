@@ -21,6 +21,7 @@ import { createAppKitWagmiAdapter, defaultNetwork, networks } from '@/lib/appkit
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
+import { isTellwiseLocalSessionEnabled } from '@/lib/tellwise-local-session'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
 let hasInitializedAppKit = false
@@ -357,15 +358,24 @@ function initializeAppKitSingleton(
           authClient.getSession().then((session) => {
             const user = session?.data?.user
             if (user) {
+              const currentUser = useUser.getState()
               useUser.setState((previous) => {
                 return mergeSessionUserState(previous, user as unknown as User)
               })
+              if (!currentUser) {
+                window.location.reload()
+              }
             }
-          }).catch(() => {})
+          }).catch(() => {
+            // Do not reload on verify errors during initialization to prevent loop
+          })
         },
         onSignOut: () => {
           clearAppKitState()
-          window.location.reload()
+          const currentUser = useUser.getState()
+          if (currentUser) {
+            window.location.reload()
+          }
         },
       }),
     })
@@ -428,6 +438,39 @@ function createAppKitContextValue({
   hasAuthenticatedUser: boolean
   regionBlockedMessage: string
 }) {
+  if (isTellwiseLocalSessionEnabled()) {
+    return {
+      open: async () => {
+        const response = await fetch('/api/tellwise-session', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            accept: 'application/json',
+          },
+        })
+        const payload = await response.json().catch(() => null) as { user?: User } | null
+        if (!response.ok || !payload?.user) {
+          toast.error('Could not log in. Please try again.')
+          return
+        }
+
+        useUser.setState((previous) => mergeSessionUserState(previous, payload.user as User))
+        window.location.reload()
+      },
+      close: async () => {
+        await fetch('/api/tellwise-session', {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: {
+            accept: 'application/json',
+          },
+        })
+        useUser.setState(null)
+      },
+      isReady: true,
+    }
+  }
+
   if (!instance) {
     return defaultAppKitValue
   }
@@ -520,18 +563,20 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const site = useSiteIdentity()
   const { reownAppKitProjectId, siteUrl } = usePublicRuntimeConfig()
+  const localSessionEnabled = isTellwiseLocalSessionEnabled()
+  const appKitProjectId = localSessionEnabled ? '' : reownAppKitProjectId
   const hasHydrated = useHasHydrated()
   const currentUser = useUser()
   const resolvedTheme = useResolvedThemeMode()
   const appKitThemeMode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
   const wagmiAdapter = useMemo(
-    () => createAppKitWagmiAdapter(reownAppKitProjectId),
-    [reownAppKitProjectId],
+    () => createAppKitWagmiAdapter(appKitProjectId),
+    [appKitProjectId],
   )
   const wagmiConfig = wagmiAdapter.wagmiConfig
   const instance = useAppKitInstance({
     appKitThemeMode,
-    projectId: reownAppKitProjectId,
+    projectId: appKitProjectId,
     siteName: site.name,
     siteDescription: site.description,
     siteLogoUrl: site.logoUrl,

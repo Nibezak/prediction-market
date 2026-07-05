@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import {
   removeTermsOfServicePdfAction,
   updateGeneralSettingsAction,
-} from '@/app/[locale]/admin/(general)/_actions/update-general-settings'
+} from '@/app/[locale]/admin/settings/_actions/update-general-settings'
 import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
 import { serializeCustomJavascriptCodes } from '@/lib/custom-javascript-code'

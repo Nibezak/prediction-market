@@ -2,7 +2,7 @@ import type { AdminThemeSiteSettingsInitialState } from '@/app/[locale]/admin/th
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { connection } from 'next/server'
 import { Suspense } from 'react'
-import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
+import AdminGeneralSettingsForm from '@/app/[locale]/admin/settings/_components/AdminGeneralSettingsForm'
 import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
 import { fetchOpenRouterModels } from '@/lib/ai/openrouter'
 import { SettingsRepository } from '@/lib/db/queries/settings'
@@ -91,23 +91,26 @@ async function AdminGeneralSettingsContent() {
   )
 }
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 export default async function AdminGeneralSettingsPage({ params }: AdminGeneralSettingsPageProps) {
   const { locale } = await params
   setRequestLocale(locale)
   const t = await getExtracted()
 
   return (
-    <section className="grid gap-4">
-      <div className="grid gap-2">
-        <h1 className="text-2xl font-semibold">{t('General Settings')}</h1>
-        <p className="text-sm text-muted-foreground">
+    <Card className="shadow-sm border-muted/60">
+      <CardHeader>
+        <CardTitle className="text-2xl font-semibold">{t('General Settings')}</CardTitle>
+        <CardDescription>
           {t('Configure company identity, analytics, support links, and AI provider settings.')}
-        </p>
-      </div>
-
-      <Suspense fallback={<AdminGeneralSettingsFallback />}>
-        <AdminGeneralSettingsContent />
-      </Suspense>
-    </section>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Suspense fallback={<AdminGeneralSettingsFallback />}>
+          <AdminGeneralSettingsContent />
+        </Suspense>
+      </CardContent>
+    </Card>
   )
 }

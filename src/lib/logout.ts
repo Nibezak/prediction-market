@@ -35,7 +35,19 @@ export async function signOutAndRedirect({
     //
   }
 
-  if (!signOutSucceeded && !clearSucceeded) {
+  let localSignOutSucceeded = false
+  try {
+    const response = await fetch('/api/tellwise-session', {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    localSignOutSucceeded = response.ok
+  }
+  catch {
+    //
+  }
+
+  if (!signOutSucceeded && !clearSucceeded && !localSignOutSucceeded) {
     throw new Error('Failed to clear auth state during logout.')
   }
 

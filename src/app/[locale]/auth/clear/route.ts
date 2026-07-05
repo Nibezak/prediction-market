@@ -14,6 +14,8 @@ const COOKIE_NAMES = [
   '__Secure-better-auth.account_data',
   'better-auth.dont_remember',
   '__Secure-better-auth.dont_remember',
+  'tellwise_local_session',
+  'mock_logged_in',
 ]
 
 function expireCookie(response: NextResponse, name: string) {

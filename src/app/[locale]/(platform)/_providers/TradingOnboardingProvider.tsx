@@ -352,7 +352,28 @@ function TradingOnboardingProviderContent({
   user,
 }: TradingOnboardingProviderContentProps) {
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
-  const [dismissedModal, setDismissedModal] = useState<OnboardingModal>(null)
+  const [dismissedModal, setDismissedModalState] = useState<OnboardingModal>(null)
+
+  const setDismissedModal = useCallback((modal: OnboardingModal) => {
+    setDismissedModalState(modal)
+    try {
+      if (modal) {
+        sessionStorage.setItem('tellwise_dismissed_onboarding_modal', modal)
+      } else {
+        sessionStorage.removeItem('tellwise_dismissed_onboarding_modal')
+      }
+    } catch (e) {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('tellwise_dismissed_onboarding_modal')
+      if (saved) {
+        setDismissedModalState(saved as OnboardingModal)
+      }
+    } catch (e) {}
+  }, [])
+
   const [fundModalOpen, setFundModalOpen] = useState(false)
   const [shouldShowFundAfterTradingReady, setShouldShowFundAfterTradingReady] = useState(false)
   const [depositModalOpen, setDepositModalOpen] = useState(false)
@@ -577,8 +598,8 @@ function TradingOnboardingProviderContent({
       return
     }
     if ((modal === 'enable' || modal === 'enable-status') && !enableTradingError) {
-      setDismissedModal(null)
-      setActiveModal(modal)
+      setDismissedModal(modal)
+      setActiveModal(null)
       return
     }
     if (modal === 'approve' && !tokenApprovalError) {

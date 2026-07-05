@@ -547,7 +547,7 @@ function EnableTradingDialog({
   const t = useExtracted()
   const site = useSiteIdentity()
   const isLoading = step === 'enabling' || step === 'deploying'
-  const dismissible = Boolean(error)
+  const dismissible = true
 
   return (
     <OnboardingDialogShell
@@ -578,6 +578,14 @@ function EnableTradingDialog({
               )
             : t('Enable Trading')}
         </Button>
+        <button
+          type="button"
+          className="mx-auto block text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          disabled={isLoading}
+          onClick={() => onOpenChange(false)}
+        >
+          {t('Do this later')}
+        </button>
       </div>
     </OnboardingDialogShell>
   )

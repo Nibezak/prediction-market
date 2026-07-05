@@ -182,6 +182,25 @@ export async function GET(request: Request) {
   }
 
   try {
+    if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+      return NextResponse.json({
+        series_slug: seriesSlugParam,
+        instrument: 'mock-instrument',
+        interval: '1h',
+        source: 'chainlink',
+        interval_ms: 3600000,
+        active_window_minutes: 1440,
+        event_window_start_ms: Date.now() - 24 * 3600 * 1000,
+        event_window_end_ms: Date.now() + 24 * 3600 * 1000,
+        opening_price: 50.0,
+        closing_price: 55.0,
+        latest_price: 52.5,
+        latest_window_end_ms: Date.now(),
+        latest_source_timestamp_ms: Date.now(),
+        is_event_closed: false,
+      })
+    }
+
     const normalizedSeriesSlug = seriesSlugParam.toLowerCase()
     const seriesMapBySlug = await getSeriesMapBySlug()
     const seriesEntry = seriesMapBySlug.get(normalizedSeriesSlug)

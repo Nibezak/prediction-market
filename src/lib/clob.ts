@@ -14,6 +14,10 @@ interface OrderBookSummaryResponse {
 }
 
 export function resolveClobUrl(value?: string) {
+  if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+    const siteUrl = process.env.SITE_URL || 'http://localhost:3000'
+    return `${siteUrl}/api/tellwise-clob`
+  }
   return normalizePublicRuntimeEnvValue(value, defaultPublicRuntimeConfig.clobUrl)
 }
 

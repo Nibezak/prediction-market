@@ -1,6 +1,6 @@
 'use client'
 
-import AppLink from '@/components/AppLink'
+import Link from 'next/link'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { cn } from '@/lib/utils'
@@ -14,8 +14,7 @@ export default function HeaderLogo({ labelSuffix }: HeaderLogoProps) {
   const label = labelSuffix ? `${site.name} ${labelSuffix}` : site.name
 
   return (
-    <AppLink
-      intentPrefetch
+    <Link
       href="/"
       className={cn(`
         flex h-10 shrink-0 items-center gap-2 text-2xl font-medium text-foreground transition-opacity
@@ -31,6 +30,6 @@ export default function HeaderLogo({ labelSuffix }: HeaderLogoProps) {
         size={32}
       />
       <span>{label}</span>
-    </AppLink>
+    </Link>
   )
 }

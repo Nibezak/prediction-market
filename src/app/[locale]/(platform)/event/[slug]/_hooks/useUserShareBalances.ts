@@ -60,7 +60,39 @@ export function useUserShareBalances({ event, ownerAddress }: UseUserShareBalanc
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     queryFn: async (): Promise<SharesByCondition> => {
-      if (!client || !ownerAddress || !outcomeDescriptors.length) {
+      if (!ownerAddress || !outcomeDescriptors.length) {
+        return {}
+      }
+
+      if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+        try {
+          const res = await fetch(`/api/tellwise-clob/balances?userAddress=${ownerAddress}`)
+          const data = await res.json()
+          const shares = data?.shares || {}
+          
+          return outcomeDescriptors.reduce<SharesByCondition>((acc, descriptor) => {
+            const conditionShares = shares[descriptor.conditionId] || { YES: 0, NO: 0 }
+            
+            if (!acc[descriptor.conditionId]) {
+              acc[descriptor.conditionId] = {
+                [OUTCOME_INDEX.YES]: 0,
+                [OUTCOME_INDEX.NO]: 0,
+              }
+            }
+
+            const outcomeKey = descriptor.outcomeIndex === OUTCOME_INDEX.NO
+              ? OUTCOME_INDEX.NO
+              : OUTCOME_INDEX.YES
+
+            acc[descriptor.conditionId][outcomeKey] = Number(conditionShares[outcomeKey === OUTCOME_INDEX.NO ? 'NO' : 'YES'] || 0)
+            return acc
+          }, {})
+        } catch {
+          return {}
+        }
+      }
+
+      if (!client) {
         return {}
       }
 

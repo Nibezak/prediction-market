@@ -6,8 +6,12 @@ import { EventRepository } from '@/lib/db/queries/event'
 import { UserRepository } from '@/lib/db/queries/user'
 import { isEventListSortBy, isEventListStatusFilter } from '@/lib/event-list-filters'
 import { listHomeEventsPage } from '@/lib/home-events-page'
+import { seedMockData } from '@/lib/db/mock-seed'
 
 export async function GET(request: Request) {
+  if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+    await seedMockData()
+  }
   const { searchParams } = new URL(request.url)
   const tag = searchParams.get('tag') || 'trending'
   const mainTag = searchParams.get('mainTag') || ''

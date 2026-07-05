@@ -5,6 +5,8 @@ import AdminEventsTable from '@/app/[locale]/admin/events/_components/AdminEvent
 import { TagRepository } from '@/lib/db/queries/tag'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 export default async function AdminEventsPage({ params }: PageProps<'/[locale]/admin/events'>) {
   const { locale } = await params
   setRequestLocale(locale)
@@ -20,21 +22,23 @@ export default async function AdminEventsPage({ params }: PageProps<'/[locale]/a
   }))
 
   return (
-    <section className="grid gap-4">
-      <div className="grid gap-2">
-        <h1 className="text-2xl font-semibold">{t('Events')}</h1>
-        <p className="text-sm text-muted-foreground">
+    <Card className="shadow-sm border-muted/60">
+      <CardHeader>
+        <CardTitle className="text-2xl font-semibold">{t('Events')}</CardTitle>
+        <CardDescription>
           {t('Manage event visibility, inspect volume, and control how new synced events are deployed.')}
-        </p>
-      </div>
-      <div className="min-w-0">
-        <Suspense fallback={<div className="min-h-64 rounded-xl border bg-background" />}>
-          <AdminEventsTable
-            initialAutoDeployNewEventsEnabled={autoDeployNewEventsEnabled}
-            mainCategoryOptions={mainCategoryOptions}
-          />
-        </Suspense>
-      </div>
-    </section>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="min-w-0">
+          <Suspense fallback={<div className="min-h-64 rounded-xl border bg-background" />}>
+            <AdminEventsTable
+              initialAutoDeployNewEventsEnabled={autoDeployNewEventsEnabled}
+              mainCategoryOptions={mainCategoryOptions}
+            />
+          </Suspense>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

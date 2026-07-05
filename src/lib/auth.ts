@@ -203,7 +203,7 @@ export const auth = betterAuth({
           email,
           settings,
           image: user.image ? getPublicAssetUrl(user.image) : '',
-          is_admin: isAdminWallet(user.name),
+          is_admin: isAdminWallet(user.name) || isAdminWallet(user.email) || isAdminWallet((user as any).username),
         },
         session,
       }

@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
+import { getOrCreateTellwiseLocalDbSession } from '@/lib/db/queries/tellwise-local-user'
 import { affiliate_referrals } from '@/lib/db/schema/affiliates/tables'
 import { accounts, sessions, two_factors, users, verifications, wallets } from '@/lib/db/schema/auth/tables'
 import { orders } from '@/lib/db/schema/orders/tables'
@@ -12,6 +13,7 @@ import { runQuery } from '@/lib/db/utils/run-query'
 import { isDepositWalletDeployed } from '@/lib/deposit-wallet'
 import { db } from '@/lib/drizzle'
 import { getPublicAssetUrl } from '@/lib/storage'
+import { getTellwiseLocalSessionFromHeaders } from '@/lib/tellwise-local-session'
 import { normalizeAddress } from '@/lib/wallet'
 
 function sanitizeUserSearchTerm(search: string) {
@@ -229,11 +231,36 @@ export const UserRepository = {
     minimal = false,
   }: { disableCookieCache?: boolean, minimal?: boolean } = {}) {
     try {
+      const requestHeaders = await headers()
+      const localSession = getTellwiseLocalSessionFromHeaders(requestHeaders)
+      if (localSession?.user) {
+        const dbLocalSession = await getOrCreateTellwiseLocalDbSession().catch(() => localSession)
+        const user = dbLocalSession.user as any
+
+        if (minimal) {
+          return user
+        }
+
+        if (!user.affiliate_code) {
+          try {
+            const { data: code } = await AffiliateRepository.ensureUserAffiliateCode(user.id)
+            if (code) {
+              user.affiliate_code = code
+            }
+          }
+          catch (error) {
+            console.error('Failed to ensure affiliate code', error)
+          }
+        }
+
+        return user
+      }
+
       const session = await auth.api.getSession({
         query: {
           disableCookieCache,
         },
-        headers: await headers(),
+        headers: requestHeaders,
       })
 
       if (!session?.user) {

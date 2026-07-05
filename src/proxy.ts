@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import createMiddleware from 'next-intl/middleware'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { getTellwiseLocalSessionFromRequest } from '@/lib/tellwise-local-session'
 import {
   buildPredictionResultsInternalRoutePath,
   hasPredictionResultsFilterSearchParams,
@@ -98,9 +99,15 @@ export default async function proxy(request: NextRequest) {
     return intlMiddleware(request)
   }
 
-  const session = await auth.api.getSession({
-    headers: request.headers,
-  })
+  let session: any = null
+
+  session = getTellwiseLocalSessionFromRequest(request)
+
+  if (!session) {
+    session = await auth.api.getSession({
+      headers: request.headers,
+    })
+  }
 
   if (!session) {
     return NextResponse.redirect(new URL(withLocale('/', locale), request.url))

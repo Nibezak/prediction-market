@@ -2,7 +2,7 @@
 
 import { RefreshCwIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import AllowedMarketCreatorsManager from '@/app/[locale]/admin/(general)/_components/AllowedMarketCreatorsManager'
+import AllowedMarketCreatorsManager from '@/app/[locale]/admin/settings/_components/AllowedMarketCreatorsManager'
 import SettingsAccordionSection from './SettingsAccordionSection'
 
 interface MarketFeeSectionProps {

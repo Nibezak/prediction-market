@@ -50,18 +50,23 @@ export function normalizePublicRuntimeEnvValue(value: string | undefined, fallba
 }
 
 export function resolvePublicRuntimeEnv(env: NodeJS.ProcessEnv): Omit<PublicRuntimeConfig, 'commitSha' | 'siteUrl'> {
+  const isMock = env.NEXT_PUBLIC_MOCK_MODE === 'true'
+  const isLocalMatching = env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || isMock
+  const siteUrl = env.SITE_URL || 'http://localhost:3000'
+  const tellwiseClobUrl = `${siteUrl}/api/tellwise-clob`
+
   return {
-    clobUrl: normalizePublicRuntimeEnvValue(env.CLOB_URL, defaultPublicRuntimeConfig.clobUrl),
+    clobUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.CLOB_URL, defaultPublicRuntimeConfig.clobUrl),
     communityUrl: normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, defaultPublicRuntimeConfig.communityUrl),
     createMarketUrl: normalizePublicRuntimeEnvValue(env.CREATE_MARKET_URL, defaultPublicRuntimeConfig.createMarketUrl),
-    dataUrl: normalizePublicRuntimeEnvValue(env.DATA_URL, defaultPublicRuntimeConfig.dataUrl),
-    gammaUrl: normalizePublicRuntimeEnvValue(env.GAMMA_URL, defaultPublicRuntimeConfig.gammaUrl),
+    dataUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.DATA_URL, defaultPublicRuntimeConfig.dataUrl),
+    gammaUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.GAMMA_URL, defaultPublicRuntimeConfig.gammaUrl),
     geoblockUrl: normalizePublicRuntimeEnvValue(env.GEOBLOCK_URL, defaultPublicRuntimeConfig.geoblockUrl),
     isVercel: env.VERCEL_ENV ? 'true' : 'false',
     chainId: parseNetworkChainId(env.CHAIN_ID, defaultPublicRuntimeConfig.chainId),
     polygonRpcUrl: normalizePublicRuntimeEnvValue(env.POLYGON_RPC_URL),
     priceReferenceUrl: normalizePublicRuntimeEnvValue(env.PRICE_REFERENCE_URL, defaultPublicRuntimeConfig.priceReferenceUrl),
-    relayerUrl: normalizePublicRuntimeEnvValue(env.RELAYER_URL, defaultPublicRuntimeConfig.relayerUrl),
+    relayerUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.RELAYER_URL, defaultPublicRuntimeConfig.relayerUrl),
     reownAppKitProjectId: normalizePublicRuntimeEnvValue(env.REOWN_APPKIT_PROJECT_ID),
     sdkDownloadUrl: normalizePublicRuntimeEnvValue(env.SDK_DOWNLOAD_URL, defaultPublicRuntimeConfig.sdkDownloadUrl),
     sentryDsn: normalizePublicRuntimeEnvValue(env.SENTRY_DSN),

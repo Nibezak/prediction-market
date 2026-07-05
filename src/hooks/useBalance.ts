@@ -86,7 +86,30 @@ export function useBalance(options: UseBalanceOptions = {}) {
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     queryFn: async (): Promise<Balance> => {
-      if (!client || !depositWalletAddress || !contract) {
+      if (!depositWalletAddress) {
+        return INITIAL_STATE
+      }
+
+      if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+        try {
+          const res = await fetch(`/api/tellwise-clob/balances?userAddress=${depositWalletAddress}`)
+          const data = await res.json()
+          const usdcBal = Number(data?.usdc ?? 10000.0)
+          return {
+            raw: usdcBal,
+            text: usdcBal.toFixed(2),
+            symbol: 'USDC',
+          }
+        } catch {
+          return {
+            raw: 10000.0,
+            text: '10000.00',
+            symbol: 'USDC',
+          }
+        }
+      }
+
+      if (!client || !contract) {
         return INITIAL_STATE
       }
 

@@ -214,6 +214,21 @@ export async function getUserTradingAuthSecrets(
   userId: string,
   options: { requireL2Context?: boolean } = {},
 ): Promise<TradingAuthSecrets | null> {
+  if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+    return {
+      relayer: {
+        key: 'mock-relayer-key',
+        secret: 'mock-relayer-secret',
+        passphrase: 'mock-relayer-passphrase',
+      },
+      clob: {
+        key: 'mock-clob-key',
+        secret: 'mock-clob-secret',
+        passphrase: 'mock-clob-passphrase',
+      },
+    }
+  }
+
   const [row] = await db
     .select({ settings: users.settings })
     .from(users)

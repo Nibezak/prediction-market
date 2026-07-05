@@ -39,6 +39,10 @@ function getAdminWallets(): string[] {
 }
 
 export function isAdminWallet(address?: string | null): boolean {
+  if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+    return true
+  }
+
   if (!address) {
     return false
   }
