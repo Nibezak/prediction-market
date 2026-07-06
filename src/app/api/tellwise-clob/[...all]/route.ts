@@ -8,7 +8,7 @@ import { orders } from '@/lib/db/schema/orders/tables'
 
 const MICRO = 1_000_000n
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-const INITIAL_LOCAL_USDC_MICRO = 10_000n * MICRO
+const INITIAL_LOCAL_USDC_MICRO = 0n
 const LOCAL_SIGNATURE_PREFIX = '0xlocal'
 
 type Db = typeof db
@@ -178,7 +178,7 @@ async function ensureLocalClobTables() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS tellwise_clob_balances (
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      usdc_balance_micro BIGINT NOT NULL DEFAULT 10000000000,
+      usdc_balance_micro BIGINT NOT NULL DEFAULT 0,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
       CONSTRAINT tellwise_clob_balances_non_negative CHECK (usdc_balance_micro >= 0)

@@ -94,18 +94,14 @@ export function useBalance(options: UseBalanceOptions = {}) {
         try {
           const res = await fetch(`/api/tellwise-clob/balances?userAddress=${depositWalletAddress}`)
           const data = await res.json()
-          const usdcBal = Number(data?.usdc ?? 10000.0)
+          const usdcBal = Number(data?.usdc ?? 0)
           return {
             raw: usdcBal,
             text: usdcBal.toFixed(2),
             symbol: 'USDC',
           }
         } catch {
-          return {
-            raw: 10000.0,
-            text: '10000.00',
-            symbol: 'USDC',
-          }
+          return INITIAL_STATE
         }
       }
 
