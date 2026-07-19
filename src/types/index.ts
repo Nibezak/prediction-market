@@ -412,7 +412,15 @@ export interface HomeFeaturedHotTopic {
 
 
 
-export interface HomeFeaturedSideCardSettings {
+export type HomeFeaturedSideCardSlideType = 'text' | 'image' | 'video'
+
+export interface HomeFeaturedSideCardSlide {
+
+  id: string
+
+  enabled: boolean
+
+  type: HomeFeaturedSideCardSlideType
 
   title: string
 
@@ -425,6 +433,24 @@ export interface HomeFeaturedSideCardSettings {
   icon: HomeFeaturedSideCardIcon
 
   useAi: boolean
+
+  useImage: boolean
+
+  imagePath: string
+
+  imageUrl: string
+
+  videoUrl: string
+
+  videoEmbedUrl: string
+
+}
+
+
+
+export interface HomeFeaturedSideCardSettings extends HomeFeaturedSideCardSlide {
+
+  slides: HomeFeaturedSideCardSlide[]
 
 }
 

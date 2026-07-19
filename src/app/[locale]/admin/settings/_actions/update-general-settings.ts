@@ -41,6 +41,8 @@ const ACCEPTED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp
 const MAX_PWA_ICON_FILE_SIZE = 2 * 1024 * 1024
 const ACCEPTED_PWA_ICON_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml']
 const MAX_TERMS_OF_SERVICE_PDF_FILE_SIZE = 2 * 1024 * 1024
+const MAX_SIDE_CARD_IMAGE_FILE_SIZE = 2 * 1024 * 1024
+const ACCEPTED_SIDE_CARD_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
 export interface GeneralSettingsActionState {
   error: string | null
 }
@@ -53,6 +55,40 @@ function buildThemeAssetPath(prefix: string) {
 function buildTermsOfServicePdfPath() {
   const random = Math.random().toString(36).slice(2, 8)
   return `legal/terms-of-service-${Date.now()}-${random}.pdf`
+}
+
+function buildSideCardImagePath() {
+  const random = Math.random().toString(36).slice(2, 10)
+  return `home-featured/side-card-${Date.now()}-${random}.webp`
+}
+
+async function processSideCardImageFile(file: File) {
+  if (!ACCEPTED_SIDE_CARD_IMAGE_TYPES.includes(file.type)) {
+    return { path: null as string | null, error: 'Side card image must be PNG, JPG, or WebP.' }
+  }
+  if (file.size > MAX_SIDE_CARD_IMAGE_FILE_SIZE) {
+    return { path: null as string | null, error: 'Side card image must be 2MB or smaller.' }
+  }
+
+  try {
+    const input = Buffer.from(await file.arrayBuffer())
+    const output = await sharp(input)
+      .rotate()
+      .resize(1200, 800, { fit: 'cover', position: 'centre', withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toBuffer()
+    const path = buildSideCardImagePath()
+    const { error } = await uploadPublicAsset(path, output, {
+      contentType: 'image/webp',
+      cacheControl: '31536000',
+    })
+    return error
+      ? { path: null as string | null, error: DEFAULT_ERROR_MESSAGE }
+      : { path, error: null as string | null }
+  }
+  catch {
+    return { path: null as string | null, error: 'Side card image could not be processed.' }
+  }
 }
 
 async function processThemeLogoFile(file: File) {
@@ -260,6 +296,9 @@ export async function updateGeneralSettingsAction(
   const homeFeaturedSideCardCtaHrefRaw = formData.get('home_featured_side_card_cta_href')
   const homeFeaturedSideCardIconRaw = formData.get('home_featured_side_card_icon')
   const homeFeaturedSideCardUseAiRaw = formData.get('home_featured_side_card_use_ai')
+  const homeFeaturedSideCardUseImageRaw = formData.get('home_featured_side_card_use_image')
+  const homeFeaturedSideCardImagePathRaw = formData.get('home_featured_side_card_image_path')
+  const homeFeaturedSideCardSlidesJsonRaw = formData.get('home_featured_side_card_slides_json')
   const homeFeaturedEventsJsonRaw = formData.get('home_featured_events_json')
   const hasHomeFeaturedSettingsPayload = typeof homeFeaturedEnabledRaw === 'string'
   const hasHomeFeaturedEventsPayload = typeof homeFeaturedEventsJsonRaw === 'string'
@@ -338,6 +377,9 @@ export async function updateGeneralSettingsAction(
       sideCardCtaHref: typeof homeFeaturedSideCardCtaHrefRaw === 'string' ? homeFeaturedSideCardCtaHrefRaw : '',
       sideCardIcon: typeof homeFeaturedSideCardIconRaw === 'string' ? homeFeaturedSideCardIconRaw : '',
       sideCardUseAi: typeof homeFeaturedSideCardUseAiRaw === 'string' ? homeFeaturedSideCardUseAiRaw : '',
+      sideCardUseImage: typeof homeFeaturedSideCardUseImageRaw === 'string' ? homeFeaturedSideCardUseImageRaw : '',
+      sideCardImagePath: typeof homeFeaturedSideCardImagePathRaw === 'string' ? homeFeaturedSideCardImagePathRaw : '',
+      sideCardSlidesJson: typeof homeFeaturedSideCardSlidesJsonRaw === 'string' ? homeFeaturedSideCardSlidesJsonRaw : '',
     })
     if (!validatedHomeFeatured.data) {
       return { error: validatedHomeFeatured.error ?? 'Invalid featured markets settings.' }
@@ -400,6 +442,26 @@ export async function updateGeneralSettingsAction(
     }
 
     tosPdfPath = processed.path
+  }
+
+  if (validatedHomeFeaturedData) {
+    const nextSlides = []
+    for (const slide of validatedHomeFeaturedData.sideCard.slides) {
+      const file = formData.get(`home_featured_side_card_image_${slide.id}`)
+      if (slide.type === 'image' && file instanceof File && file.size > 0) {
+        const processed = await processSideCardImageFile(file)
+        if (!processed.path) return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
+        nextSlides.push({ ...slide, imagePath: processed.path })
+      }
+      else {
+        nextSlides.push(slide)
+      }
+    }
+    const primary = nextSlides.find(slide => slide.enabled) ?? nextSlides[0] ?? validatedHomeFeaturedData.sideCard
+    validatedHomeFeaturedData = {
+      ...validatedHomeFeaturedData,
+      sideCard: { ...primary, slides: nextSlides },
+    }
   }
 
   const validated = validateThemeSiteSettingsInput({

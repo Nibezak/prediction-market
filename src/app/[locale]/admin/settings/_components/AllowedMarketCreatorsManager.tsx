@@ -3,7 +3,7 @@
 import type { AllowedMarketCreatorItem } from '@/lib/allowed-market-creators'
 import { Loader2Icon, PlusIcon, XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -66,17 +66,12 @@ function sortItems(items: AllowedMarketCreatorItem[]) {
 }
 
 async function fetchAllowedCreatorsApi(pathname: string, init?: RequestInit) {
-  const primaryResponse = await fetch(`/admin/api/event-creations/allowed-creators${pathname}`, init)
-  if (primaryResponse.status !== 404 || typeof window === 'undefined') {
-    return primaryResponse
-  }
+  const [maybeLocale] = typeof window === 'undefined'
+    ? []
+    : window.location.pathname.split('/').filter(Boolean)
+  const localePrefix = maybeLocale ? `/${maybeLocale}` : ''
 
-  const [maybeLocale] = window.location.pathname.split('/').filter(Boolean)
-  if (!maybeLocale) {
-    return primaryResponse
-  }
-
-  return fetch(`/${maybeLocale}/admin/api/event-creations/allowed-creators${pathname}`, init)
+  return fetch(`${localePrefix}/admin/api/event-creations/allowed-creators${pathname}`, init)
 }
 
 function useAllowedMarketCreatorsState(disabled: boolean) {
@@ -91,6 +86,7 @@ function useAllowedMarketCreatorsState(disabled: boolean) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [itemPendingRemoval, setItemPendingRemoval] = useState<AllowedMarketCreatorItem | null>(null)
   const [isRemoving, setIsRemoving] = useState(false)
+  const hasLoadedRef = useRef(false)
 
   const loadItems = useCallback(async () => {
     setIsLoading(true)
@@ -103,6 +99,11 @@ function useAllowedMarketCreatorsState(disabled: boolean) {
 
       const payload = await response.json().catch(() => null) as unknown
       const apiError = readApiError(payload)
+
+      if (response.status === 401 || response.status === 403) {
+        setItems([])
+        return
+      }
 
       if (!response.ok || apiError || !isAdminAllowedMarketCreatorsResponse(payload)) {
         throw new Error(apiError || `Failed to load sources (${response.status})`)
@@ -120,6 +121,11 @@ function useAllowedMarketCreatorsState(disabled: boolean) {
   }, [t])
 
   useEffect(function loadItemsOnMount() {
+    if (hasLoadedRef.current) {
+      return
+    }
+
+    hasLoadedRef.current = true
     void loadItems()
   }, [loadItems])
 

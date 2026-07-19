@@ -56,7 +56,7 @@ describe('updateGeneralSettingsAction', () => {
   it('rejects unauthenticated users', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce(null)
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -71,7 +71,7 @@ describe('updateGeneralSettingsAction', () => {
   it('returns validation errors for invalid payloads', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', '')
     formData.set('site_description', 'Prediction market')
@@ -88,7 +88,7 @@ describe('updateGeneralSettingsAction', () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -119,7 +119,7 @@ describe('updateGeneralSettingsAction', () => {
     })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -182,7 +182,7 @@ describe('updateGeneralSettingsAction', () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -214,7 +214,7 @@ describe('updateGeneralSettingsAction', () => {
     })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -240,7 +240,7 @@ describe('updateGeneralSettingsAction', () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -260,7 +260,7 @@ describe('updateGeneralSettingsAction', () => {
   it('rejects unsupported logo upload types', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -278,7 +278,7 @@ describe('updateGeneralSettingsAction', () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -315,7 +315,7 @@ describe('updateGeneralSettingsAction', () => {
   it('rejects unsupported Terms of Use PDF uploads', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
 
-    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { updateGeneralSettingsAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
     const formData = new FormData()
     formData.set('site_name', 'Kuest')
     formData.set('site_description', 'Prediction market')
@@ -334,7 +334,7 @@ describe('updateGeneralSettingsAction', () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
 
-    const { removeTermsOfServicePdfAction } = await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const { removeTermsOfServicePdfAction } = await import('@/app/[locale]/admin/settings/_actions/update-general-settings')
 
     const result = await removeTermsOfServicePdfAction()
     expect(result).toEqual({ error: null })

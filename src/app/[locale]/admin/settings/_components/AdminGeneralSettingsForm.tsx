@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
 import { serializeCustomJavascriptCodes } from '@/lib/custom-javascript-code'
-import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
+import { DEFAULT_HOME_FEATURED_SETTINGS, serializeHomeFeaturedSideCardSlides } from '@/lib/home-featured-settings'
 import { sanitizeSvg } from '@/lib/utils'
 import BrandIdentitySection from './BrandIdentitySection'
 import GlobalAnnouncementSection from './GlobalAnnouncementSection'
@@ -198,6 +198,10 @@ function AdminGeneralSettingsFormInner({
   const [pwaIcon192PreviewUrl, setPwaIcon192PreviewUrl] = useState<string | null>(null)
   const [pwaIcon512PreviewUrl, setPwaIcon512PreviewUrl] = useState<string | null>(null)
   const [openSections, setOpenSections] = useState<string[]>([])
+  const serializedHomeFeaturedSideCardSlides = useMemo(
+    () => serializeHomeFeaturedSideCardSlides(homeFeaturedSideCard.slides),
+    [homeFeaturedSideCard.slides],
+  )
 
   useEffect(function revokeObjectUrls() {
     return function cleanup() {
@@ -457,6 +461,9 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="home_featured_side_card_cta_href" value={homeFeaturedSideCard.ctaHref} />
       <input type="hidden" name="home_featured_side_card_icon" value={homeFeaturedSideCard.icon} />
       <input type="hidden" name="home_featured_side_card_use_ai" value={String(homeFeaturedSideCard.useAi)} />
+      <input type="hidden" name="home_featured_side_card_use_image" value={String(homeFeaturedSideCard.useImage)} />
+      <input type="hidden" name="home_featured_side_card_image_path" value={homeFeaturedSideCard.imagePath} />
+      <input type="hidden" name="home_featured_side_card_slides_json" value={serializedHomeFeaturedSideCardSlides} />
       <input type="hidden" name="home_featured_events_json" value={serializedHomeFeaturedEvents} />
 
       <div className="grid min-w-0 gap-6">

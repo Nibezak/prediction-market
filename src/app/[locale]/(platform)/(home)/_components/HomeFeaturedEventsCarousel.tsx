@@ -25,6 +25,7 @@ import {
 import { DynamicIcon } from 'lucide-react/dynamic'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import EventChart from '@/app/[locale]/(platform)/event/[slug]/_components/EventChart'
@@ -1225,93 +1226,61 @@ function FeaturedRightRail({
   hotTopics: HomeFeaturedHotTopic[]
   sideCard: HomeFeaturedSideCardSettings
 }) {
-  const hasCta = Boolean(sideCard.ctaLabel.trim() && sideCard.ctaHref.trim())
-  const sideCardHref = sideCard.ctaHref.trim()
-  const sideCardClassName = `
-    group/side-card relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border/70
-    bg-card p-5 text-card-foreground shadow-md shadow-black/4 transition-all duration-200
-    hover:-translate-y-0.5 hover:border-border hover:shadow-black/8
-    focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none
-  `
-  const sideCardContent = (
-    <>
-      <span className="
-        pointer-events-none absolute bottom-0 left-[30%] h-px w-[40%] bg-linear-to-r from-transparent via-primary/60
-        to-transparent
-      "
-      />
-      <DynamicIcon
-        name={sideCard.icon as IconName}
-        aria-hidden
-        className="
-          pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8 transition-transform duration-300
-          group-hover/side-card:scale-105
-          motion-safe:animate-pulse
-        "
-      />
+  const activeSlides = sideCard.slides.filter(slide => slide.enabled)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+  const safeIndex = activeSlides.length > 0 ? activeIndex % activeSlides.length : 0
+  const activeSlide = activeSlides[safeIndex]
 
-      <div className="relative z-1 flex min-h-0 flex-1 flex-col pt-7 pb-4">
-        <span
-          className="
-            mb-3 h-1 w-10 rounded-full bg-primary/70
-            shadow-[0_0_18px_color-mix(in_oklab,var(--primary)_32%,transparent)]
-          "
-        />
-        <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">
-          {sideCard.title}
-        </span>
-        <span className={cn(
-          'mt-5 text-sm/relaxed text-muted-foreground',
-          hasCta ? 'line-clamp-4' : 'line-clamp-5',
-        )}
-        >
-          {sideCard.text}
-        </span>
+  useEffect(() => {
+    if (activeSlides.length <= 1 || isPaused) return
+    const timeout = window.setTimeout(() => setActiveIndex(index => (index + 1) % activeSlides.length), 7000)
+    return () => window.clearTimeout(timeout)
+  }, [activeSlides.length, isPaused, safeIndex])
 
-        {hasCta && (
-          <span
-            className="
-              mt-auto ml-auto inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-border/70
-              bg-background/70 px-3 text-sm font-medium text-foreground shadow-sm shadow-black/4 transition-colors
-              group-hover/side-card:border-primary/35 group-hover/side-card:text-primary
-            "
-          >
-            <span className="truncate">{sideCard.ctaLabel}</span>
-            <ChevronRightIcon className="size-4 shrink-0" />
-          </span>
-        )}
-      </div>
-    </>
-  )
+  function renderSlide(slide: HomeFeaturedSideCardSettings['slides'][number]) {
+    const href = slide.ctaHref.trim()
+    const content = slide.type === 'video'
+      ? <iframe src={slide.videoEmbedUrl} title={slide.title || 'Featured video'} loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen className="size-full border-0 bg-black" />
+      : slide.type === 'image'
+        ? (
+            <>
+              <Image src={slide.imageUrl} alt={slide.ctaLabel || slide.title} fill sizes="(min-width: 1024px) 32vw, 280px" className="object-cover transition-transform duration-300 group-hover/side-card:scale-[1.02]" />
+              {slide.ctaLabel && <span className="absolute inset-0 z-1 flex items-end bg-linear-to-t from-black/75 via-black/15 to-transparent p-5 pb-9 text-sm font-semibold text-white opacity-0 transition-opacity group-hover/side-card:opacity-100">{slide.ctaLabel}</span>}
+            </>
+          )
+        : (
+            <>
+              <DynamicIcon name={slide.icon as IconName} aria-hidden className="pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8" />
+              <div className="relative z-1 flex min-h-0 flex-1 flex-col p-5 pt-8">
+                <span className="mb-3 h-1 w-10 rounded-full bg-primary/70" />
+                <span className="line-clamp-2 text-xl/tight font-semibold">{slide.title}</span>
+                <span className="mt-5 line-clamp-4 text-sm/relaxed text-muted-foreground">{slide.text}</span>
+                {slide.ctaLabel && href && <span className="mt-auto ml-auto inline-flex items-center gap-1.5 rounded-full border bg-background/70 px-3 py-2 text-sm font-medium"><span className="truncate">{slide.ctaLabel}</span><ChevronRightIcon className="size-4" /></span>}
+              </div>
+            </>
+          )
+    const className = 'group/side-card relative flex size-full min-w-0 flex-col overflow-hidden bg-card text-card-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none'
+    if (slide.type === 'video' || !href) return <div className={className}>{content}</div>
+    return isExternalHref(href)
+      ? <a href={href} target="_blank" rel="noreferrer" className={className}>{content}</a>
+      : <AppLink intentPrefetch href={href} className={className}>{content}</AppLink>
+  }
 
   return (
     <aside className="hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-4 lg:grid">
-      {hasCta
-        ? isExternalHref(sideCardHref)
-          ? (
-              <a
-                href={sideCardHref}
-                target="_blank"
-                rel="noreferrer"
-                className={sideCardClassName}
-              >
-                {sideCardContent}
-              </a>
-            )
-          : (
-              <AppLink
-                intentPrefetch
-                href={sideCardHref}
-                className={sideCardClassName}
-              >
-                {sideCardContent}
-              </AppLink>
-            )
-        : (
-            <div className={sideCardClassName}>
-              {sideCardContent}
+      {activeSlide
+        ? (
+            <div className="relative min-h-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-md shadow-black/4" onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)} onFocusCapture={() => setIsPaused(true)} onBlurCapture={() => setIsPaused(false)}>
+              {renderSlide(activeSlide)}
+              {activeSlides.length > 1 && (
+                <div className="absolute inset-x-0 bottom-2 z-3 flex justify-center gap-1.5" role="tablist" aria-label="Side card slides">
+                  {activeSlides.map((slide, index) => <button key={slide.id} type="button" role="tab" aria-selected={index === safeIndex} aria-label={`Show slide ${index + 1}`} onClick={() => setActiveIndex(index)} className={cn('h-1.5 rounded-full bg-white/60 ring-1 ring-black/10', index === safeIndex ? 'w-8 bg-primary' : 'w-1.5')} />)}
+                </div>
+              )}
             </div>
-          )}
+          )
+        : <div className="min-h-0 rounded-xl border border-border/70 bg-card" />}
 
       <div className="min-h-0 overflow-hidden p-1">
         <div className="mb-3 flex items-center gap-2">
@@ -1319,7 +1288,7 @@ function FeaturedRightRail({
           <span className="text-lg font-semibold">Hot topics</span>
         </div>
         <div className="grid gap-0.5">
-          {hotTopics.slice(0, 5).map((topic, index) => (
+          {hotTopics.slice(0, 3).map((topic, index) => (
             <AppLink
               key={topic.slug}
               intentPrefetch
@@ -1336,7 +1305,7 @@ function FeaturedRightRail({
               <ChevronRightIcon className="size-4 text-muted-foreground" />
             </AppLink>
           ))}
-          {hotTopics.length > 5 && (
+          {hotTopics.length > 3 && (
             <Button variant="outline" className="mt-2 w-full" asChild>
               <AppLink href="/predictions/trending">Show more</AppLink>
             </Button>

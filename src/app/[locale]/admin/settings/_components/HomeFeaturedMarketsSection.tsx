@@ -11,6 +11,8 @@ import type {
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  FileTextIcon,
+  ImageIcon,
   Loader2Icon,
   NewspaperIcon,
   PlusIcon,
@@ -19,6 +21,8 @@ import {
   SlidersHorizontalIcon,
   SparklesIcon,
   StarIcon,
+  Trash2Icon,
+  VideoIcon,
   XIcon,
 } from 'lucide-react'
 import { DynamicIcon } from 'lucide-react/dynamic'
@@ -50,6 +54,7 @@ import { formatDollarValueLabel } from '@/lib/formatters'
 import {
   HOME_FEATURED_SIDE_CARD_ICONS,
   HOME_FEATURED_SIDE_CARD_LIMITS,
+  HOME_FEATURED_SIDE_CARD_MAX_SLIDES,
 } from '@/lib/home-featured-settings'
 import { cn } from '@/lib/utils'
 import SettingsAccordionSection from './SettingsAccordionSection'
@@ -565,12 +570,48 @@ function HomeFeaturedSideCardDialog({
   onSideCardChange: Dispatch<SetStateAction<HomeFeaturedSideCardSettings>>
 }) {
   const t = useExtracted()
+  const [selectedSlideId, setSelectedSlideId] = useState(sideCard.slides[0]?.id ?? '')
+  const selectedIndex = Math.max(0, sideCard.slides.findIndex(slide => slide.id === selectedSlideId))
+  const selectedSlide = sideCard.slides[selectedIndex] ?? sideCard
 
   function updateSideCard(updates: Partial<HomeFeaturedSideCardSettings>) {
-    onSideCardChange(previous => ({
-      ...previous,
-      ...updates,
-    }))
+    onSideCardChange((previous) => {
+      const slides = previous.slides.map(slide => slide.id === selectedSlide.id ? { ...slide, ...updates } : slide)
+      const primary = slides.find(slide => slide.enabled) ?? slides[0] ?? previous
+      return { ...primary, slides }
+    })
+  }
+
+  function addSlide(type: 'text' | 'image' | 'video') {
+    const randomId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${sideCard.slides.length + 1}`
+    const id = `slide-${randomId}`.toLowerCase()
+    onSideCardChange((previous) => {
+      const next = {
+        ...previous,
+        id,
+        enabled: true,
+        type,
+        useImage: type === 'image',
+        useAi: false,
+        imagePath: '',
+        imageUrl: '',
+        videoUrl: '',
+        videoEmbedUrl: '',
+      }
+      return { ...previous, slides: [...previous.slides, next].slice(0, HOME_FEATURED_SIDE_CARD_MAX_SLIDES) }
+    })
+    setSelectedSlideId(id)
+  }
+
+  function removeSelectedSlide() {
+    if (sideCard.slides.length <= 1) return
+    const fallback = sideCard.slides[selectedIndex + 1] ?? sideCard.slides[selectedIndex - 1]
+    onSideCardChange((previous) => {
+      const slides = previous.slides.filter(slide => slide.id !== selectedSlide.id)
+      const primary = slides.find(slide => slide.enabled) ?? slides[0] ?? previous
+      return { ...primary, slides }
+    })
+    setSelectedSlideId(fallback?.id ?? '')
   }
 
   return (
@@ -584,11 +625,80 @@ function HomeFeaturedSideCardDialog({
         </DialogHeader>
 
         <div className="grid gap-5">
+          <div className="grid gap-3 md:grid-cols-[minmax(12rem,0.7fr)_minmax(0,1.3fr)]">
+            <div className="grid content-start gap-2">
+              {sideCard.slides.map((slide, index) => (
+                <button
+                  key={slide.id}
+                  type="button"
+                  onClick={() => setSelectedSlideId(slide.id)}
+                  className={cn(
+                    'flex min-w-0 items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/60',
+                    selectedSlide.id === slide.id && 'border-primary/45 bg-primary/10',
+                  )}
+                >
+                  {slide.type === 'image'
+                    ? <ImageIcon className="size-4 shrink-0" />
+                    : slide.type === 'video'
+                      ? <VideoIcon className="size-4 shrink-0" />
+                      : <FileTextIcon className="size-4 shrink-0" />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs text-muted-foreground">{`${t('Slide')} ${index + 1}`}</span>
+                    <span className="block truncate text-sm font-medium">{slide.title || slide.ctaLabel || t('Untitled slide')}</span>
+                  </span>
+                  <span className={cn('size-2 rounded-full', slide.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
+                </button>
+              ))}
+              <div className="grid grid-cols-3 gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => addSlide('text')} disabled={disabled || sideCard.slides.length >= HOME_FEATURED_SIDE_CARD_MAX_SLIDES} aria-label={t('Add text slide')}><FileTextIcon className="size-4" /></Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => addSlide('image')} disabled={disabled || sideCard.slides.length >= HOME_FEATURED_SIDE_CARD_MAX_SLIDES} aria-label={t('Add image slide')}><ImageIcon className="size-4" /></Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => addSlide('video')} disabled={disabled || sideCard.slides.length >= HOME_FEATURED_SIDE_CARD_MAX_SLIDES} aria-label={t('Add video slide')}><VideoIcon className="size-4" /></Button>
+              </div>
+            </div>
+
+            <div className="grid content-start gap-4 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Switch checked={selectedSlide.enabled} onCheckedChange={enabled => updateSideCard({ enabled })} disabled={disabled} />
+                  <span className="text-sm font-medium">{t('Active slide')}</span>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={removeSelectedSlide} disabled={disabled || sideCard.slides.length <= 1} aria-label={t('Remove slide')}><Trash2Icon className="size-4 text-destructive" /></Button>
+              </div>
+              <div className="grid gap-2">
+                <Label>{t('Slide type')}</Label>
+                <Select value={selectedSlide.type} onValueChange={value => updateSideCard({ type: value as 'text' | 'image' | 'video', useImage: value === 'image', useAi: value === 'text' && selectedSlide.useAi })} disabled={disabled}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">{t('Text')}</SelectItem>
+                    <SelectItem value="image">{t('Image')}</SelectItem>
+                    <SelectItem value="video">{t('Video')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {sideCard.slides.filter(slide => slide.type === 'image').map(slide => (
+                <div key={slide.id} className={cn('grid gap-3', selectedSlide.id !== slide.id && 'hidden')}>
+                  {slide.imageUrl && <Image src={slide.imageUrl} alt={slide.ctaLabel || t('Side card image')} width={600} height={400} className="aspect-3/2 w-full rounded-lg border object-cover" />}
+                  <div className="grid gap-2">
+                    <Label htmlFor={`home-featured-side-card-image-${slide.id}`}>{t('Image')}</Label>
+                    <Input id={`home-featured-side-card-image-${slide.id}`} form="admin-general-settings-form" name={`home_featured_side_card_image_${slide.id}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} />
+                    <p className="text-xs text-muted-foreground">{t('PNG, JPG, or WebP up to 2MB. Recommended 1200 by 800 pixels.')}</p>
+                  </div>
+                </div>
+              ))}
+              {selectedSlide.type === 'video' && (
+                <div className="grid gap-2">
+                  <Label htmlFor={`home-featured-side-video-${selectedSlide.id}`}>{t('YouTube or Vimeo URL')}</Label>
+                  <Input id={`home-featured-side-video-${selectedSlide.id}`} value={selectedSlide.videoUrl} onChange={event => updateSideCard({ videoUrl: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.videoUrl) })} disabled={disabled} />
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="home-featured-side-title">{t('Title')}</Label>
             <Input
               id="home-featured-side-title"
-              value={sideCard.title}
+              value={selectedSlide.title}
               onChange={event => updateSideCard({ title: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.title) })}
               maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.title}
               disabled={disabled}
@@ -599,7 +709,7 @@ function HomeFeaturedSideCardDialog({
             <Label htmlFor="home-featured-side-text">{t('Text')}</Label>
             <Textarea
               id="home-featured-side-text"
-              value={sideCard.text}
+              value={selectedSlide.text}
               onChange={event => updateSideCard({ text: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.text) })}
               maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.text}
               disabled={disabled}
@@ -615,7 +725,7 @@ function HomeFeaturedSideCardDialog({
               </span>
             </span>
             <Switch
-              checked={sideCard.useAi}
+              checked={selectedSlide.useAi}
               onCheckedChange={checked => updateSideCard({ useAi: checked })}
               disabled={disabled}
             />
@@ -626,7 +736,7 @@ function HomeFeaturedSideCardDialog({
               <Label htmlFor="home-featured-side-cta-label">{t('CTA label')}</Label>
               <Input
                 id="home-featured-side-cta-label"
-                value={sideCard.ctaLabel}
+                value={selectedSlide.ctaLabel}
                 onChange={event => updateSideCard({ ctaLabel: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel) })}
                 maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel}
                 disabled={disabled}
@@ -637,7 +747,7 @@ function HomeFeaturedSideCardDialog({
               <Label htmlFor="home-featured-side-cta-link">{t('CTA link')}</Label>
               <Input
                 id="home-featured-side-cta-link"
-                value={sideCard.ctaHref}
+                value={selectedSlide.ctaHref}
                 onChange={event => updateSideCard({ ctaHref: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.ctaHref) })}
                 maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.ctaHref}
                 placeholder="/trending"
@@ -650,7 +760,7 @@ function HomeFeaturedSideCardDialog({
             <Label>{t('Icon')}</Label>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] gap-2 rounded-lg border p-2">
               {HOME_FEATURED_SIDE_CARD_ICONS.map((icon) => {
-                const selected = sideCard.icon === icon
+                const selected = selectedSlide.icon === icon
                 const label = formatSideCardIconLabel(icon)
 
                 return (

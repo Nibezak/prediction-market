@@ -30,6 +30,7 @@ import { formatDollarValueLabel } from '@/lib/formatters'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
 import { resolveDisplayPrice } from '@/lib/market-chance'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
+import { getPublicAssetUrl } from '@/lib/storage'
 import {
   mergeSportsEventGroupMarkets,
   resolveSportsMarketsVolume,
@@ -454,43 +455,38 @@ function buildHomeFeaturedSideCard(input: {
   hotTopics: HomeFeaturedHotTopic[]
 }): HomeFeaturedSideCardSettings {
   const { configured, featuredEvents, hotTopics } = input
-  if (!configured.useAi) {
-    return configured
-  }
-  const liveEvent = featuredEvents.find(item => item.temporalStatus === 'live')
-  if (liveEvent) {
-    return {
-      ...configured,
+  function buildSlide(slide: HomeFeaturedSideCardSettings['slides'][number]) {
+    if (slide.type !== 'text' || !slide.useAi) return slide
+    const liveEvent = featuredEvents.find(item => item.temporalStatus === 'live')
+    if (liveEvent) return {
+      ...slide,
       title: 'Live market focus',
       text: `${liveEvent.event.title} is live now with ${formatDollarValueLabel(liveEvent.event.volume, { maximumFractionDigits: 0 })} total volume.`,
-      ctaLabel: configured.ctaLabel || 'Open market',
-      ctaHref: configured.ctaHref || resolveEventPagePath(liveEvent.event),
-      icon: 'flame',
+      ctaLabel: slide.ctaLabel || 'Open market',
+      ctaHref: slide.ctaHref || resolveEventPagePath(liveEvent.event),
+      icon: 'flame' as const,
     }
-  }
-  const topTopic = hotTopics[0]
-  if (topTopic) {
-    return {
-      ...configured,
+    const topTopic = hotTopics[0]
+    if (topTopic) return {
+      ...slide,
       title: `${topTopic.label} leads volume`,
       text: `${formatDollarValueLabel(topTopic.volume24h, { maximumFractionDigits: 0 })} tracked across active and recently settled markets.`,
-      ctaLabel: configured.ctaLabel || 'Explore topic',
-      ctaHref: configured.ctaHref || topTopic.href,
-      icon: 'trending-up',
+      ctaLabel: slide.ctaLabel || 'Explore topic',
+      ctaHref: slide.ctaHref || topTopic.href,
+      icon: 'trending-up' as const,
     }
-  }
-  const firstEvent = featuredEvents[0]
-  if (firstEvent) {
-    return {
-      ...configured,
-      title: 'Featured market',
-      text: firstEvent.event.title,
-      ctaLabel: configured.ctaLabel || 'Open market',
-      ctaHref: configured.ctaHref || resolveEventPagePath(firstEvent.event),
-      icon: 'sparkles',
+    const firstEvent = featuredEvents[0]
+    if (firstEvent) return {
+      ...slide,
+      title: 'Featured market', text: firstEvent.event.title,
+      ctaLabel: slide.ctaLabel || 'Open market',
+      ctaHref: slide.ctaHref || resolveEventPagePath(firstEvent.event),
+      icon: 'sparkles' as const,
     }
+    return slide
   }
-  return configured
+  const slides = configured.slides.map(buildSlide)
+  return { ...(slides[0] ?? configured), slides }
 }
 export async function getHomeFeaturedSideCard(
   featuredEvents: HomeFeaturedEventCard[],
@@ -502,11 +498,20 @@ export async function getHomeFeaturedSideCard(
     return getHomeFeaturedSettingsFromSettings(undefined).sideCard
   }
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
-  return buildHomeFeaturedSideCard({
+  const sideCard = buildHomeFeaturedSideCard({
     configured: settings.sideCard,
     featuredEvents,
     hotTopics,
   })
+  const slides = sideCard.slides
+    .filter(slide => slide.enabled)
+    .map(slide => ({ ...slide, imageUrl: getPublicAssetUrl(slide.imagePath) ?? '' }))
+    .filter(slide => slide.type !== 'image' || Boolean(slide.imageUrl))
+  return {
+    ...sideCard,
+    imageUrl: getPublicAssetUrl(sideCard.imagePath) ?? '',
+    slides,
+  }
 }
 function formatEndDateLabel(endDate: string | null, locale: SupportedLocale) {
   if (!endDate) {

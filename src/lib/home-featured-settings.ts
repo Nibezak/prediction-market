@@ -1,4 +1,10 @@
-import type { HomeFeaturedContextMode, HomeFeaturedSettings, HomeFeaturedSideCardIcon } from '@/types'
+import type {
+  HomeFeaturedContextMode,
+  HomeFeaturedSettings,
+  HomeFeaturedSideCardIcon,
+  HomeFeaturedSideCardSlide,
+  HomeFeaturedSideCardSlideType,
+} from '@/types'
 
 type SettingsGroup = Record<string, { value: string, updated_at: string }>
 type SettingsMap = Record<string, SettingsGroup | undefined>
@@ -19,6 +25,10 @@ export const HOME_FEATURED_SIDE_CARD_CTA_LABEL_KEY = 'side_card_cta_label'
 export const HOME_FEATURED_SIDE_CARD_CTA_HREF_KEY = 'side_card_cta_href'
 export const HOME_FEATURED_SIDE_CARD_ICON_KEY = 'side_card_icon'
 export const HOME_FEATURED_SIDE_CARD_USE_AI_KEY = 'side_card_use_ai'
+export const HOME_FEATURED_SIDE_CARD_USE_IMAGE_KEY = 'side_card_use_image'
+export const HOME_FEATURED_SIDE_CARD_IMAGE_PATH_KEY = 'side_card_image_path'
+export const HOME_FEATURED_SIDE_CARD_SLIDES_KEY = 'side_card_slides_v1'
+export const HOME_FEATURED_SIDE_CARD_MAX_SLIDES = 8
 
 const HOME_FEATURED_CONTEXT_MODES: HomeFeaturedContextMode[] = ['auto', 'news', 'comments', 'hidden']
 export const HOME_FEATURED_SIDE_CARD_ICONS: HomeFeaturedSideCardIcon[] = [
@@ -76,9 +86,28 @@ export const HOME_FEATURED_SIDE_CARD_ICONS: HomeFeaturedSideCardIcon[] = [
 export const HOME_FEATURED_SIDE_CARD_LIMITS = {
   title: 56,
   text: 150,
-  ctaLabel: 28,
+  ctaLabel: 80,
   ctaHref: 240,
+  imagePath: 240,
+  videoUrl: 500,
 } as const
+
+const DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE: HomeFeaturedSideCardSlide = {
+  id: 'legacy',
+  enabled: true,
+  type: 'text',
+  title: 'Market pulse',
+  text: 'Fast movers across active markets.',
+  ctaLabel: '',
+  ctaHref: '',
+  icon: 'trending-up',
+  useAi: false,
+  useImage: false,
+  imagePath: '',
+  imageUrl: '',
+  videoUrl: '',
+  videoEmbedUrl: '',
+}
 
 export const DEFAULT_HOME_FEATURED_SETTINGS: HomeFeaturedSettings = {
   enabled: false,
@@ -91,12 +120,8 @@ export const DEFAULT_HOME_FEATURED_SETTINGS: HomeFeaturedSettings = {
   includeSportsToday: true,
   includeNewEvents: true,
   sideCard: {
-    title: 'Market pulse',
-    text: 'Fast movers across active markets.',
-    ctaLabel: '',
-    ctaHref: '',
-    icon: 'trending-up',
-    useAi: false,
+    ...DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE,
+    slides: [{ ...DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE }],
   },
 }
 
@@ -178,6 +203,92 @@ function parseSideCardHref(value: string | undefined) {
   return ''
 }
 
+function parseSideCardImagePath(value: string | undefined) {
+  const normalized = normalizeOptionalCompactText(value, HOME_FEATURED_SIDE_CARD_LIMITS.imagePath)
+  return /^home-featured\/side-card-[a-z0-9-]+\.(?:jpe?g|png|webp)$/i.test(normalized) ? normalized : ''
+}
+
+function parseSideCardSlideType(value: unknown): HomeFeaturedSideCardSlideType {
+  return value === 'image' || value === 'video' ? value : 'text'
+}
+
+function parseSideCardVideoUrl(value: unknown) {
+  const normalized = typeof value === 'string'
+    ? normalizeOptionalCompactText(value, HOME_FEATURED_SIDE_CARD_LIMITS.videoUrl)
+    : ''
+  if (!normalized) return { videoUrl: '', videoEmbedUrl: '' }
+
+  try {
+    const url = new URL(normalized)
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '')
+    let embed = ''
+    if (hostname === 'youtu.be') {
+      const id = url.pathname.split('/').filter(Boolean)[0] ?? ''
+      if (/^[\w-]{6,20}$/.test(id)) embed = `https://www.youtube-nocookie.com/embed/${id}`
+    }
+    else if (hostname === 'youtube.com' || hostname === 'm.youtube.com') {
+      const id = url.pathname === '/watch'
+        ? url.searchParams.get('v') ?? ''
+        : url.pathname.split('/').filter(Boolean)[1] ?? ''
+      if (/^[\w-]{6,20}$/.test(id)) embed = `https://www.youtube-nocookie.com/embed/${id}`
+    }
+    else if (hostname === 'vimeo.com' || hostname === 'player.vimeo.com') {
+      const id = url.pathname.split('/').filter(Boolean).findLast(segment => /^\d+$/.test(segment)) ?? ''
+      if (id) embed = `https://player.vimeo.com/video/${id}`
+    }
+    return embed ? { videoUrl: normalized, videoEmbedUrl: embed } : { videoUrl: '', videoEmbedUrl: '' }
+  }
+  catch {
+    return { videoUrl: '', videoEmbedUrl: '' }
+  }
+}
+
+function parseSideCardSlide(value: unknown, index: number): HomeFeaturedSideCardSlide | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const normalizedId = typeof record.id === 'string' ? record.id.trim().toLowerCase() : ''
+  const id = /^[a-z0-9][a-z0-9-]{0,63}$/.test(normalizedId) ? normalizedId : `slide-${index + 1}`
+  const type = parseSideCardSlideType(record.type)
+  const video = parseSideCardVideoUrl(record.videoUrl)
+  return {
+    id,
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : true,
+    type,
+    title: normalizeCompactText(typeof record.title === 'string' ? record.title : '', DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE.title, HOME_FEATURED_SIDE_CARD_LIMITS.title),
+    text: normalizeCompactText(typeof record.text === 'string' ? record.text : '', DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE.text, HOME_FEATURED_SIDE_CARD_LIMITS.text),
+    ctaLabel: normalizeOptionalCompactText(typeof record.ctaLabel === 'string' ? record.ctaLabel : '', HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel),
+    ctaHref: parseSideCardHref(typeof record.ctaHref === 'string' ? record.ctaHref : ''),
+    icon: parseSideCardIcon(typeof record.icon === 'string' ? record.icon : '', DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE.icon),
+    useAi: type === 'text' && record.useAi === true,
+    useImage: type === 'image',
+    imagePath: type === 'image' ? parseSideCardImagePath(typeof record.imagePath === 'string' ? record.imagePath : '') : '',
+    imageUrl: '',
+    videoUrl: type === 'video' ? video.videoUrl : '',
+    videoEmbedUrl: type === 'video' ? video.videoEmbedUrl : '',
+  }
+}
+
+function parseSideCardSlides(value: string | undefined) {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    const usedIds = new Set<string>()
+    return parsed.slice(0, HOME_FEATURED_SIDE_CARD_MAX_SLIDES).map(parseSideCardSlide).filter((slide): slide is HomeFeaturedSideCardSlide => {
+      if (!slide || usedIds.has(slide.id)) return false
+      usedIds.add(slide.id)
+      return true
+    })
+  }
+  catch {
+    return []
+  }
+}
+
+export function serializeHomeFeaturedSideCardSlides(slides: HomeFeaturedSideCardSlide[]) {
+  return JSON.stringify(slides.map(({ imageUrl: _imageUrl, videoEmbedUrl: _videoEmbedUrl, ...slide }) => slide))
+}
+
 function parseNewsSourcesInput(input: string) {
   return Array.from(new Set(
     input
@@ -247,6 +358,21 @@ function parseCommentBlacklist(value: string | undefined) {
 export function getHomeFeaturedSettingsFromSettings(allSettings?: SettingsMap): HomeFeaturedSettings {
   const settings = allSettings?.[HOME_FEATURED_SETTINGS_GROUP]
   const defaults = DEFAULT_HOME_FEATURED_SETTINGS
+  const legacySlide = parseSideCardSlide({
+    id: 'legacy',
+    enabled: true,
+    type: parseBoolean(settings?.[HOME_FEATURED_SIDE_CARD_USE_IMAGE_KEY]?.value, false) ? 'image' : 'text',
+    title: settings?.[HOME_FEATURED_SIDE_CARD_TITLE_KEY]?.value,
+    text: settings?.[HOME_FEATURED_SIDE_CARD_TEXT_KEY]?.value,
+    ctaLabel: settings?.[HOME_FEATURED_SIDE_CARD_CTA_LABEL_KEY]?.value,
+    ctaHref: settings?.[HOME_FEATURED_SIDE_CARD_CTA_HREF_KEY]?.value,
+    icon: settings?.[HOME_FEATURED_SIDE_CARD_ICON_KEY]?.value,
+    useAi: parseBoolean(settings?.[HOME_FEATURED_SIDE_CARD_USE_AI_KEY]?.value, false),
+    imagePath: settings?.[HOME_FEATURED_SIDE_CARD_IMAGE_PATH_KEY]?.value,
+  }, 0) ?? { ...DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE }
+  const parsedSlides = parseSideCardSlides(settings?.[HOME_FEATURED_SIDE_CARD_SLIDES_KEY]?.value)
+  const slides = parsedSlides.length > 0 ? parsedSlides : [legacySlide]
+  const primarySlide = slides.find(slide => slide.enabled) ?? slides[0] ?? legacySlide
 
   return {
     enabled: parseBoolean(settings?.[HOME_FEATURED_ENABLED_KEY]?.value, defaults.enabled),
@@ -267,31 +393,7 @@ export function getHomeFeaturedSettingsFromSettings(allSettings?: SettingsMap): 
       settings?.[HOME_FEATURED_INCLUDE_NEW_EVENTS_KEY]?.value,
       defaults.includeNewEvents,
     ),
-    sideCard: {
-      title: normalizeCompactText(
-        settings?.[HOME_FEATURED_SIDE_CARD_TITLE_KEY]?.value,
-        defaults.sideCard.title,
-        HOME_FEATURED_SIDE_CARD_LIMITS.title,
-      ),
-      text: normalizeCompactText(
-        settings?.[HOME_FEATURED_SIDE_CARD_TEXT_KEY]?.value,
-        defaults.sideCard.text,
-        HOME_FEATURED_SIDE_CARD_LIMITS.text,
-      ),
-      ctaLabel: normalizeOptionalCompactText(
-        settings?.[HOME_FEATURED_SIDE_CARD_CTA_LABEL_KEY]?.value,
-        HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel,
-      ),
-      ctaHref: parseSideCardHref(settings?.[HOME_FEATURED_SIDE_CARD_CTA_HREF_KEY]?.value),
-      icon: parseSideCardIcon(
-        settings?.[HOME_FEATURED_SIDE_CARD_ICON_KEY]?.value,
-        defaults.sideCard.icon,
-      ),
-      useAi: parseBoolean(
-        settings?.[HOME_FEATURED_SIDE_CARD_USE_AI_KEY]?.value,
-        defaults.sideCard.useAi,
-      ),
-    },
+    sideCard: { ...primarySlide, slides },
   }
 }
 
@@ -311,6 +413,9 @@ export function validateHomeFeaturedSettingsInput(input: {
   sideCardCtaHref?: string
   sideCardIcon?: string
   sideCardUseAi?: string
+  sideCardUseImage?: string
+  sideCardImagePath?: string
+  sideCardSlidesJson?: string
 }): { data: HomeFeaturedSettings, error: null } | { data: null, error: string } {
   const defaultContextMode = parseContextMode(input.defaultContextMode, 'auto')
   const maxCards = parseInteger(input.maxCards, DEFAULT_HOME_FEATURED_SETTINGS.maxCards, 1, 8)
@@ -318,6 +423,17 @@ export function validateHomeFeaturedSettingsInput(input: {
   const newsSources = parseNewsSourcesInput(input.newsSources)
   const commentBlacklist = parseCommentBlacklistInput(input.commentBlacklist)
   const sideCardDefaults = DEFAULT_HOME_FEATURED_SETTINGS.sideCard
+  const legacySlide = parseSideCardSlide({
+    id: 'legacy', enabled: true,
+    type: parseBoolean(input.sideCardUseImage, false) ? 'image' : 'text',
+    title: input.sideCardTitle, text: input.sideCardText,
+    ctaLabel: input.sideCardCtaLabel, ctaHref: input.sideCardCtaHref,
+    icon: input.sideCardIcon, useAi: parseBoolean(input.sideCardUseAi, false),
+    imagePath: input.sideCardImagePath,
+  }, 0) ?? { ...DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE }
+  const parsedSlides = parseSideCardSlides(input.sideCardSlidesJson)
+  const slides = parsedSlides.length > 0 ? parsedSlides : [legacySlide]
+  const primarySlide = slides.find(slide => slide.enabled) ?? slides[0] ?? legacySlide
 
   return {
     data: {
@@ -330,14 +446,7 @@ export function validateHomeFeaturedSettingsInput(input: {
       minVolume24h,
       includeSportsToday: parseBoolean(input.includeSportsToday, true),
       includeNewEvents: parseBoolean(input.includeNewEvents, true),
-      sideCard: {
-        title: normalizeCompactText(input.sideCardTitle, sideCardDefaults.title, HOME_FEATURED_SIDE_CARD_LIMITS.title),
-        text: normalizeCompactText(input.sideCardText, sideCardDefaults.text, HOME_FEATURED_SIDE_CARD_LIMITS.text),
-        ctaLabel: normalizeOptionalCompactText(input.sideCardCtaLabel, HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel),
-        ctaHref: parseSideCardHref(input.sideCardCtaHref),
-        icon: parseSideCardIcon(input.sideCardIcon, sideCardDefaults.icon),
-        useAi: parseBoolean(input.sideCardUseAi, sideCardDefaults.useAi),
-      },
+      sideCard: { ...primarySlide, slides },
     },
     error: null,
   }

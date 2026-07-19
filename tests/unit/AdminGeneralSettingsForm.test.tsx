@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
+import AdminGeneralSettingsForm from '@/app/[locale]/admin/settings/_components/AdminGeneralSettingsForm'
 
 const mocks = vi.hoisted(() => ({
   removeTermsOfServicePdfAction: vi.fn(),
@@ -28,12 +28,12 @@ vi.mock('sonner', () => ({
   },
 }))
 
-vi.mock('@/app/[locale]/admin/(general)/_actions/update-general-settings', () => ({
+vi.mock('@/app/[locale]/admin/settings/_actions/update-general-settings', () => ({
   updateGeneralSettingsAction: vi.fn(),
   removeTermsOfServicePdfAction: (...args: any[]) => mocks.removeTermsOfServicePdfAction(...args),
 }))
 
-vi.mock('@/app/[locale]/admin/(general)/_components/AllowedMarketCreatorsManager', () => ({
+vi.mock('@/app/[locale]/admin/settings/_components/AllowedMarketCreatorsManager', () => ({
   __esModule: true,
   default: () => React.createElement('div', { 'data-testid': 'allowed-market-creators-manager' }),
 }))
