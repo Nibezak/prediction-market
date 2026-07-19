@@ -25,7 +25,7 @@ export async function fetchOrderBookSummaries(tokenIds: string[], clobUrl?: stri
 
   const [orderBooks, lastTrades] = await Promise.all([
     fetchClobJson<ClobOrderbookSummary[]>('/books', payload, clobUrl),
-    fetchClobJson<LastTradePriceEntry[]>('/last-trades-prices', payload, clobUrl).catch((error) => {
+    fetchClobJson<LastTradePriceEntry[]>('/last-trades-prices', payload, clobUrl).catch((error: unknown) => {
       console.error('Failed to fetch last trades prices', error)
       return null
     }),
@@ -43,7 +43,7 @@ export async function fetchOrderBookSummaries(tokenIds: string[], clobUrl?: stri
   })
 
   const lastTradesByToken = new Map<string, LastTradePriceEntry>()
-  lastTrades?.forEach((entry) => {
+  lastTrades?.forEach((entry: any) => {
     if (entry?.token_id) {
       lastTradesByToken.set(entry.token_id, entry)
     }

@@ -1285,7 +1285,7 @@ function FeaturedRightRail({
   )
 
   return (
-    <aside className="hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid">
+    <aside className="hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-4 lg:grid">
       {hasCta
         ? isExternalHref(sideCardHref)
           ? (
@@ -1318,24 +1318,29 @@ function FeaturedRightRail({
           <FlameIcon className="size-4 text-no" />
           <span className="text-lg font-semibold">Hot topics</span>
         </div>
-        <div className="grid gap-3">
-          {hotTopics.map((topic, index) => (
+        <div className="grid gap-0.5">
+          {hotTopics.slice(0, 5).map((topic, index) => (
             <AppLink
               key={topic.slug}
               intentPrefetch
               href={topic.href}
-              className="group/topic grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-md py-0.5"
+              className="group/topic -mx-2 grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-secondary/50"
             >
               <span className="w-4 text-sm font-medium text-muted-foreground">{index + 1}</span>
               <span className="truncate text-base font-medium underline-offset-2 group-hover/topic:underline">
                 {topic.label}
               </span>
               <span className="text-sm text-muted-foreground">
-                {`${formatDollarValueLabel(topic.volume24h, { maximumFractionDigits: 0 })} Vol`}
+                {`${formatVolume(topic.volume24h)} Vol`}
               </span>
               <ChevronRightIcon className="size-4 text-muted-foreground" />
             </AppLink>
           ))}
+          {hotTopics.length > 5 && (
+            <Button variant="outline" className="mt-2 w-full" asChild>
+              <AppLink href="/predictions/trending">Show more</AppLink>
+            </Button>
+          )}
         </div>
       </div>
     </aside>

@@ -1,7 +1,7 @@
 import type { Event } from '@/types'
 
-const CHART_COLOR_VARIABLES = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)']
-const MAX_SERIES = 4
+const CHART_COLOR_VARIABLES = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+const MAX_SERIES = 10
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
 
 export function getMaxSeriesCount() {
@@ -157,6 +157,25 @@ export function getOutcomeLabelForMarket(
   }
 
   return outcomeIndex === 0 ? 'Yes' : 'No'
+}
+
+export function getOutcomeColorForMarket(
+  market: Event['markets'][number] | undefined,
+  outcomeIndex: number,
+  fallback: string,
+) {
+  const metadata = (market?.metadata ?? {}) as Record<string, unknown>
+  const outcome = market?.outcomes.find(item => item.outcome_index === outcomeIndex)
+  const outcomeMetadata = ((outcome as unknown as { metadata?: unknown })?.metadata ?? {}) as Record<string, unknown>
+  const marketColors = Array.isArray(metadata.outcome_colors) ? metadata.outcome_colors : null
+  const indexedMarketColor = typeof marketColors?.[outcomeIndex] === 'string'
+    ? marketColors[outcomeIndex].trim()
+    : ''
+  const outcomeColor = typeof outcomeMetadata.color === 'string'
+    ? outcomeMetadata.color.trim()
+    : ''
+
+  return outcomeColor || indexedMarketColor || fallback
 }
 
 export function buildChartSeries(event: Event, marketIds: string[]) {

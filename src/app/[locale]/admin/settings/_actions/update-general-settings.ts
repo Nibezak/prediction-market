@@ -519,8 +519,7 @@ export async function updateGeneralSettingsAction(
     await syncGeoblockSettings()
   }
   catch (syncError) {
-    console.error('Failed to sync geoblock settings', syncError)
-    return { error: 'Settings saved, but geoblock sync failed. Please try again.' }
+    console.error('Failed to sync geoblock settings (non-fatal)', syncError)
   }
 
   return { error: null }

@@ -1,6 +1,7 @@
 'use client'
 
 import type { Market, Outcome } from '@/types'
+import { useQuery } from '@tanstack/react-query'
 import { InfoIcon, RefreshCwIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -64,6 +65,7 @@ export default function EventSingleMarketOrderBook({
   showCompactVolume = false,
 }: EventSingleMarketOrderBookProps) {
   const t = useExtracted()
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const normalizeOutcomeLabel = useOutcomeLabel()
   const isMobile = useIsMobile()
   const marketChannelStatus = useMarketChannelStatus()
@@ -76,7 +78,18 @@ export default function EventSingleMarketOrderBook({
     isLoading: isOrderBookLoading,
     refetch: refetchOrderBook,
     isRefetching: isOrderBookRefetching,
-  } = useOrderBookSummaries(tokenIds, { enabled: isExpanded })
+  } = useOrderBookSummaries(tokenIds, { enabled: isExpanded && !isPlayMoneyAmm })
+  const ammMarketQuery = useQuery({
+    queryKey: ['amm-market-depth', market.condition_id],
+    queryFn: async () => {
+      const response = await fetch(`/api/amm/markets/${market.condition_id}?extended=true`)
+      if (!response.ok) throw new Error('Failed to load AMM pool.')
+      const result = await response.json()
+      return result.data ?? result
+    },
+    enabled: isPlayMoneyAmm && Boolean(market.condition_id),
+    staleTime: 10_000,
+  })
 
   const selectedOutcome: Outcome | undefined = market.outcomes[selectedOutcomeIndex] ?? market.outcomes[0]
   const yesOutcomeText = market.outcomes[OUTCOME_INDEX.YES]?.outcome_text
@@ -97,6 +110,45 @@ export default function EventSingleMarketOrderBook({
 
   if (market.outcomes.length < 2) {
     return null
+  }
+
+  if (isPlayMoneyAmm) {
+    const pool = ammMarketQuery.data
+    const options = Array.isArray(pool?.options) ? pool.options : []
+    const liquidity = Number(pool?.liquidityCount ?? 0)
+
+    return (
+      <section className="overflow-hidden rounded-xl border">
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h3 className="text-base font-medium">AMM liquidity pool</h3>
+            <p className="text-sm text-muted-foreground">Trades execute instantly against shared market liquidity.</p>
+          </div>
+          <span className="text-sm font-semibold">${liquidity.toFixed(2)} liquidity</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-4">
+          {market.outcomes.slice(0, 2).map((outcome) => {
+            const option = options.find((item: { id?: string }) => item.id === outcome.token_id)
+            const probability = Number(option?.probability ?? (Number(outcome.buy_price ?? 0.5) * 100))
+            const selected = selectedOutcomeIndex === outcome.outcome_index
+            return (
+              <button
+                type="button"
+                key={outcome.token_id || outcome.outcome_index}
+                onClick={() => handleOutcomeSelection(outcome.outcome_index as OutcomeToggleIndex)}
+                className={cn(
+                  'border p-3 text-left transition-colors hover:bg-muted/50',
+                  selected && 'border-primary bg-primary/5',
+                )}
+              >
+                <span className="block font-semibold">{outcome.outcome_text}</span>
+                <span className="text-sm text-muted-foreground">{probability.toFixed(1)}% chance</span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+    )
   }
 
   return (

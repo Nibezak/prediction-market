@@ -7,6 +7,7 @@ interface HomeEventVisibilityOptions {
   hideEarnings?: boolean
   hideSports?: boolean
   status?: EventListStatusFilter
+  bookmarked?: boolean
 }
 
 export const HOME_EVENTS_PAGE_SIZE = 32
@@ -34,6 +35,7 @@ interface HomeVisibleEventCandidate {
   main_tag?: string | null
   tags?: HomeVisibleEventTagCandidate[]
   markets?: HomeVisibleEventMarketCandidate[]
+  is_bookmarked?: boolean
 }
 
 function normalizeSeriesSlug(value: string | null | undefined) {
@@ -162,9 +164,14 @@ export function filterHomeEvents<T extends HomeVisibleEventCandidate>(
     hideEarnings = false,
     hideSports = false,
     status = 'active',
+    bookmarked = false,
   } = options
 
   const eventsMatchingTagFilters = events.filter((event) => {
+    if (bookmarked && !event.is_bookmarked) {
+      return false
+    }
+
     if (isSportsAuxiliaryEventSlug(event.slug)) {
       return false
     }

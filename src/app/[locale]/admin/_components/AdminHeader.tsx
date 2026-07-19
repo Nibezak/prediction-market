@@ -8,7 +8,8 @@ export default async function AdminHeader() {
       <div
         className={cn(`
           relative z-50 flex min-h-15 w-full items-center gap-4 px-4 py-3 pb-1
-          md:min-h-17 md:px-8 md:pb-2 lg:px-12
+          md:min-h-17 md:px-8 md:pb-2
+          lg:px-12
         `)}
       >
         <HeaderLogo labelSuffix="Admin" />

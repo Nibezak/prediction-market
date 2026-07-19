@@ -15,10 +15,12 @@ describe('theme site identity helpers', () => {
   it('builds default identity with sane values', () => {
     const identity = createDefaultThemeSiteIdentity()
 
-    expect(identity.name).toBeTruthy()
+    expect(identity.name).toBe('Slimefish')
     expect(identity.description).toBeTruthy()
+    expect(identity.logoMode).toBe('image')
     expect(identity.logoSvg).toContain('<svg')
-    expect(identity.logoUrl).toContain('data:image/svg+xml;utf8,')
+    expect(identity.logoImagePath).toBe('/images/branding/slimefish.png')
+    expect(identity.logoUrl).toBe('/images/branding/slimefish.png')
     expect(identity.googleAnalyticsId).toBeNull()
     expect(identity.discordLink).toBeNull()
     expect(identity.supportUrl).toBeNull()

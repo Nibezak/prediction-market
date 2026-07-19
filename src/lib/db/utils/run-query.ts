@@ -5,7 +5,8 @@ export async function runQuery<T>(queryFn: () => Promise<QueryResult<T>>): Promi
   try {
     return await queryFn()
   }
-  catch {
+  catch (error) {
+    console.error('runQuery failed:', error)
     return {
       data: null,
       error: DEFAULT_ERROR_MESSAGE,

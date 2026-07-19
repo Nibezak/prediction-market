@@ -5,12 +5,15 @@ import dynamic from 'next/dynamic'
 import HeaderDropdownUserMenuGuest from '@/app/[locale]/(platform)/_components/HeaderDropdownUserMenuGuest'
 import HeaderNotifications from '@/app/[locale]/(platform)/_components/HeaderNotifications'
 import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
+import AppLink from '@/components/AppLink'
 import HeaderDropdownUserMenuAuth from '@/components/HeaderDropdownUserMenuAuth'
-import HeaderPortfolio from '@/components/HeaderPortfolio'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAppKit } from '@/hooks/useAppKit'
+import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { usePortfolioValue } from '@/hooks/usePortfolioValue'
 import { authClient } from '@/lib/auth-client'
 import { useUser } from '@/stores/useUser'
 
@@ -33,29 +36,47 @@ function HeaderMenuClient() {
   const isMobile = useIsMobile()
   const tradingOnboarding = useOptionalTradingOnboarding()
   const user = useUser()
+  const { balance, isLoadingBalance } = useBalance()
+  const { isLoading: isLoadingPortfolio, value: positionsValue } = usePortfolioValue()
 
   const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
   const shouldShowGuestActions = hasHydrated && !isAuthenticated && !isSessionPending
   const startDepositFlow = tradingOnboarding?.startDepositFlow
 
+  const isLoadingValue = isLoadingBalance || isLoadingPortfolio
+  const totalBalance = (positionsValue ?? 0) + (balance?.raw ?? 0)
+  const formattedBalance = Number.isFinite(totalBalance)
+    ? totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '0.00'
+
   return (
     <>
       {isAuthenticated && (
         <>
-          {!isMobile && <HeaderPortfolio />}
           {!isMobile && (
-            startDepositFlow
-              ? (
-                  <Button size="headerCompact" onClick={startDepositFlow}>
-                    {t('Deposit')}
-                  </Button>
-                )
-              : (
-                  <HeaderDepositButton />
-                )
+            <div className="flex items-center gap-2 rounded-sm bg-secondary/50 p-2 pr-4">
+              <AppLink href="/portfolio" className="flex items-center gap-1 text-base font-semibold text-yes">
+                {isLoadingValue
+                  ? <Skeleton className="h-5 w-16" />
+                  : (
+                      <span>
+                        $
+                        {formattedBalance}
+                      </span>
+                    )}
+              </AppLink>
+              {startDepositFlow
+                ? (
+                    <Button size="headerCompact" onClick={startDepositFlow}>
+                      {t('Deposit')}
+                    </Button>
+                  )
+                : (
+                    <HeaderDepositButton />
+                  )}
+            </div>
           )}
           <HeaderNotifications />
-          <div className="-ml-1 hidden h-5 w-px bg-border md:block" aria-hidden="true" />
           <HeaderDropdownUserMenuAuth />
         </>
       )}
@@ -64,22 +85,17 @@ function HeaderMenuClient() {
         <>
           <Button
             size="headerCompact"
-            variant="link"
-            className="no-underline hover:bg-accent/70 hover:no-underline"
-            data-testid="header-login-button"
+            data-testid="header-start-trading-button"
             onClick={() => open()}
           >
-            {t('Log In')}
+            {t('Start Trading')}
           </Button>
-          <Button
-            size="headerCompact"
-            data-testid="header-signup-button"
-            onClick={() => open()}
-          >
-            {t('Sign Up')}
-          </Button>
-          {!isMobile && <HeaderDropdownUserMenuGuest />}
+          <HeaderDropdownUserMenuGuest />
         </>
+      )}
+
+      {(!hasHydrated || (!isAuthenticated && !shouldShowGuestActions)) && (
+        <Skeleton className="h-8 w-24" />
       )}
     </>
   )

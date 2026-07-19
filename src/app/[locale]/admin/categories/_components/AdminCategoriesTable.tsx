@@ -12,6 +12,7 @@ import { updateCategoryAction } from '@/app/[locale]/admin/categories/_actions/u
 import { updateCategoryTranslationsAction } from '@/app/[locale]/admin/categories/_actions/update-category-translations'
 import { useAdminCategoryColumns } from '@/app/[locale]/admin/categories/_components/columns'
 import MainCategorySortDialog from '@/app/[locale]/admin/categories/_components/MainCategorySortDialog'
+import { CreateCategoryDialog } from '@/app/[locale]/admin/categories/_components/CreateCategoryDialog'
 import { useAdminCategoriesTable } from '@/app/[locale]/admin/categories/_hooks/useAdminCategories'
 import { Button } from '@/components/ui/button'
 import {
@@ -381,8 +382,9 @@ export default function AdminCategoriesTable() {
     </div>
   )
 
-  const sortMainCategoriesControl = mainOnly
-    ? (
+  const sortMainCategoriesControl = (
+    <div className="flex items-center gap-2">
+      {mainOnly && (
         <Button
           type="button"
           variant="outline"
@@ -392,8 +394,10 @@ export default function AdminCategoriesTable() {
           <ArrowUpDownIcon className="mr-2 size-4" />
           {t('Sort main categories')}
         </Button>
-      )
-    : null
+      )}
+      <CreateCategoryDialog onSuccess={() => retry()} />
+    </div>
+  )
 
   const eventNoteTitle = eventNoteCategory
     ? `Event note for ${eventNoteCategory.name}`
@@ -656,3 +660,4 @@ export default function AdminCategoriesTable() {
     </>
   )
 }
+

@@ -13,6 +13,7 @@ import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-setting
 import { getPublicAssetUrl } from '@/lib/storage'
 import { getTermsOfServicePdfPath, getTermsOfServicePdfUrl } from '@/lib/terms-of-service'
 import { getThemeSiteSettingsFormState } from '@/lib/theme-settings'
+
 import { DEFAULT_THEME_SITE_PWA_ICON_192_URL, DEFAULT_THEME_SITE_PWA_ICON_512_URL } from '@/lib/theme-site-identity'
 
 interface AdminGeneralSettingsPageProps {
@@ -93,8 +94,6 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
     />
   )
 }
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default async function AdminGeneralSettingsPage({ params }: AdminGeneralSettingsPageProps) {
   const { locale } = await params

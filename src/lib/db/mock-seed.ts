@@ -1,14 +1,14 @@
-import { count, eq } from 'drizzle-orm'
-import { db } from '@/lib/drizzle'
+import { count } from 'drizzle-orm'
 import {
   conditions,
-  events,
   event_tags,
+  events,
   markets,
   outcomes,
   sports_menu_items,
   tags,
 } from '@/lib/db/schema/events/tables'
+import { db } from '@/lib/drizzle'
 
 function generateMockUlid(): string {
   const chars = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
@@ -193,7 +193,8 @@ export async function seedMockData() {
     ]).onConflictDoNothing()
 
     console.log('[MOCK SEED] Successfully seeded mock data into the local database.')
-  } catch (error) {
+  }
+  catch (error) {
     console.error('[MOCK SEED] Error seeding mock data:', error)
   }
 }

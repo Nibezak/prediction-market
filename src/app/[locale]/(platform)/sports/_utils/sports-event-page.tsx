@@ -104,7 +104,17 @@ export async function generateSportsVerticalEventMetadata({
   })
 }
 
-export async function renderSportsVerticalEventPage({
+export async function renderSportsVerticalEventPage(params: RenderSportsVerticalEventPageParams) {
+  try {
+    return await renderSportsVerticalEventPageInner(params)
+  }
+  catch (error) {
+    require('node:fs').writeFileSync('C:\\projects\\tellwise\\error.log', String((error as any)?.stack || error))
+    throw error
+  }
+}
+
+async function renderSportsVerticalEventPageInner({
   locale,
   sport,
   league,

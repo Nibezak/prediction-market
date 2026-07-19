@@ -1,5 +1,8 @@
-import Image from 'next/image'
+'use client'
+
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { SLIMEFISH_FALLBACK_LOGO_SVG } from '@/lib/slimefish-logo'
 
 interface SiteLogoIconProps {
   logoSvg: string
@@ -20,25 +23,37 @@ export default function SiteLogoIcon({
   alt = '',
   size = 24,
 }: SiteLogoIconProps) {
-  if (logoImageUrl) {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [logoImageUrl])
+
+  if (logoImageUrl && !imageFailed) {
     return (
       <span className={className}>
-        <Image
+        <img
           src={logoImageUrl}
           alt={alt}
           width={size}
           height={size}
           className={cn('size-full object-contain', imageClassName)}
-          unoptimized
+          onError={() => setImageFailed(true)}
         />
       </span>
     )
   }
 
+  const resolvedLogoSvg = imageFailed
+    ? SLIMEFISH_FALLBACK_LOGO_SVG
+    : (logoSvg || SLIMEFISH_FALLBACK_LOGO_SVG)
+
   return (
     <span
       className={cn(className, svgClassName)}
-      dangerouslySetInnerHTML={{ __html: logoSvg }}
+      role={alt ? 'img' : undefined}
+      aria-label={alt || undefined}
+      dangerouslySetInnerHTML={{ __html: resolvedLogoSvg }}
     />
   )
 }

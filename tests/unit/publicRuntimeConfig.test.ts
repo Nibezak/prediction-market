@@ -29,7 +29,7 @@ const KUEST_DEFAULT_CONFIG_KEYS = Object.entries(defaultPublicRuntimeConfig)
   .map(([key]) => key as keyof typeof RUNTIME_ENV_KEYS_BY_CONFIG_KEY)
 
 describe('public runtime config resolution', () => {
-  it('uses Kuest defaults for blank Kuest service URLs', () => {
+  it('uses Slimefish defaults for blank Slimefish service URLs', () => {
     const config = resolvePublicRuntimeEnv({})
 
     for (const key of KUEST_DEFAULT_CONFIG_KEYS) {
@@ -37,7 +37,7 @@ describe('public runtime config resolution', () => {
     }
   })
 
-  it('uses Kuest defaults when Kuest service URL env values are blank', () => {
+  it('uses Slimefish defaults when Slimefish service URL env values are blank', () => {
     const env = Object.fromEntries(
       KUEST_DEFAULT_CONFIG_KEYS.map(key => [RUNTIME_ENV_KEYS_BY_CONFIG_KEY[key], ' ']),
     )
@@ -48,7 +48,7 @@ describe('public runtime config resolution', () => {
     }
   })
 
-  it('allows Kuest service URL env values to override defaults', () => {
+  it('allows Slimefish service URL env values to override defaults', () => {
     const env = Object.fromEntries(
       KUEST_DEFAULT_CONFIG_KEYS.map(key => [RUNTIME_ENV_KEYS_BY_CONFIG_KEY[key], `https://override.example/${key}`]),
     )

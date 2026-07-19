@@ -193,15 +193,15 @@ export default function HeaderNotifications() {
     previousTouchYRef.current = null
   }
 
-  function handleLocalOrderFillClick(notification: Notification) {
-    if (!isLocalOrderFillNotification(notification)) {
+  function handleNotificationClick(notification: Notification) {
+    const isLocalOrderFill = isLocalOrderFillNotification(notification)
+    const internalTarget = notification.link_target?.trim()
+    if (!isLocalOrderFill && !internalTarget) {
       return
     }
 
-    const eventPath = notification.link_target?.trim()
-
-    if (eventPath) {
-      router.push(eventPath as Route)
+    if (internalTarget) {
+      router.push(internalTarget as Route)
     }
     else if (notification.link_url) {
       window.open(notification.link_url, '_blank', 'noopener,noreferrer')
@@ -275,6 +275,7 @@ export default function HeaderNotifications() {
                 const timeLabel = getNotificationTimeLabel(notification, currentTimestamp)
                 const hasLink = Boolean(notification.link_url)
                 const isLocalOrderFill = isLocalOrderFillNotification(notification)
+                const isClickableNotification = isLocalOrderFill || Boolean(notification.link_target?.trim())
                 const isLocalMerge = isLocalMergeNotification(notification)
                 const linkIsExternal = notification.link_type === 'external' || isLocalOrderFill
                 const extraInfo = notification.extra_info?.trim()
@@ -330,16 +331,16 @@ export default function HeaderNotifications() {
                     key={notification.id}
                     className={cn(`
                       flex items-start gap-3 p-3 transition-colors hover:bg-accent/50
-                      ${isLocalOrderFill ? 'cursor-pointer' : 'cursor-default'}
+                      ${isClickableNotification ? 'cursor-pointer' : 'cursor-default'}
                     `)}
-                    role={isLocalOrderFill ? 'button' : undefined}
-                    tabIndex={isLocalOrderFill ? 0 : undefined}
-                    onClick={isLocalOrderFill ? () => handleLocalOrderFillClick(notification) : undefined}
-                    onKeyDown={isLocalOrderFill
+                    role={isClickableNotification ? 'button' : undefined}
+                    tabIndex={isClickableNotification ? 0 : undefined}
+                    onClick={isClickableNotification ? () => handleNotificationClick(notification) : undefined}
+                    onKeyDown={isClickableNotification
                       ? (event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault()
-                            handleLocalOrderFillClick(notification)
+                            handleNotificationClick(notification)
                           }
                         }
                       : undefined}

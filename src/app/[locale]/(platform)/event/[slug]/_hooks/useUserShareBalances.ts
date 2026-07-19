@@ -1,13 +1,7 @@
-import type { PublicClient } from 'viem'
 import type { Event } from '@/types'
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useRef } from 'react'
-import { erc1155Abi } from 'viem'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { createConditionalTokenBalanceClient, normalizeSharesFromBalance } from '@/lib/conditional-token-balances'
+import { useMemo } from 'react'
 import { OUTCOME_INDEX } from '@/lib/constants'
-import { CONDITIONAL_TOKENS_CONTRACT } from '@/lib/contracts'
-import { resolveViemRpcUrl } from '@/lib/viem-network'
 
 export interface SharesByCondition {
   [conditionId: string]: {
@@ -22,20 +16,6 @@ interface UseUserShareBalancesOptions {
 }
 
 export function useUserShareBalances({ event, ownerAddress }: UseUserShareBalancesOptions) {
-  const { polygonRpcUrl } = usePublicRuntimeConfig()
-  const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
-  const clientRef = useRef<PublicClient | null>(null)
-  const clientRpcUrlRef = useRef<string | null>(null)
-  if (clientRef.current === null && typeof window !== 'undefined') {
-    clientRef.current = createConditionalTokenBalanceClient(rpcUrl)
-    clientRpcUrlRef.current = rpcUrl
-  }
-  if (clientRef.current && clientRpcUrlRef.current !== rpcUrl) {
-    clientRef.current = createConditionalTokenBalanceClient(rpcUrl)
-    clientRpcUrlRef.current = rpcUrl
-  }
-  const client = clientRef.current
-
   const outcomeDescriptors = useMemo(() => {
     if (!event?.markets?.length) {
       return []
@@ -51,85 +31,56 @@ export function useUserShareBalances({ event, ownerAddress }: UseUserShareBalanc
   }, [event])
 
   const descriptorKey = useMemo(() => outcomeDescriptors.map(descriptor => `${descriptor.conditionId}:${descriptor.tokenId}`).join('|'), [outcomeDescriptors])
+  const isQueryEnabled = Boolean(ownerAddress && outcomeDescriptors.length)
 
   const query = useQuery({
-    queryKey: ['user-conditional-shares', ownerAddress, event?.slug, descriptorKey, rpcUrl],
-    enabled: Boolean(client && ownerAddress && outcomeDescriptors.length),
+    queryKey: ['user-conditional-shares', ownerAddress, event?.slug, descriptorKey],
+    enabled: isQueryEnabled,
     staleTime: 10_000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     queryFn: async (): Promise<SharesByCondition> => {
-      if (!ownerAddress || !outcomeDescriptors.length) {
+      if (!isQueryEnabled) {
         return {}
       }
 
-      if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
-        try {
-          const res = await fetch(`/api/tellwise-clob/balances?userAddress=${ownerAddress}`)
-          const data = await res.json()
-          const shares = data?.shares || {}
-          
-          return outcomeDescriptors.reduce<SharesByCondition>((acc, descriptor) => {
-            const conditionShares = shares[descriptor.conditionId] || { YES: 0, NO: 0 }
-            
-            if (!acc[descriptor.conditionId]) {
-              acc[descriptor.conditionId] = {
-                [OUTCOME_INDEX.YES]: 0,
-                [OUTCOME_INDEX.NO]: 0,
-              }
-            }
-
-            const outcomeKey = descriptor.outcomeIndex === OUTCOME_INDEX.NO
-              ? OUTCOME_INDEX.NO
-              : OUTCOME_INDEX.YES
-
-            acc[descriptor.conditionId][outcomeKey] = Number(conditionShares[outcomeKey === OUTCOME_INDEX.NO ? 'NO' : 'YES'] || 0)
-            return acc
-          }, {})
-        } catch {
+      try {
+        const res = await fetch(`/api/amm/users/me/positions`)
+        if (!res.ok) {
           return {}
         }
-      }
 
-      if (!client) {
+        const json = await res.json()
+        const positions = json?.data || []
+
+        return outcomeDescriptors.reduce<SharesByCondition>((acc, descriptor) => {
+          if (!acc[descriptor.conditionId]) {
+            acc[descriptor.conditionId] = {
+              [OUTCOME_INDEX.YES]: 0,
+              [OUTCOME_INDEX.NO]: 0,
+            }
+          }
+
+          // Find if the user has a position for this exact outcome token in Play Money
+          const pos = positions.find((p: any) => p.optionId === descriptor.tokenId)
+
+          if (pos) {
+            acc[descriptor.conditionId][descriptor.outcomeIndex as keyof typeof acc[string]] = Number(pos.quantity || 0)
+          }
+
+          return acc
+        }, {})
+      }
+      catch (err) {
+        console.error('Failed to fetch user positions from AMM', err)
         return {}
       }
-
-      const owners = outcomeDescriptors.map(() => ownerAddress)
-      const tokenIds = outcomeDescriptors.map(descriptor => BigInt(descriptor.tokenId))
-
-      const balances = await client.readContract({
-        address: CONDITIONAL_TOKENS_CONTRACT,
-        abi: erc1155Abi,
-        functionName: 'balanceOfBatch',
-        args: [owners, tokenIds],
-      }) as bigint[]
-
-      return outcomeDescriptors.reduce<SharesByCondition>((acc, descriptor, index) => {
-        const normalizedShares = normalizeSharesFromBalance(balances[index] ?? 0n)
-
-        if (!acc[descriptor.conditionId]) {
-          acc[descriptor.conditionId] = {
-            [OUTCOME_INDEX.YES]: 0,
-            [OUTCOME_INDEX.NO]: 0,
-          }
-        }
-
-        const outcomeKey = descriptor.outcomeIndex === OUTCOME_INDEX.NO
-          ? OUTCOME_INDEX.NO
-          : OUTCOME_INDEX.YES
-
-        acc[descriptor.conditionId][outcomeKey] = normalizedShares
-        return acc
-      }, {})
     },
   })
 
-  const sharesByCondition = useMemo(() => query.data ?? {}, [query.data])
-
   return {
     ...query,
-    sharesByCondition,
+    sharesByCondition: query.data,
   }
 }

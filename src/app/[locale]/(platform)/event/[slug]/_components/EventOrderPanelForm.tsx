@@ -7,13 +7,16 @@ import type {
 import type { PortfolioUserOpenOrder } from '@/app/[locale]/(platform)/portfolio/_types/PortfolioOpenOrdersTypes'
 import type { Event, Market, Outcome, UserPosition } from '@/types'
 import { useAppKitAccount } from '@reown/appkit/react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { CircleCheckIcon, TrophyIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import Form from 'next/form'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import EventOrderPanelBuySellTabs from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelBuySellTabs'
 import EventOrderPanelMarketInfo from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelMarketInfo'
@@ -75,7 +78,7 @@ import {
   validateOrder,
 } from '@/lib/orders/validation'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
-import { cn } from '@/lib/utils'
+import { cn, triggerConfetti } from '@/lib/utils'
 import { isUserRejectedRequestError, normalizeAddress } from '@/lib/wallet'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildNegRiskRedeemPositionCall, buildRedeemPositionCall } from '@/lib/wallet/transactions'
@@ -129,23 +132,24 @@ function markConditionAsClaimedInPositions<T extends {
 }
 
 function mergeUserSharesByCondition(
-  sharesByCondition: ConditionSharesMap,
+  sharesByCondition: ConditionSharesMap | null | undefined,
   aggregatedPositionShares: ConditionSharesMap | null | undefined,
 ) {
+  const liveShares = sharesByCondition ?? {}
   const merged: ConditionSharesMap = {}
   const keys = new Set([
-    ...Object.keys(sharesByCondition),
+    ...Object.keys(liveShares),
     ...Object.keys(aggregatedPositionShares ?? {}),
   ])
 
   keys.forEach((conditionId) => {
     merged[conditionId] = {
       [OUTCOME_INDEX.YES]: Math.max(
-        sharesByCondition[conditionId]?.[OUTCOME_INDEX.YES] ?? 0,
+        liveShares[conditionId]?.[OUTCOME_INDEX.YES] ?? 0,
         aggregatedPositionShares?.[conditionId]?.[OUTCOME_INDEX.YES] ?? 0,
       ),
       [OUTCOME_INDEX.NO]: Math.max(
-        sharesByCondition[conditionId]?.[OUTCOME_INDEX.NO] ?? 0,
+        liveShares[conditionId]?.[OUTCOME_INDEX.NO] ?? 0,
         aggregatedPositionShares?.[conditionId]?.[OUTCOME_INDEX.NO] ?? 0,
       ),
     }
@@ -365,6 +369,7 @@ function useOrderBookComputations({
   isLimitOrder,
   amountNumber,
   outcomeFallbackBuyPriceCents,
+  ammBuyQuote,
 }: {
   outcomeTokenId: string | null
   orderBookSummaryData: ReturnType<typeof useOrderBookSummaries>['data']
@@ -376,6 +381,7 @@ function useOrderBookComputations({
   isLimitOrder: boolean
   amountNumber: number
   outcomeFallbackBuyPriceCents: number | null
+  ammBuyQuote?: { potentialReturn: number } | null
 }) {
   const normalizedOrderBook = useMemo(() => {
     const summary = outcomeTokenId ? orderBookSummaryData?.[outcomeTokenId] : undefined
@@ -433,13 +439,23 @@ function useOrderBookComputations({
       return null
     }
 
+    if (ammBuyQuote && amountNumber > 0 && ammBuyQuote.potentialReturn > 0) {
+      const avgPriceCents = (amountNumber / ammBuyQuote.potentialReturn) * 100
+      return {
+        avgPriceCents,
+        filledShares: ammBuyQuote.potentialReturn,
+        totalCost: amountNumber,
+        limitPriceCents: avgPriceCents,
+      }
+    }
+
     return calculateMarketFill(
       ORDER_SIDE.BUY,
       amountNumber,
       normalizedOrderBook.bids,
       normalizedOrderBook.asks,
     )
-  }, [amountNumber, isLimitOrder, normalizedOrderBook.asks, normalizedOrderBook.bids, side])
+  }, [ammBuyQuote, amountNumber, isLimitOrder, normalizedOrderBook.asks, normalizedOrderBook.bids, side])
   const bestAskPriceCents = normalizedOrderBook.asks[0]?.priceCents ?? null
   const bestBidPriceCents = normalizedOrderBook.bids[0]?.priceCents ?? null
   const sellOrderSnapshot = useMemo(() => {
@@ -759,6 +775,7 @@ function useOrderValidationFeedback() {
   const [showAmountTooLowWarning, setShowAmountTooLowWarning] = useState(false)
   const [showNoLiquidityWarning, setShowNoLiquidityWarning] = useState(false)
   const [showLimitMinimumWarning, setShowLimitMinimumWarning] = useState(false)
+  const [tradeErrorMessage, setTradeErrorMessage] = useState<string | null>(null)
   const [shouldShakeInput, setShouldShakeInput] = useState(false)
   const [shouldShakeLimitShares, setShouldShakeLimitShares] = useState(false)
 
@@ -768,6 +785,7 @@ function useOrderValidationFeedback() {
     setShowInsufficientBalanceWarning(false)
     setShowAmountTooLowWarning(false)
     setShowNoLiquidityWarning(false)
+    setTradeErrorMessage(null)
   }
 
   function clearValidationFeedback() {
@@ -789,6 +807,8 @@ function useOrderValidationFeedback() {
     setShowNoLiquidityWarning,
     showLimitMinimumWarning,
     setShowLimitMinimumWarning,
+    tradeErrorMessage,
+    setTradeErrorMessage,
     shouldShakeInput,
     setShouldShakeInput,
     shouldShakeLimitShares,
@@ -812,6 +832,7 @@ export default function EventOrderPanelForm({
   outcomeAccentOverrides = {},
   optimisticallyClaimedConditionIds = {},
 }: EventOrderPanelFormProps) {
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const { open } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const { signTypedDataAsync } = useSignTypedData()
@@ -847,7 +868,9 @@ export default function EventOrderPanelForm({
   const hasMatchingStoreOutcome = Boolean(
     state.outcome
     && activeMarket
-    && state.outcome.condition_id === activeMarket.condition_id,
+    && activeMarket.outcomes.some(outcome =>
+      outcome.token_id === state.outcome?.token_id
+      || (outcome.outcome_index === state.outcome?.outcome_index && outcome.outcome_text === state.outcome?.outcome_text)),
   )
   const activeOutcome = hasMatchingStoreOutcome ? state.outcome : fallbackOutcome
   const isSingleMarket = activeEvent.total_markets_count === 1
@@ -867,6 +890,8 @@ export default function EventOrderPanelForm({
     setShowNoLiquidityWarning,
     showLimitMinimumWarning,
     setShowLimitMinimumWarning,
+    tradeErrorMessage,
+    setTradeErrorMessage,
     shouldShakeInput,
     setShouldShakeInput,
     shouldShakeLimitShares,
@@ -954,8 +979,22 @@ export default function EventOrderPanelForm({
     currentTimestamp,
     resolveDisplayOutcomeLabel,
   })
-  const isPausedMarket = Boolean(activeMarket && activeMarket.accepting_orders === false && !isResolvedMarket)
-  const isTradingDisabled = isResolvedMarket || isPausedMarket
+  const marketEndTimestamp = activeMarket?.end_time ? new Date(activeMarket.end_time).getTime() : Number.NaN
+  const isClosedMarket = Boolean(
+    activeMarket
+    && !isResolvedMarket
+    && (
+      activeMarket.is_active === false
+      || (Number.isFinite(marketEndTimestamp) && currentTimestamp != null && currentTimestamp >= marketEndTimestamp)
+    ),
+  )
+  const isPausedMarket = Boolean(
+    activeMarket
+    && activeMarket.accepting_orders === false
+    && !isResolvedMarket
+    && !isClosedMarket,
+  )
+  const isTradingDisabled = isResolvedMarket || isPausedMarket || isClosedMarket
   const orderDomain = useMemo(() => getExchangeEip712Domain(isNegRiskMarket), [isNegRiskMarket])
   const { positionsQuery, aggregatedPositionShares } = useEventOrderPanelPositions({
     makerAddress,
@@ -971,7 +1010,7 @@ export default function EventOrderPanelForm({
 
   useUserSharesStoreSync({
     makerAddress,
-    sharesByCondition,
+    sharesByCondition: sharesByCondition as any,
     aggregatedPositionShares,
   })
 
@@ -981,6 +1020,8 @@ export default function EventOrderPanelForm({
   const noTokenShares = conditionTokenShares?.[OUTCOME_INDEX.NO] ?? 0
   const yesPositionShares = conditionPositionShares?.[OUTCOME_INDEX.YES] ?? 0
   const noPositionShares = conditionPositionShares?.[OUTCOME_INDEX.NO] ?? 0
+  const isEntryLocked = isPlayMoneyAmm && (yesPositionShares > 0 || noPositionShares > 0)
+  const isPositionStatePending = isPlayMoneyAmm && positionsQuery.data === undefined
   const lockedYesShares = activeMarket ? openSellSharesByCondition[activeMarket.condition_id]?.[OUTCOME_INDEX.YES] ?? 0 : 0
   const lockedNoShares = activeMarket ? openSellSharesByCondition[activeMarket.condition_id]?.[OUTCOME_INDEX.NO] ?? 0 : 0
   const availableYesTokenShares = Math.max(0, yesTokenShares - lockedYesShares)
@@ -989,7 +1030,12 @@ export default function EventOrderPanelForm({
   const availableNoPositionShares = Math.max(0, noPositionShares - lockedNoShares)
   const availableMergeShares = Math.max(0, Math.min(availableYesTokenShares, availableNoTokenShares))
   const availableSplitBalance = Math.max(0, balance.raw)
-  const outcomeIndex = activeOutcome?.outcome_index as typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO | undefined
+  const derivedOutcomeIndex1 = activeOutcome?.outcome_index ?? (
+    activeMarket?.outcomes && activeOutcome
+      ? activeMarket.outcomes.findIndex(o => o.token_id === activeOutcome.token_id || o.outcome_text === activeOutcome.outcome_text || o === activeOutcome)
+      : undefined
+  )
+  const outcomeIndex = (derivedOutcomeIndex1 !== undefined && derivedOutcomeIndex1 !== -1 ? derivedOutcomeIndex1 : undefined) as typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO | undefined
   const selectedShares = outcomeIndex === undefined
     ? 0
     : outcomeIndex === OUTCOME_INDEX.YES
@@ -1039,6 +1085,45 @@ export default function EventOrderPanelForm({
   const outcomeFallbackBuyPriceCents = typeof activeOutcome?.buy_price === 'number'
     ? Number((activeOutcome.buy_price * 100).toFixed(1))
     : null
+  const ammQuoteQuery = useQuery({
+    queryKey: ['amm-market-quote', activeMarket?.condition_id, activeOutcome?.token_id, amountNumber, state.side],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/amm/markets/${activeMarket?.condition_id}/quote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          optionId: activeOutcome?.token_id,
+          amount: amountNumber,
+          isBuy: state.side === ORDER_SIDE.BUY,
+        }),
+      })
+      const result = await response.json() as {
+        data?: { newProbability: number, potentialReturn: number }
+        error?: string
+      }
+      if (!response.ok || !result.data) {
+        throw new Error(result.error || 'Failed to quote AMM trade.')
+      }
+      return result.data
+    },
+    enabled: isPlayMoneyAmm
+      && state.side === ORDER_SIDE.BUY
+      && amountNumber > 0
+      && Boolean(activeMarket?.condition_id && activeOutcome?.token_id),
+    retry: false,
+    placeholderData: (previousData, previousQuery) => {
+      const previousKey = previousQuery?.queryKey
+      const isSameMarketAndOutcome = previousKey?.[1] === activeMarket?.condition_id
+        && previousKey?.[2] === activeOutcome?.token_id
+        && previousKey?.[4] === state.side
+      return isSameMarketAndOutcome ? previousData : undefined
+    },
+    staleTime: 0,
+    refetchInterval: 1500,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+  })
 
   const {
     limitMatchingShares,
@@ -1060,6 +1145,7 @@ export default function EventOrderPanelForm({
     isLimitOrder,
     amountNumber,
     outcomeFallbackBuyPriceCents,
+    ammBuyQuote: isPlayMoneyAmm ? ammQuoteQuery.data : null,
   })
 
   const sellAmountValue = state.side === ORDER_SIDE.SELL ? sellOrderSnapshot.totalValue : 0
@@ -1072,7 +1158,7 @@ export default function EventOrderPanelForm({
   const effectiveMarketBuyCost = state.side === ORDER_SIDE.BUY && state.type === ORDER_TYPE.MARKET
     ? (marketBuyFill?.totalCost ?? amountNumber)
     : 0
-  const isInteractiveWalletReady = hasMounted && isConnected
+  const isInteractiveWalletReady = hasMounted && (isPlayMoneyAmm || isConnected)
   const shouldShowDepositCta = isInteractiveWalletReady
     && state.side === ORDER_SIDE.BUY
     && state.type === ORDER_TYPE.MARKET
@@ -1098,6 +1184,18 @@ export default function EventOrderPanelForm({
     && !isLimitOrder
     && amountNumber > 0
     && filledSharesForCurrentSide <= 0
+  const ammQuoteErrorMessage = isPlayMoneyAmm
+    && state.side === ORDER_SIDE.BUY
+    && amountNumber > 0
+    && ammQuoteQuery.isError
+    ? (ammQuoteQuery.error instanceof Error ? ammQuoteQuery.error.message : t('No liquidity for this market order'))
+    : null
+  const isAmmQuoteNumberLoading = isPlayMoneyAmm
+    && state.side === ORDER_SIDE.BUY
+    && amountNumber > 0
+    && buyPayoutSummary.payout <= 0
+    && !ammQuoteQuery.isError
+    && ammQuoteQuery.isFetching
   const shouldShowResolvedMarketMinimumWarning = showMarketMinimumWarning
     && !isLimitOrder
     && state.side === ORDER_SIDE.BUY
@@ -1170,6 +1268,120 @@ export default function EventOrderPanelForm({
     const hasExpirationLimit = state.limitExpirationOption !== 'never'
 
     if (!ensureTradingReady()) {
+      return
+    }
+
+    if (isPlayMoneyAmm) {
+      if (!activeMarket?.condition_id || !activeOutcome?.token_id || amountNumber <= 0) {
+        setShowAmountTooLowWarning(true)
+        triggerInputShake()
+        return
+      }
+
+      state.setIsLoading(true)
+      setTradeErrorMessage(null)
+      const operation = state.side === ORDER_SIDE.SELL ? 'sell' : 'buy'
+      const outcomeText = resolveDisplayOutcomeLabel(
+        activeOutcome.outcome_index,
+        activeOutcome.outcome_text,
+        activeOutcome.outcome_text,
+      )
+      const positionQueryKey = ['order-panel-user-positions', makerAddress, activeMarket.condition_id] as const
+      const balanceQueryKey = [DEPOSIT_WALLET_BALANCE_QUERY_KEY, user?.id] as const
+      const previousPositions = queryClient.getQueryData(positionQueryKey)
+      const previousBalance = queryClient.getQueryData(balanceQueryKey)
+      const estimatedShares = ammQuoteQuery.data?.potentialReturn ?? 0
+
+      if (operation === 'buy' && estimatedShares > 0) {
+        queryClient.setQueryData(
+          positionQueryKey,
+          (current: Array<{
+            market?: { condition_id?: string | null } | null
+            outcome_index?: number | null
+            outcome_text?: string | null
+            total_shares?: number | null
+          }> | undefined) => {
+            const remaining = (current ?? []).filter(position =>
+              position.market?.condition_id !== activeMarket.condition_id,
+            )
+            return [...remaining, {
+              market: { condition_id: activeMarket.condition_id },
+              outcome_index: activeOutcome.outcome_index,
+              outcome_text: outcomeText,
+              total_shares: estimatedShares,
+            }]
+          },
+        )
+        queryClient.setQueryData(
+          balanceQueryKey,
+          (current: { raw: number, text: string, symbol: string } | undefined) => {
+            if (!current) return current
+            const raw = Math.max(0, Number((current.raw - amountNumber).toFixed(2)))
+            return { ...current, raw, text: raw.toFixed(2) }
+          },
+        )
+        state.setAmount('')
+        state.setIsLoading(false)
+      }
+
+      try {
+        const response = await fetch(`/api/amm/markets/${activeMarket.condition_id}/${operation}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            optionId: activeOutcome.token_id,
+            amount: amountNumber,
+          }),
+        })
+        const result = await response.json().catch(() => null) as { error?: string } | null
+
+        if (response.status === 401) {
+          queryClient.setQueryData(positionQueryKey, previousPositions)
+          queryClient.setQueryData(balanceQueryKey, previousBalance)
+          open()
+          return
+        }
+
+        if (!response.ok) {
+          queryClient.setQueryData(positionQueryKey, previousPositions)
+          queryClient.setQueryData(balanceQueryKey, previousBalance)
+          setTradeErrorMessage(result?.error || t('An unexpected error occurred. Please try again.'))
+          triggerInputShake()
+          return
+        }
+
+        toast.success(operation === 'buy' ? t('Trade submitted') : t('Sell submitted'), {
+          description: `${formatDollarValueLabel(amountNumber)} ${operation === 'buy' ? 'on' : 'from'} ${outcomeText}`,
+        })
+        if (operation === 'buy') {
+          triggerConfetti(outcomeIndex === OUTCOME_INDEX.NO ? 'no' : 'yes', state.lastMouseEvent)
+        }
+        state.setAmount('')
+        void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
+        void queryClient.invalidateQueries({ queryKey: ['event-market-quotes'] })
+        void queryClient.invalidateQueries({ queryKey: ['amm-market-quote'] })
+        void queryClient.invalidateQueries({ queryKey: ['event-price-history'] })
+        void queryClient.invalidateQueries({ queryKey: ['playmoney-market-stats'] })
+        void queryClient.invalidateQueries({ queryKey: ['amm-market-depth'] })
+        void queryClient.invalidateQueries({ queryKey: ['event-activity'] })
+        void queryClient.invalidateQueries({ queryKey: ['event-top-holders'] })
+        void queryClient.invalidateQueries({ queryKey: ['event-user-positions'] })
+        void queryClient.invalidateQueries({ queryKey: ['user-event-positions'] })
+        setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ['order-panel-user-positions'] })
+        }, 1000)
+      }
+      catch (error) {
+        queryClient.setQueryData(positionQueryKey, previousPositions)
+        queryClient.setQueryData(balanceQueryKey, previousBalance)
+        setTradeErrorMessage(
+          error instanceof Error ? error.message : t('An unexpected error occurred. Please try again.'),
+        )
+        triggerInputShake()
+      }
+      finally {
+        state.setIsLoading(false)
+      }
       return
     }
 
@@ -1734,6 +1946,20 @@ export default function EventOrderPanelForm({
   ) ?? activeMarket?.outcomes[normalizedSecondaryOutcomeIndex]
   const primaryPrice = normalizedPrimaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice
   const secondaryPrice = normalizedSecondaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice
+  const lockedOutcomeIndex = yesPositionShares >= noPositionShares ? OUTCOME_INDEX.YES : OUTCOME_INDEX.NO
+  const lockedShares = lockedOutcomeIndex === OUTCOME_INDEX.YES ? yesPositionShares : noPositionShares
+  const lockedOutcome = lockedOutcomeIndex === OUTCOME_INDEX.YES ? primaryOutcome : secondaryOutcome
+  const lockedOutcomeLabel = resolveDisplayOutcomeLabel(
+    lockedOutcomeIndex,
+    lockedOutcome?.outcome_text,
+    lockedOutcomeIndex === OUTCOME_INDEX.YES ? t('Yes') : t('No'),
+  )
+  const lockedPriceRaw = lockedOutcomeIndex === normalizedPrimaryOutcomeIndex ? primaryPrice : secondaryPrice
+  const lockedPrice = typeof lockedPriceRaw === 'number' && Number.isFinite(lockedPriceRaw)
+    ? (lockedPriceRaw > 1 ? lockedPriceRaw / 100 : lockedPriceRaw)
+    : 0
+  const lockedCurrentValue = lockedShares * lockedPrice
+  const lockedMaximumPayout = lockedShares
   const submitButtonLabel = useMemo(() => {
     if (!isInteractiveWalletReady) {
       return t('Trade')
@@ -1757,7 +1983,12 @@ export default function EventOrderPanelForm({
     if (nextType !== ORDER_TYPE.LIMIT) {
       return
     }
-    const outcomeIndex = activeOutcome?.outcome_index
+    const derivedOutcomeIndex2 = activeOutcome?.outcome_index ?? (
+      activeMarket?.outcomes && activeOutcome
+        ? activeMarket.outcomes.findIndex(o => o.token_id === activeOutcome.token_id || o.outcome_text === activeOutcome.outcome_text || o === activeOutcome)
+        : undefined
+    )
+    const outcomeIndex = (derivedOutcomeIndex2 !== undefined && derivedOutcomeIndex2 !== -1 ? derivedOutcomeIndex2 : undefined)
     const nextPrice = outcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice
     if (nextPrice === null || nextPrice === undefined) {
       return
@@ -1777,7 +2008,7 @@ export default function EventOrderPanelForm({
     clearValidationFeedback()
     clearSlippageWarning()
 
-    if (!state.market) {
+    if (state.market?.condition_id !== activeMarket.condition_id) {
       state.setMarket(activeMarket)
     }
 
@@ -1816,7 +2047,7 @@ export default function EventOrderPanelForm({
         {isTradingDisabled
           ? (
               <EventOrderPanelResolvedMarketDisplay
-                variant={isPausedMarket ? 'paused' : 'resolved'}
+                variant={isResolvedMarket ? 'resolved' : isClosedMarket ? 'closed' : 'paused'}
                 resolvedOutcomeLabel={resolvedOutcomeLabel}
                 isSingleMarket={isSingleMarket}
                 shouldShowResolvedSportsSubtitle={shouldShowResolvedSportsSubtitle}
@@ -1831,7 +2062,72 @@ export default function EventOrderPanelForm({
               />
             )
           : (
-              <>
+              isPositionStatePending
+                ? (
+                    <div className="flex flex-col gap-4 px-2 py-3" aria-label="Loading your position">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-2">
+                          <Skeleton className="h-3 w-24" />
+                          <Skeleton className="h-8 w-20" />
+                        </div>
+                        <Skeleton className="h-7 w-28" />
+                      </div>
+                      <Skeleton className="h-24 w-full" />
+                      <div className="space-y-3 border-t pt-3">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-full" />
+                      </div>
+                    </div>
+                  )
+                : isEntryLocked
+                ? (
+                    <div className="flex flex-col gap-4 px-2 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-medium uppercase text-muted-foreground">
+                            Your position
+                          </div>
+                          <div className={cn(
+                            'mt-1 text-2xl font-bold',
+                            lockedOutcomeIndex === OUTCOME_INDEX.YES ? 'text-yes' : 'text-no',
+                          )}
+                          >
+                            {lockedOutcomeLabel}
+                          </div>
+                        </div>
+                        <Badge className="gap-1.5" variant="outline">
+                          <CircleCheckIcon className="size-3.5 text-primary" />
+                          Active position
+                        </Badge>
+                      </div>
+
+                      <div className="border bg-muted/30 px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground">
+                          <TrophyIcon className="size-4 text-primary" />
+                          Possible payout
+                        </div>
+                        <div className="mt-1 text-3xl font-bold text-primary">
+                          {formatCurrency(lockedMaximumPayout)}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 border-t pt-3 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Shares</span>
+                          <span className="font-medium">{formatSharesLabel(lockedShares)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Current value</span>
+                          <span className="font-medium">{formatCurrency(lockedCurrentValue)}</span>
+                        </div>
+                      </div>
+                      <p className="text-center text-xs text-muted-foreground">
+                        Your value updates automatically as the market changes.
+                      </p>
+                    </div>
+                  )
+                : (
+                    <>
                 <EventOrderPanelBuySellTabs
                   side={state.side}
                   type={state.type}
@@ -1898,8 +2194,10 @@ export default function EventOrderPanelForm({
                   avgSellPriceCentsValue={avgSellPriceCentsValue}
                   avgBuyPriceCentsValue={avgBuyPriceCentsValue}
                   buyPayoutSummary={buyPayoutSummary}
+                  isEarningsLoading={isAmmQuoteNumberLoading}
                   shouldShowResolvedMarketMinimumWarning={shouldShowResolvedMarketMinimumWarning}
                   shouldShowResolvedNoLiquidityWarning={shouldShowResolvedNoLiquidityWarning}
+                  tradeErrorMessage={tradeErrorMessage || ammQuoteErrorMessage}
                   showInsufficientSharesWarning={showInsufficientSharesWarning}
                   showInsufficientBalanceWarning={showInsufficientBalanceWarning}
                   showAmountTooLowWarning={showAmountTooLowWarning}
@@ -1918,6 +2216,7 @@ export default function EventOrderPanelForm({
                   onLimitExpirationTimestampChange={state.setLimitExpirationTimestamp}
                   onAmountUpdateFromLimit={state.setAmount}
                   isInteractiveWalletReady={isInteractiveWalletReady}
+                  // @ts-ignore
                   shouldShowDepositCta={shouldShowDepositCta}
                   isLoading={state.isLoading}
                   selectedSubmitAccent={selectedSubmitAccent}
@@ -1936,7 +2235,8 @@ export default function EventOrderPanelForm({
                     state.setLastMouseEvent(event)
                   }}
                 />
-              </>
+                    </>
+                  )
             )}
       </div>
       {slippageWarning && (

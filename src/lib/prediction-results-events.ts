@@ -2,6 +2,7 @@ import type { SupportedLocale } from '@/i18n/locales'
 import type { EventListSortBy, EventListStatusFilter } from '@/lib/event-list-filters'
 import type { Event } from '@/types'
 import { EventRepository } from '@/lib/db/queries/event'
+import { hydrateEventsWithAmmVolumes } from '@/lib/amm-volume'
 import { PREDICTION_RESULTS_PAGE_SIZE } from '@/lib/prediction-results-constants'
 
 interface ListPredictionResultsPageOptions {
@@ -48,7 +49,7 @@ export async function listPredictionResultsPage({
   })
 
   return {
-    data: data ?? [],
+    data: await hydrateEventsWithAmmVolumes(data ?? []),
     error,
   }
 }

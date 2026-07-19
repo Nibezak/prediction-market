@@ -51,6 +51,40 @@ export async function GET(request: Request) {
   }
 
   try {
+    if (process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true') {
+      const ammBaseUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
+      const response = await fetch(`${ammBaseUrl}/markets/${conditionId}/positions?status=active&limit=${limit}`)
+      if (!response.ok) {
+        throw new Error('Failed to load AMM positions.')
+      }
+      const payload = await response.json() as { data?: any[] }
+      const yesHolders: Holder[] = []
+      const noHolders: Holder[] = []
+
+      for (const position of payload.data ?? []) {
+        const quantity = Number(position.quantity ?? 0)
+        if (!Number.isFinite(quantity) || quantity <= 0) continue
+        const user = position.account?.user ?? {}
+        const optionName = String(position.option?.name || '').trim().toLowerCase()
+        const outcomeIndex = position.optionId === noToken || optionName === 'no' ? 1 : 0
+        const holder: Holder = {
+          user: {
+            id: user.id || position.accountId,
+            username: user.username || user.displayName || 'Trader',
+            deposit_wallet_address: null,
+            image: normalizeAvatarUrl(user.avatarUrl),
+            created_at: user.createdAt,
+          },
+          net_position: quantity.toString(),
+          outcome_index: outcomeIndex,
+          outcome_text: position.option?.name || (outcomeIndex === 0 ? 'Yes' : 'No'),
+        }
+        ;(outcomeIndex === 0 ? yesHolders : noHolders).push(holder)
+      }
+
+      return NextResponse.json({ yesHolders, noHolders })
+    }
+
     const base = await fetchTopHoldersFromDataApi(conditionId, limit, { yesToken, noToken })
 
     const addressSet = new Set<string>()

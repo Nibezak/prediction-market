@@ -150,11 +150,11 @@ export function calculateYAxisBounds(
     }
   }
 
-  let dataMin = Math.max(0, Math.min(100, Math.min(...values)))
-  let dataMax = Math.max(0, Math.min(100, Math.max(...values)))
+  let dataMin = Math.max(0, Math.min(...values))
+  let dataMax = Math.max(0, Math.max(...values))
 
   if (dataMax - dataMin < 1) {
-    dataMax = Math.min(100, dataMax + 2.5)
+    dataMax = dataMax + 2.5
     dataMin = Math.max(0, dataMin - 2.5)
   }
 
@@ -166,7 +166,7 @@ export function calculateYAxisBounds(
     Math.max(5, Math.ceil(rawStep / 5) * 5),
   )
   let axisMin = Math.max(0, Math.floor(dataMin / step) * step)
-  let axisMax = Math.min(100, Math.ceil(dataMax / step) * step)
+  let axisMax = Math.ceil(dataMax / step) * step
 
   function tickCount() {
     return Math.floor((axisMax - axisMin) / step) + 1
@@ -175,35 +175,29 @@ export function calculateYAxisBounds(
   if (tickCount() < resolvedMinTicks && step > 5) {
     step = 5
     axisMin = Math.max(0, Math.floor(dataMin / step) * step)
-    axisMax = Math.min(100, Math.ceil(dataMax / step) * step)
+    axisMax = Math.ceil(dataMax / step) * step
   }
 
   while (tickCount() < resolvedMinTicks) {
     if (axisMin > 0) {
       axisMin = Math.max(0, axisMin - step)
     }
-    else if (axisMax < 100) {
-      axisMax = Math.min(100, axisMax + step)
-    }
     else {
-      break
+      axisMax = axisMax + step
     }
   }
 
-  while (tickCount() > resolvedMaxTicks && step < 50) {
-    step = Math.min(50, step + 5)
+  while (tickCount() > resolvedMaxTicks && step < 5000000) {
+    step = step * 2 // Use a larger multiplier for large numbers
     axisMin = Math.max(0, Math.floor(dataMin / step) * step)
-    axisMax = Math.min(100, Math.ceil(dataMax / step) * step)
+    axisMax = Math.ceil(dataMax / step) * step
 
     while (tickCount() < resolvedMinTicks) {
       if (axisMin > 0) {
         axisMin = Math.max(0, axisMin - step)
       }
-      else if (axisMax < 100) {
-        axisMax = Math.min(100, axisMax + step)
-      }
       else {
-        break
+        axisMax = axisMax + step
       }
     }
   }

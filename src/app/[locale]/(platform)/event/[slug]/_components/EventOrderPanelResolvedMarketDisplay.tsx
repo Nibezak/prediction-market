@@ -5,7 +5,7 @@ import { useExtracted } from 'next-intl'
 import { Button } from '@/components/ui/button'
 
 interface EventOrderPanelResolvedMarketDisplayProps {
-  variant?: 'resolved' | 'paused'
+  variant?: 'resolved' | 'paused' | 'closed'
   resolvedOutcomeLabel: string | null
   isSingleMarket: boolean
   shouldShowResolvedSportsSubtitle: boolean
@@ -35,7 +35,8 @@ export default function EventOrderPanelResolvedMarketDisplay({
 }: EventOrderPanelResolvedMarketDisplayProps) {
   const t = useExtracted()
   const isPaused = variant === 'paused'
-  const StatusIcon = isPaused ? XIcon : CheckIcon
+  const isClosed = variant === 'closed'
+  const StatusIcon = isPaused || isClosed ? XIcon : CheckIcon
 
   return (
     <div className="flex flex-col items-center gap-3 px-2 py-4 text-center">
@@ -43,8 +44,8 @@ export default function EventOrderPanelResolvedMarketDisplay({
         <StatusIcon className="size-7 text-background" strokeWidth={3} />
       </div>
       <div className="text-lg font-bold text-primary">
-        {isPaused
-          ? t('Market Paused')
+        {isPaused || isClosed
+          ? (isClosed ? t('Market Closed') : t('Market Paused'))
           : (
               <>
                 {t('Outcome:')}
@@ -53,6 +54,9 @@ export default function EventOrderPanelResolvedMarketDisplay({
               </>
             )}
       </div>
+      {isClosed && (
+        <div className="text-sm text-muted-foreground">{t('Awaiting final outcome')}</div>
+      )}
       {!isPaused && ((!isSingleMarket || shouldShowResolvedSportsSubtitle) && resolvedMarketTitle) && (
         <div className="text-sm text-muted-foreground">{resolvedMarketTitle}</div>
       )}

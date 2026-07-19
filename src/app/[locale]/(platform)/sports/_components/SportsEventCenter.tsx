@@ -1631,7 +1631,6 @@ export default function SportsEventCenter({
                     oddsFormat={oddsFormat}
                     outcomeButtonStyleVariant="sports3d"
                     optimisticallyClaimedConditionIds={claimedConditionIds}
-                    outcomeLabelOverrides={orderPanelOutcomeLabelOverrides}
                     outcomeAccentOverrides={orderPanelOutcomeAccentOverrides}
                     desktopMarketInfo={(
                       <SportsOrderPanelMarketInfo
@@ -1690,7 +1689,6 @@ export default function SportsEventCenter({
           oddsFormat={oddsFormat}
           outcomeButtonStyleVariant="sports3d"
           optimisticallyClaimedConditionIds={claimedConditionIds}
-          outcomeLabelOverrides={orderPanelOutcomeLabelOverrides}
           outcomeAccentOverrides={orderPanelOutcomeAccentOverrides}
           mobileMarketInfo={(
             <SportsOrderPanelMarketInfo

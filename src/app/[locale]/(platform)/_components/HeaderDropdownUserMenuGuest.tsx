@@ -1,7 +1,8 @@
 'use client'
 
-import { DownloadIcon, MenuIcon, TrophyIcon, UnplugIcon } from 'lucide-react'
+import { DownloadIcon, InfoIcon, MenuIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import AppLink from '@/components/AppLink'
@@ -18,6 +19,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
+
+const HowItWorks = dynamic(
+  () => import('@/app/[locale]/(platform)/_components/HowItWorks'),
+  { ssr: false },
+)
 
 function relatedTargetIsWithin(ref: React.RefObject<HTMLElement | null>, relatedTarget: EventTarget | null) {
   const current = ref.current
@@ -103,6 +109,7 @@ export default function HeaderDropdownUserMenuGuest() {
   const isMobile = useIsMobile()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const enableHoverOpen = !isMobile
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false)
   const {
     menuOpen,
     wrapperRef,
@@ -164,14 +171,14 @@ export default function HeaderDropdownUserMenuGuest() {
           onInteractOutside={closeMenu}
           onEscapeKeyDown={closeMenu}
         >
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-foreground">
+          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-foreground">
             <AppLink intentPrefetch href="/leaderboard" className="flex w-full items-center gap-1.5">
               <TrophyIcon className="size-4 text-amber-500" />
               {t('Leaderboard')}
             </AppLink>
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-foreground">
+          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-foreground">
             <AppLink
               intentPrefetch
               href="/docs/api-reference"
@@ -182,6 +189,20 @@ export default function HeaderDropdownUserMenuGuest() {
               <UnplugIcon className="size-4 text-pink-500" />
               {t('APIs')}
             </AppLink>
+          </DropdownMenuItem> */}
+
+          <DropdownMenuItem
+            className="py-2 text-sm font-semibold text-foreground"
+            onSelect={(e) => {
+              e.preventDefault()
+              closeMenu()
+              setHowItWorksOpen(true)
+            }}
+          >
+            <div className="flex w-full items-center gap-1.5">
+              <InfoIcon className="size-4 text-purple-500" />
+              {t('How it works')}
+            </div>
           </DropdownMenuItem>
 
           {canShowInstallUi && (
@@ -206,9 +227,9 @@ export default function HeaderDropdownUserMenuGuest() {
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
+          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
             <AppLink intentPrefetch href="/docs" target="_blank" data-testid="header-docs-link">{t('Documentation')}</AppLink>
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
             <AppLink intentPrefetch href="/tos" data-testid="header-terms-link">{t('Terms of Use')}</AppLink>
           </DropdownMenuItem>
@@ -216,6 +237,8 @@ export default function HeaderDropdownUserMenuGuest() {
           <LocaleSwitcherMenuItem />
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <HowItWorks hideTrigger open={howItWorksOpen} onOpenChange={setHowItWorksOpen} />
     </div>
   )
 }

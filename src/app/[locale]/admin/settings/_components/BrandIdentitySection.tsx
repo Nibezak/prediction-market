@@ -5,6 +5,7 @@ import type { ThemeSiteLogoMode } from '@/lib/theme-site-identity'
 import { ImageUp, Palette } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
+import { useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn, sanitizeSvg } from '@/lib/utils'
@@ -71,6 +72,21 @@ function BrandIdentitySection({
 }: BrandIdentitySectionProps) {
   const t = useExtracted()
 
+  useEffect(() => {
+    const savedLogo = localStorage.getItem('temp_brand_logo')
+    if (savedLogo) {
+      setLogoPreviewUrl(savedLogo)
+    }
+    const savedPwa192 = localStorage.getItem('temp_pwa_192')
+    if (savedPwa192) {
+      setPwaIcon192PreviewUrl(savedPwa192)
+    }
+    const savedPwa512 = localStorage.getItem('temp_pwa_512')
+    if (savedPwa512) {
+      setPwaIcon512PreviewUrl(savedPwa512)
+    }
+  }, [setLogoPreviewUrl, setPwaIcon192PreviewUrl, setPwaIcon512PreviewUrl])
+
   const showImagePreview = Boolean(imagePreview)
   const showSvgPreview = !showImagePreview && Boolean(sanitizedLogoSvg.trim())
 
@@ -107,7 +123,14 @@ function BrandIdentitySection({
                   setSelectedLogoFile(file)
 
                   if (file) {
-                    setLogoPreviewUrl(URL.createObjectURL(file))
+                    const reader = new FileReader()
+                    reader.onload = (e) => {
+                      const dataUrl = e.target?.result as string
+                      localStorage.setItem('temp_brand_logo', dataUrl)
+                      setLogoPreviewUrl(dataUrl)
+                    }
+                    reader.readAsDataURL(file)
+
                     if (file.type === 'image/svg+xml') {
                       setLogoMode('svg')
                       setLogoImagePath('')
@@ -122,6 +145,7 @@ function BrandIdentitySection({
                   else {
                     setLogoPreviewUrl(null)
                     setLogoMode(initialLogoMode)
+                    localStorage.removeItem('temp_brand_logo')
                   }
                 }}
               />
@@ -238,7 +262,19 @@ function BrandIdentitySection({
                   if (pwaIcon192PreviewUrl) {
                     URL.revokeObjectURL(pwaIcon192PreviewUrl)
                   }
-                  setPwaIcon192PreviewUrl(file ? URL.createObjectURL(file) : null)
+                  if (file) {
+                    const reader = new FileReader()
+                    reader.onload = (e) => {
+                      const dataUrl = e.target?.result as string
+                      localStorage.setItem('temp_pwa_192', dataUrl)
+                      setPwaIcon192PreviewUrl(dataUrl)
+                    }
+                    reader.readAsDataURL(file)
+                  }
+                  else {
+                    setPwaIcon192PreviewUrl(null)
+                    localStorage.removeItem('temp_pwa_192')
+                  }
                 }}
               />
               <label
@@ -303,7 +339,19 @@ function BrandIdentitySection({
                   if (pwaIcon512PreviewUrl) {
                     URL.revokeObjectURL(pwaIcon512PreviewUrl)
                   }
-                  setPwaIcon512PreviewUrl(file ? URL.createObjectURL(file) : null)
+                  if (file) {
+                    const reader = new FileReader()
+                    reader.onload = (e) => {
+                      const dataUrl = e.target?.result as string
+                      localStorage.setItem('temp_pwa_512', dataUrl)
+                      setPwaIcon512PreviewUrl(dataUrl)
+                    }
+                    reader.readAsDataURL(file)
+                  }
+                  else {
+                    setPwaIcon512PreviewUrl(null)
+                    localStorage.removeItem('temp_pwa_512')
+                  }
                 }}
               />
               <label

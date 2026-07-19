@@ -73,6 +73,7 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
   const isSingleMarket = useIsSingleMarket()
   const userAddress = getUserPublicAddress(user)
   const normalizeOutcomeLabel = useOutcomeLabel()
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
 
   const infiniteScrollError = infiniteScrollErrorState.conditionId === market.condition_id
     ? infiniteScrollErrorState.error
@@ -93,13 +94,20 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
     refetch,
   } = useInfiniteQuery({
     queryKey: ['user-market-activity', userAddress, market.condition_id],
-    queryFn: ({ pageParam = 0, signal }) =>
-      fetchUserActivityData({
+    queryFn: async ({ pageParam = 0, signal }) => {
+      if (isPlayMoneyAmm) {
+        if (pageParam > 0) return []
+        const response = await fetch(`/api/event-activity?market=${encodeURIComponent(market.condition_id || '')}`, { signal })
+        if (!response.ok) throw new Error('Failed to load activity')
+        return await response.json()
+      }
+      return fetchUserActivityData({
         pageParam,
         userAddress,
         conditionId: market.condition_id,
         signal,
-      }).then(activities => activities.map(mapDataApiActivityToActivityOrder)),
+      }).then(activities => activities.map(mapDataApiActivityToActivityOrder))
+    },
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.length === 50) {
         return allPages.reduce((total, page) => total + page.length, 0)
@@ -117,8 +125,9 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
     () => (data?.pages.flat() ?? [])
       .filter(activity =>
         activity.market.condition_id === market.condition_id
-        && activity.type === 'trade'),
-    [data?.pages, market.condition_id],
+        && (activity.type === 'trade'
+          || (isPlayMoneyAmm && (activity.type === 'buy' || activity.type === 'sell')))),
+    [data?.pages, isPlayMoneyAmm, market.condition_id],
   )
   const isLoadingInitial = status === 'pending'
   const hasInitialError = status === 'error'
@@ -224,7 +233,9 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
             hour: 'numeric',
             minute: '2-digit',
           })
-          const txUrl = activity.tx_hash ? `${POLYGON_SCAN_BASE}/tx/${activity.tx_hash}` : null
+          const txUrl = !isPlayMoneyAmm && activity.tx_hash && /^0x[\da-f]{64}$/i.test(activity.tx_hash)
+            ? `${POLYGON_SCAN_BASE}/tx/${activity.tx_hash}`
+            : null
 
           return (
             <div

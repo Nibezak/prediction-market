@@ -3,12 +3,13 @@ import type { EventOrderPanelOutcomeSelectedAccent } from '@/app/[locale]/(platf
 import type { OddsFormat } from '@/lib/odds-format'
 import type { Event, Market, Outcome } from '@/types'
 import { useExtracted } from 'next-intl'
+import { useEffect, useState } from 'react'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import EventOrderPanelForm from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelForm'
 import EventOrderPanelTermsDisclaimer
   from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelTermsDisclaimer'
 import { Button } from '@/components/ui/button'
-import { Drawer, DrawerContent, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { ORDER_SIDE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsLabel } from '@/lib/formatters'
@@ -45,6 +46,7 @@ export default function EventOrderPanelMobile({
 }: EventMobileOrderPanelProps) {
   const t = useExtracted()
   const normalizeOutcomeLabel = useOutcomeLabel()
+  const [selectedMobileOutcome, setSelectedMobileOutcome] = useState<Outcome | null>(initialOutcome)
   const state = useOrder()
   const hasMatchingStoreEvent = state.event?.id === event.id
   const hasMatchingStoreMarket = Boolean(
@@ -57,9 +59,16 @@ export default function EventOrderPanelMobile({
   const hasMatchingStoreOutcome = Boolean(
     state.outcome
     && activeMarket
-    && state.outcome.condition_id === activeMarket.condition_id,
+    && activeMarket.outcomes.some(outcome =>
+      outcome.token_id === state.outcome?.token_id
+      || (outcome.outcome_index === state.outcome?.outcome_index && outcome.outcome_text === state.outcome?.outcome_text)),
   )
-  const activeOutcome = hasMatchingStoreOutcome ? state.outcome : fallbackOutcome
+  const activeOutcome = selectedMobileOutcome ?? (hasMatchingStoreOutcome ? state.outcome : fallbackOutcome)
+  useEffect(() => {
+    if (state.outcome && activeMarket && activeMarket.outcomes.some(outcome => outcome.token_id === state.outcome?.token_id)) {
+      setSelectedMobileOutcome(state.outcome)
+    }
+  }, [activeMarket, state.outcome])
   const isSingleMarket = useIsSingleMarket() || activeEvent.total_markets_count === 1
   const liveYesPrice = useOutcomeTopOfBookPrice(OUTCOME_INDEX.YES, ORDER_SIDE.BUY)
   const liveNoPrice = useOutcomeTopOfBookPrice(OUTCOME_INDEX.NO, ORDER_SIDE.BUY)
@@ -94,11 +103,10 @@ export default function EventOrderPanelMobile({
       repositionInputs={false}
     >
       {shouldShowDefaultTrigger && (
-        <DrawerTrigger asChild>
-          <div
-            className="fixed inset-x-0 z-30 border-t bg-background p-4 lg:hidden"
-            style={{ bottom: MOBILE_BOTTOM_NAV_OFFSET }}
-          >
+        <div
+          className="fixed inset-x-0 z-30 border-t bg-background p-4 lg:hidden"
+          style={{ bottom: MOBILE_BOTTOM_NAV_OFFSET }}
+        >
             <div className="flex gap-2">
               <Button
                 variant="yes"
@@ -110,6 +118,7 @@ export default function EventOrderPanelMobile({
 
                   state.setMarket(activeMarket)
                   state.setOutcome(buyYesOutcome)
+                  setSelectedMobileOutcome(buyYesOutcome)
                   state.setIsMobileOrderPanelOpen(true)
                 }}
               >
@@ -132,6 +141,7 @@ export default function EventOrderPanelMobile({
 
                   state.setMarket(activeMarket)
                   state.setOutcome(buyNoOutcome)
+                  setSelectedMobileOutcome(buyNoOutcome)
                   state.setIsMobileOrderPanelOpen(true)
                 }}
               >
@@ -145,8 +155,7 @@ export default function EventOrderPanelMobile({
                 </span>
               </Button>
             </div>
-          </div>
-        </DrawerTrigger>
+        </div>
       )}
 
       <DrawerContent className="max-h-[95vh] w-full">

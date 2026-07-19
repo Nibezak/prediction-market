@@ -44,6 +44,7 @@ interface EventMarketPositionsProps {
 }
 
 const POSITION_VISIBILITY_THRESHOLD = 0.01
+const IS_PLAY_MONEY_AMM = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
 
 function toNumber(value: unknown) {
   if (value === null || value === undefined) {
@@ -153,6 +154,10 @@ async function fetchAllUserPositions({
   status: 'active' | 'closed'
   signal?: AbortSignal
 }) {
+  if (IS_PLAY_MONEY_AMM) {
+    return fetchAmmUserPositions({ status, signal })
+  }
+
   const pageSize = 50
   const results: UserPosition[] = []
   let offset = 0
@@ -177,6 +182,71 @@ async function fetchAllUserPositions({
   return results
 }
 
+async function fetchAmmUserPositions({
+  status,
+  conditionId,
+  signal,
+}: {
+  status: 'active' | 'closed'
+  conditionId?: string
+  signal?: AbortSignal
+}): Promise<UserPosition[]> {
+  const response = await fetch(`/api/amm/users/me/positions?status=${status}&limit=100`, { signal })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to load positions')
+  }
+
+  const rows = Array.isArray(payload?.data) ? payload.data : []
+  return rows
+    .filter((position: any) => !conditionId || position.marketId === conditionId)
+    .map((position: any) => {
+      const options = Array.isArray(position.market?.options) ? position.market.options : []
+      const optionIndex = options.findIndex((option: any) => option.id === position.optionId)
+      const outcomeIndex = optionIndex >= 0
+        ? optionIndex
+        : (String(position.option?.name).toLowerCase() === 'no' ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES)
+      const quantity = Number(position.quantity || 0)
+      const cost = Number(position.cost || 0)
+      const currentValue = Number(position.value || 0)
+      const averagePrice = quantity > 0 ? cost / quantity : 0
+      const currentPrice = quantity > 0
+        ? currentValue / quantity
+        : Number(position.option?.liquidityProbability || 0)
+      const profitLoss = currentValue - cost
+
+      return {
+        market: {
+          condition_id: position.marketId,
+          title: position.market?.question || 'Untitled market',
+          slug: position.market?.slug || position.marketId,
+          icon_url: position.market?.event?.iconUrl || '',
+          is_active: status === 'active',
+          is_resolved: status === 'closed',
+          event: {
+            slug: position.market?.event?.slug || position.market?.slug || position.marketId,
+          },
+        },
+        outcome_index: outcomeIndex,
+        outcome_text: position.option?.name || options[outcomeIndex]?.name || 'Outcome',
+        average_position: Math.round(averagePrice * MICRO_UNIT),
+        total_position_value: Math.round(currentValue * MICRO_UNIT),
+        total_position_cost: Math.round(cost * MICRO_UNIT),
+        total_shares: quantity,
+        profit_loss_value: Math.round(profitLoss * MICRO_UNIT),
+        profit_loss_percent: cost > 0 ? (profitLoss / cost) * 100 : 0,
+        size: quantity,
+        avgPrice: averagePrice,
+        curPrice: currentPrice,
+        currentValue,
+        totalBought: cost,
+        initialValue: cost,
+        order_count: quantity > 0 ? 1 : 0,
+        last_activity_at: new Date(position.updatedAt || position.createdAt || Date.now()).toISOString(),
+      } satisfies UserPosition
+    })
+}
+
 function useMarketPositionsQuery({
   userAddress,
   market,
@@ -188,19 +258,25 @@ function useMarketPositionsQuery({
 }) {
   const query = useQuery({
     queryKey: ['user-market-positions', userAddress, market.condition_id, positionStatus],
-    queryFn: ({ signal }) =>
-      fetchUserPositionsForMarket({
-        pageParam: 0,
-        userAddress,
-        conditionId: market.condition_id,
-        status: positionStatus,
-        signal,
-      }),
+    queryFn: ({ signal }) => IS_PLAY_MONEY_AMM
+      ? fetchAmmUserPositions({
+          conditionId: market.condition_id,
+          status: positionStatus,
+          signal,
+        })
+      : fetchUserPositionsForMarket({
+          pageParam: 0,
+          userAddress,
+          conditionId: market.condition_id,
+          status: positionStatus,
+          signal,
+        }),
     enabled: Boolean(userAddress && market.condition_id),
     staleTime: 1000 * 60 * 5,
     refetchInterval: userAddress ? 10_000 : false,
     refetchIntervalInBackground: true,
     gcTime: 1000 * 60 * 10,
+    retry: 2,
   })
 
   const positions = useMemo(() => query.data ?? [], [query.data])
@@ -761,7 +837,7 @@ export default function EventMarketPositions({
 }: EventMarketPositionsProps) {
   const t = useExtracted()
   const user = useUser()
-  const userAddress = getUserPublicAddress(user)
+  const userAddress = IS_PLAY_MONEY_AMM ? (user?.id || '') : getUserPublicAddress(user)
   const isMobile = useIsMobile()
   const isSingleMarket = useIsSingleMarket()
   const setOrderMarket = useOrder(state => state.setMarket)
@@ -790,8 +866,8 @@ export default function EventMarketPositions({
     positionStatus,
   })
 
-  const loading = status === 'pending' && Boolean(user?.deposit_wallet_address)
-  const hasInitialError = status === 'error' && Boolean(user?.deposit_wallet_address)
+  const loading = status === 'pending' && Boolean(userAddress)
+  const hasInitialError = status === 'error' && Boolean(userAddress)
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
   const [sharePosition, setSharePosition] = useState<UserPosition | null>(null)
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)

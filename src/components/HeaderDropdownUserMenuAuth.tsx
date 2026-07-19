@@ -1,6 +1,5 @@
 'use client'
 
-import { useDisconnect } from '@reown/appkit/react'
 import { BadgePercentIcon, ChevronDownIcon, DownloadIcon, SettingsIcon, ShieldIcon, TrophyIcon, UnplugIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
@@ -20,14 +19,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import UserInfoSection from '@/components/UserInfoSection'
-import { useAppKit } from '@/hooks/useAppKit'
+import { useBalance } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { usePortfolioValue } from '@/hooks/usePortfolioValue'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { usePathname } from '@/i18n/navigation'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { signOutAndRedirect } from '@/lib/logout'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
+import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
+import dynamic from 'next/dynamic'
+
+const HeaderDepositButton = dynamic(
+  () => import('@/app/[locale]/(platform)/_components/HeaderDepositButton'),
+  { ssr: false },
+)
 
 function useHoverMenu(enableHoverOpen: boolean) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -99,8 +106,6 @@ function useHoverMenu(enableHoverOpen: boolean) {
 
 export default function HeaderDropdownUserMenuAuth() {
   const t = useExtracted()
-  const { isReady } = useAppKit()
-  const { disconnect } = useDisconnect()
   const user = useUser()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const pathname = usePathname()
@@ -114,6 +119,11 @@ export default function HeaderDropdownUserMenuAuth() {
   const placeholderStyle = showPlaceholder
     ? getAvatarPlaceholderStyle(avatarSeed)
     : undefined
+
+  const { balance, isLoadingBalance } = useBalance()
+  const { isLoading: isLoadingPortfolio, value: positionsValue } = usePortfolioValue()
+  const tradingOnboarding = useOptionalTradingOnboarding()
+  const startDepositFlow = tradingOnboarding?.startDepositFlow
 
   async function handleInstallAction() {
     handleMenuClose()
@@ -138,26 +148,6 @@ export default function HeaderDropdownUserMenuAuth() {
 
   async function handleLogout() {
     handleMenuClose()
-
-    if (!isReady) {
-      try {
-        await signOutAndRedirect({
-          currentPathname: window.location.pathname,
-        })
-      }
-      catch {
-        toast.error(t('Could not log out. Please try again.'))
-      }
-      return
-    }
-
-    try {
-      await disconnect()
-      return
-    }
-    catch {
-      //
-    }
 
     try {
       await signOutAndRedirect({
@@ -264,12 +254,12 @@ export default function HeaderDropdownUserMenuAuth() {
             </DropdownMenuItem>
           )}
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
+          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
             <AppLink intentPrefetch href="/leaderboard" className="flex w-full items-center gap-1.5">
               <TrophyIcon className="size-4 text-amber-500" />
               {t('Leaderboard')}
             </AppLink>
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
 
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
             <AppLink intentPrefetch href="/settings/affiliate" className="flex w-full items-center gap-1.5">
@@ -278,7 +268,7 @@ export default function HeaderDropdownUserMenuAuth() {
             </AppLink>
           </DropdownMenuItem>
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
+          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
             <AppLink
               intentPrefetch
               href="/docs/api-reference"
@@ -289,9 +279,9 @@ export default function HeaderDropdownUserMenuAuth() {
               <UnplugIcon className="size-4 text-pink-500" />
               {t('APIs')}
             </AppLink>
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
 
-          {user?.is_admin && (
+          {user.is_staff && (
             <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
               <AppLink intentPrefetch href="/admin" className="flex w-full items-center gap-1.5">
                 <ShieldIcon className="size-4 text-current" />
@@ -307,17 +297,30 @@ export default function HeaderDropdownUserMenuAuth() {
 
           {isMobile && (
             <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-              <div className="flex justify-center" onClickCapture={handleMenuClose}>
-                <HeaderPortfolio />
+              <div className="flex w-full items-center justify-between" onClickCapture={handleMenuClose}>
+                <AppLink href="/portfolio" className="flex items-center gap-1 text-base font-semibold text-yes">
+                  {isLoadingBalance || isLoadingPortfolio
+                    ? <div className="h-5 w-16 animate-pulse rounded-md bg-muted" />
+                    : <span>${Number.isFinite((positionsValue ?? 0) + (balance?.raw ?? 0)) ? ((positionsValue ?? 0) + (balance?.raw ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}</span>}
+                </AppLink>
+                {startDepositFlow
+                  ? (
+                      <Button size="sm" onClick={startDepositFlow}>
+                        {t('Deposit')}
+                      </Button>
+                    )
+                  : (
+                      <HeaderDepositButton />
+                    )}
               </div>
             </DropdownMenuItem>
           )}
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
+          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
             <AppLink intentPrefetch href="/docs" target="_blank" data-testid="header-docs-link">{t('Documentation')}</AppLink>
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
 
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
             <AppLink intentPrefetch href="/tos" data-testid="header-terms-link">{t('Terms of Use')}</AppLink>

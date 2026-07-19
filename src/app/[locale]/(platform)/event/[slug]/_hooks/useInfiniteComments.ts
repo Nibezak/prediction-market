@@ -40,6 +40,7 @@ export function useInfiniteComments(
   user: User | null,
   holdersOnly = false,
 ) {
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const queryClient = useQueryClient()
   const { communityUrl } = usePublicRuntimeConfig()
   const { signMessageAsync } = useSignMessage()
@@ -50,9 +51,13 @@ export function useInfiniteComments(
   const userAddress = user?.address ?? null
   const userDepositWalletAddress = user?.deposit_wallet_address ?? null
   const commentsQueryKey = ['event-comments', communityUrl, eventSlug, sortBy, holdersOnly, userAddress]
-  const communityApiUrl = communityUrl
+  const communityApiUrl = isPlayMoneyAmm ? '/api/community' : communityUrl
 
   const getCommunityToken = useCallback(async () => {
+    if (isPlayMoneyAmm) {
+      if (!user) throw new Error('Sign in to comment')
+      return ''
+    }
     if (!userAddress) {
       throw new Error('Connect your wallet to comment')
     }
@@ -63,40 +68,17 @@ export function useInfiniteComments(
       communityApiUrl,
       depositWalletAddress: userDepositWalletAddress,
     })
-  }, [communityApiUrl, runWithSignaturePrompt, signMessageAsync, userAddress, userDepositWalletAddress])
+  }, [communityApiUrl, isPlayMoneyAmm, runWithSignaturePrompt, signMessageAsync, user, userAddress, userDepositWalletAddress])
 
   const fetchCommentsPage = useCallback(async ({ pageParam = 0 }: { pageParam: number }) => {
-    const offset = pageParam * COMMENTS_PAGE_SIZE
-    const url = new URL(`${communityApiUrl}/comments`)
-    url.searchParams.set('event_slug', eventSlug)
-    url.searchParams.set('limit', COMMENTS_PAGE_SIZE.toString())
-    url.searchParams.set('offset', offset.toString())
-    url.searchParams.set('sort', resolveSort(sortBy))
-    if (holdersOnly) {
-      url.searchParams.set('holders_only', 'true')
-    }
-
-    const headers: HeadersInit = {}
-    if (userAddress) {
-      const auth = loadCommunityAuth(userAddress)
-      if (auth?.token) {
-        headers.Authorization = `Bearer ${auth.token}`
-      }
-    }
-
-    const response = await fetch(url.toString(), { headers })
-
-    if (response.status === 401) {
-      clearCommunityAuth()
-    }
-
+    const response = await fetch(`${communityApiUrl}/comments?event_slug=${eventSlug}&page=${pageParam}`)
     if (!response.ok) {
       throw new Error(await parseCommunityError(response, 'Failed to fetch comments'))
     }
-
-    const payload = await response.json()
-    return Array.isArray(payload) ? payload : []
-  }, [communityApiUrl, eventSlug, holdersOnly, sortBy, userAddress])
+    const json = await response.json()
+    // json.pages[0] is the format we mocked in the proxy
+    return (json.pages && json.pages[0]) ? json.pages[0] : []
+  }, [communityApiUrl, eventSlug])
 
   const {
     data,

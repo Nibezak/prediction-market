@@ -816,7 +816,7 @@ export default function ActivityFeed() {
                           ? buildPublicProfilePath(activity.user.address || username) ?? undefined
                           : undefined}
                         layout="inline"
-                        containerClassName="gap-2 text-sm leading-tight [&_[data-avatar]]:h-6 [&_[data-avatar]]:w-6"
+                        containerClassName="gap-2 text-sm leading-tight [&_.profile-avatar]:h-6 [&_.profile-avatar]:w-6"
                         usernameClassName="font-semibold text-foreground underline-offset-2 hover:underline"
                         usernameMaxWidthClassName="max-w-32 sm:max-w-40"
                         inlineContent={(

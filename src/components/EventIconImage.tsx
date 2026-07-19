@@ -1,5 +1,8 @@
+'use client'
+
 import type { ImageProps } from 'next/image'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 export function isEventMarketIconUrl(url: string | null | undefined) {
@@ -14,13 +17,19 @@ interface EventIconImageProps extends Omit<ImageProps, 'className' | 'fill' | 'h
 
 export default function EventIconImage({
   src,
-  alt,
   sizes = '100vw',
   containerClassName,
   imageClassName,
   ...props
 }: EventIconImageProps) {
-  if (typeof src === 'string' && !src.trim()) {
+  const normalizedSrc = typeof src === 'string' ? src.trim() : src
+  const [failed, setFailed] = useState(!normalizedSrc)
+
+  useEffect(() => {
+    setFailed(!normalizedSrc)
+  }, [normalizedSrc])
+
+  if (failed || !normalizedSrc) {
     return null
   }
 
@@ -28,10 +37,11 @@ export default function EventIconImage({
     <div className={cn('relative overflow-hidden', containerClassName)}>
       <Image
         {...props}
-        src={src}
-        alt={alt}
+        src={normalizedSrc}
+        alt=""
         fill
         sizes={sizes}
+        onError={() => setFailed(true)}
         className={cn('shrink-0 object-cover object-center', imageClassName)}
       />
     </div>

@@ -1,0 +1,13 @@
+export const SLIMEFISH_FALLBACK_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 117.4 120" aria-hidden="true">
+  <style>.cls-0{fill:#01150F}.cls-1{fill:url(#SVGID_1_)}.cls-2{fill:#19BF60}.cls-3{fill:url(#SVGID_2_)}</style>
+  <linearGradient id="SVGID_1_" x1="58.66" x2="58.66" y1="-895.2" y2="-822.4" gradientTransform="matrix(1 0 0 -1 0 -808)" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#0A6B3E" offset="0"/><stop stop-color="#096C3D" offset="1"/>
+  </linearGradient>
+  <path class="cls-1" d="m81.7 15.6h-44.1c-11.6 0-21.5 8.6-21.5 20.4v38l86.5-0.1 0.8-37.9c0-11-9.5-20.4-21.7-20.4z"/>
+  <path class="cls-2" d="m59.8 36.9c-22 0-43.2 20.1-43.7 38.1v5c0 11.5 7.5 22.8 22.2 23h43.5c13.2 0 21.6-9.5 21.6-21.8v-6.2c0-11.9-15.8-38.1-43.6-38.1z"/>
+  <linearGradient id="SVGID_2_" x1="53.91" x2="50.71" y1="-873.8" y2="-892.4" gradientTransform="matrix(1 0 0 -1 0 -808)" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#AEFFCF" offset="0"/><stop stop-color="#8DF7AF" offset="1"/>
+  </linearGradient>
+  <path class="cls-3" d="m58.9 65.4c1.3 4.6-0.4 10.6-4.7 11.6s-8.4-2.9-9.3-8 1-9.8 5-10.8 7.7 2.8 9 7.2z"/>
+  <path d="m81.7 60.3c1.7 4.5 0.3 10.8-3.9 12.1-4.5 1.4-8.8-2.5-10.2-7.4-1.3-4.5 0.3-10.2 4.8-11.4 3.6-0.7 7.4 1.9 9.3 6.7z" fill="#ABF9CC"/>
+</svg>`

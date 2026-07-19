@@ -1,0 +1,92 @@
+import { sql } from 'drizzle-orm'
+import { char, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
+
+export const audit_events = pgTable('audit_events', {
+  id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
+  event_type: text().notNull(),
+  category: text().notNull(),
+  action: text().notNull(),
+  outcome: text().notNull().default('success'),
+  severity: text().notNull().default('info'),
+  actor_user_id: text(),
+  actor_role: text(),
+  subject_user_id: text(),
+  entity_type: text(),
+  entity_id: text(),
+  request_id: text(),
+  correlation_id: text(),
+  idempotency_key: text(),
+  ip_address: text(),
+  user_agent: text(),
+  risk_score: integer(),
+  metadata: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  before_values: jsonb().$type<Record<string, unknown> | null>(),
+  after_values: jsonb().$type<Record<string, unknown> | null>(),
+  occurred_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  occurredAtIdx: index('idx_audit_events_occurred_at').on(table.occurred_at),
+  eventTypeIdx: index('idx_audit_events_event_type').on(table.event_type),
+  actorIdx: index('idx_audit_events_actor').on(table.actor_user_id, table.occurred_at),
+  subjectIdx: index('idx_audit_events_subject').on(table.subject_user_id, table.occurred_at),
+  entityIdx: index('idx_audit_events_entity').on(table.entity_type, table.entity_id),
+}))
+
+export const risk_cases = pgTable('risk_cases', {
+  id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
+  user_id: text().notNull(),
+  source: text().notNull(),
+  status: text().notNull().default('open'),
+  severity: text().notNull(),
+  score: integer().notNull(),
+  title: text().notNull(),
+  summary: text().notNull(),
+  held_amount: numeric({ precision: 20, scale: 2 }),
+  currency: text().notNull().default('USD'),
+  assigned_to_user_id: text(),
+  disposition: text(),
+  resolution_note: text(),
+  created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  resolved_at: timestamp({ withTimezone: true }),
+}, table => ({
+  queueIdx: index('idx_risk_cases_queue').on(table.status, table.severity, table.created_at),
+  userIdx: index('idx_risk_cases_user').on(table.user_id, table.created_at),
+}))
+
+export const risk_signals = pgTable('risk_signals', {
+  id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
+  case_id: char('case_id', { length: 26 }).notNull().references(() => risk_cases.id, { onDelete: 'cascade' }),
+  rule_id: text().notNull(),
+  rule_version: integer().notNull().default(1),
+  category: text().notNull(),
+  title: text().notNull(),
+  description: text().notNull(),
+  score: integer().notNull(),
+  observed_value: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  threshold: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  evidence: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, table => ({ caseIdx: index('idx_risk_signals_case').on(table.case_id, table.score) }))
+
+export const withdrawal_requests = pgTable('withdrawal_requests', {
+  id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
+  user_id: text().notNull(),
+  amount: numeric({ precision: 20, scale: 2 }).notNull(),
+  currency: text().notNull().default('USD'),
+  destination: text(),
+  status: text().notNull().default('requested'),
+  risk_case_id: char('risk_case_id', { length: 26 }).references(() => risk_cases.id, { onDelete: 'set null' }),
+  idempotency_key: text().notNull(),
+  external_reference: text(),
+  ledger_transaction_id: text(),
+  review_note: text(),
+  reviewed_by_user_id: text(),
+  requested_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  held_at: timestamp({ withTimezone: true }),
+  reviewed_at: timestamp({ withTimezone: true }),
+  completed_at: timestamp({ withTimezone: true }),
+}, table => ({
+  idempotencyIdx: uniqueIndex('idx_withdrawal_requests_idempotency').on(table.idempotency_key),
+  queueIdx: index('idx_withdrawal_requests_queue').on(table.status, table.requested_at),
+  userIdx: index('idx_withdrawal_requests_user').on(table.user_id, table.requested_at),
+}))

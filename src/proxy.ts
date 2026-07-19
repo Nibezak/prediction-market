@@ -1,8 +1,5 @@
-import type { NextRequest } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import createMiddleware from 'next-intl/middleware'
-import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { getTellwiseLocalSessionFromRequest } from '@/lib/tellwise-local-session'
 import {
   buildPredictionResultsInternalRoutePath,
   hasPredictionResultsFilterSearchParams,
@@ -11,6 +8,11 @@ import {
   resolvePredictionResultsFiltersFromSearchParams,
 } from '@/lib/prediction-results-filters'
 import { routing } from './i18n/routing'
+import {
+  getRequestCountryCode,
+  isCountryBlocked,
+  loadBlockedCountriesForEnforcement,
+} from '@/lib/geoblock-settings'
 
 const intlMiddleware = createMiddleware(routing)
 const protectedPrefixes = ['/settings', '/portfolio', '/admin']
@@ -76,47 +78,50 @@ function resolvePredictionResultsRewrite({
 }
 
 export default async function proxy(request: NextRequest) {
-  const url = new URL(request.url)
-  const pathnameLocale = getLocaleFromPathname(url.pathname)
-  const pathname = stripLocale(url.pathname, pathnameLocale)
-  const locale = resolveRequestLocale(pathnameLocale)
+  const pathnameLocale = getLocaleFromPathname(request.nextUrl.pathname)
+  const unlocalizedPath = stripLocale(request.nextUrl.pathname, pathnameLocale)
+  const bypassGeoblock = unlocalizedPath.startsWith('/admin')
+    || unlocalizedPath.startsWith('/api/auth')
+    || unlocalizedPath.startsWith('/api/geoblock')
+    || unlocalizedPath === '/manifest.webmanifest'
+
+  if (!bypassGeoblock) {
+    const country = getRequestCountryCode(request.headers)
+    if (country) {
+      try {
+        const blockedCountries = await loadBlockedCountriesForEnforcement()
+        if (isCountryBlocked(country, blockedCountries)) {
+          return new NextResponse('This service is not available in your country.', {
+            status: 451,
+            headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' },
+          })
+        }
+      }
+      catch (error) {
+        console.error('Geo-blocking check failed', error)
+      }
+    }
+  }
+
+  if (request.nextUrl.pathname.startsWith('/api/')) return NextResponse.next()
+  if (request.nextUrl.pathname === '/') {
+    return Response.redirect(new URL(`/${routing.defaultLocale}`, request.url))
+  }
+
   const predictionResultsRewrite = resolvePredictionResultsRewrite({
-    pathname,
-    searchParams: url.searchParams,
+    pathname: unlocalizedPath,
+    searchParams: request.nextUrl.searchParams,
   })
 
   if (predictionResultsRewrite) {
-    const rewrittenUrl = new URL(withExplicitLocale(predictionResultsRewrite.pathname, locale), request.url)
-    rewrittenUrl.search = predictionResultsRewrite.search
-    return NextResponse.rewrite(rewrittenUrl)
-  }
+    const rewriteUrl = request.nextUrl.clone()
+    rewriteUrl.pathname = withExplicitLocale(
+      predictionResultsRewrite.pathname,
+      resolveRequestLocale(pathnameLocale),
+    )
+    rewriteUrl.search = predictionResultsRewrite.search
 
-  const isProtected = protectedPrefixes.some(
-    prefix => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  )
-
-  if (!isProtected) {
-    return intlMiddleware(request)
-  }
-
-  let session: any = null
-
-  session = getTellwiseLocalSessionFromRequest(request)
-
-  if (!session) {
-    session = await auth.api.getSession({
-      headers: request.headers,
-    })
-  }
-
-  if (!session) {
-    return NextResponse.redirect(new URL(withLocale('/', locale), request.url))
-  }
-
-  if (pathname.startsWith('/admin')) {
-    if (!session.user?.is_admin) {
-      return NextResponse.redirect(new URL(withLocale('/', locale), request.url))
-    }
+    return NextResponse.rewrite(rewriteUrl)
   }
 
   return intlMiddleware(request)
@@ -124,6 +129,6 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|trpc|_next|_vercel|.*\\..*).*)',
+    '/((?!trpc|_next|_vercel|.*\\..*).*)',
   ],
 }

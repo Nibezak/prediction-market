@@ -890,7 +890,7 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
                       refetch: orderBookQuery.refetch,
                       isRefetching: orderBookQuery.isRefetching,
                     }}
-                    sharesByCondition={sharesByCondition}
+                    sharesByCondition={sharesByCondition || {}}
                   />
                 </div>
 
@@ -977,7 +977,7 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
                             refetch: orderBookQuery.refetch,
                             isRefetching: orderBookQuery.isRefetching,
                           }}
-                          sharesByCondition={sharesByCondition}
+                          sharesByCondition={sharesByCondition || {}}
                         />
                       </div>
 

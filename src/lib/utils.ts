@@ -31,7 +31,6 @@ const DISALLOWED_ELEMENT_TAGS_WITH_CONTENT = [
   'iframe',
   'object',
   'embed',
-  'style',
 ] as const
 
 const DISALLOWED_ELEMENT_TAGS_SELF_CLOSING = [

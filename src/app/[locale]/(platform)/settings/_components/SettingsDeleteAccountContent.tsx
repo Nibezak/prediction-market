@@ -31,7 +31,7 @@ import {
   TRADING_AUTH_PRIMARY_TYPE,
   TRADING_AUTH_TYPES,
 } from '@/lib/trading-auth/client'
-import { isUserRejectedRequestError, normalizeAddress } from '@/lib/wallet'
+import { normalizeAddress } from '@/lib/wallet'
 
 function useDeleteAccountState() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -179,13 +179,9 @@ export default function SettingsDeleteAccountContent({ user }: { user: User }) {
     }
   }, [runWithSignaturePrompt, signTypedDataAsync, t])
 
-  const runDeleteAccount = useCallback((address: `0x${string}`) => {
-    setShouldResumeDeleteAfterWalletConnection(false)
+  const runDeleteAccount = useCallback(() => {
     startTransition(async () => {
       try {
-        await deleteCommunityData(address)
-        await deleteRelayerData(address)
-
         const result = await deleteAccountAction()
 
         if (result.error) {
@@ -199,31 +195,20 @@ export default function SettingsDeleteAccountContent({ user }: { user: User }) {
         })
       }
       catch (caughtError) {
-        const errorMessage = isUserRejectedRequestError(caughtError)
-          ? t('Signature was rejected in your wallet.')
-          : t('Failed to delete account. Please try again.')
+        const errorMessage = t('Failed to delete account. Please try again.')
         setError(errorMessage)
         toast.error(errorMessage)
       }
     })
-  }, [deleteCommunityData, deleteRelayerData, setError, setShouldResumeDeleteAfterWalletConnection, startTransition, t])
+  }, [setError, startTransition, t])
 
   useEffect(function resumeDeleteAfterWalletConnection() {
-    const resumedWalletAddress = shouldResumeDeleteAfterWalletConnection && isDialogOpen && isDeleteConfirmed && !isPending
-      ? linkedWalletAddress
-      : null
-    void (resumedWalletAddress && runDeleteAccount(resumedWalletAddress))
-  }, [isDeleteConfirmed, isDialogOpen, isPending, linkedWalletAddress, runDeleteAccount, shouldResumeDeleteAfterWalletConnection])
+    // No longer needed
+  }, [])
 
   function handleDeleteAccount() {
     setError(null)
-
-    if (!linkedWalletAddress) {
-      requestLinkedWallet()
-      return
-    }
-
-    runDeleteAccount(linkedWalletAddress)
+    runDeleteAccount()
   }
 
   return (

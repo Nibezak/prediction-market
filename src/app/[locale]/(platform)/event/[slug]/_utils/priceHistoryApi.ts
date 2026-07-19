@@ -82,7 +82,7 @@ export async function fetchBatchPriceHistoryByTokenIds(
 ): Promise<PriceHistoryByKey> {
   const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
 
-  if (!uniqueTokenIds.length || !clobUrl) {
+  if (!uniqueTokenIds.length) {
     return {}
   }
 
@@ -90,7 +90,7 @@ export async function fetchBatchPriceHistoryByTokenIds(
   const historyByChunk = await Promise.all(
     tokenIdChunks.map(async (tokenIdChunk) => {
       try {
-        const response = await fetch(`${clobUrl}/batch-prices-history`, {
+        const response = await fetch(`/api/playmoney/market-stats`, {
           method: 'POST',
           headers: {
             'Accept': 'application/json',

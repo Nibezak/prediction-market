@@ -30,6 +30,7 @@ function formatAdminBalance(value: number | null | undefined, decimals = 2) {
 export default function AdminHeaderBalances() {
   const t = useExtracted()
   const user = useUser()
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const { polygonRpcUrl } = usePublicRuntimeConfig()
   const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const { address: connectedAddress } = useAppKitAccount()
@@ -49,12 +50,12 @@ export default function AdminHeaderBalances() {
     [eoaAddress],
   )
   const { balance: usdcBalance, isLoadingBalance: isLoadingUsdcBalance } = useBalance({
-    enabled: Boolean(normalizedEoaAddress),
-    depositWalletAddress: normalizedEoaAddress,
+    enabled: isPlayMoneyAmm || Boolean(normalizedEoaAddress),
+    depositWalletAddress: isPlayMoneyAmm ? null : normalizedEoaAddress,
   })
   const { data: polBalance, isLoading: isLoadingPolBalance } = useQuery({
     queryKey: [ADMIN_POL_BALANCE_QUERY_KEY, normalizedEoaAddress],
-    enabled: Boolean(publicClient && normalizedEoaAddress),
+    enabled: Boolean(!isPlayMoneyAmm && publicClient && normalizedEoaAddress),
     staleTime: 10_000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: 10_000,
@@ -83,6 +84,21 @@ export default function AdminHeaderBalances() {
       toast.error(t('Could not copy EOA wallet.'))
     }
   }, [normalizedEoaAddress, t])
+
+  if (isPlayMoneyAmm) {
+    return (
+      <div className="grid grid-cols-1 gap-x-1">
+        <Button type="button" variant="ghost" size="header" className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-[6px] px-2.5 py-1">
+          <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Admin balance')}</div>
+          <div className="-translate-y-px text-base/tight font-semibold text-foreground">
+            {isLoadingUsdcBalance
+              ? <Skeleton className="h-5 w-12" />
+              : formatAdminBalance(usdcBalance.raw)}
+          </div>
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="grid grid-cols-2 gap-x-1">

@@ -1,202 +1,102 @@
 import type { ActivityOrder } from '@/types'
 import { NextResponse } from 'next/server'
-import { filterActivitiesByMinAmount } from '@/lib/activity/filter'
-import { DEFAULT_ERROR_MESSAGE, MICRO_UNIT } from '@/lib/constants'
-import { getDataApiUrl } from '@/lib/data-api/client'
 import { EVENT_ACTIVITY_PAGE_SIZE } from '@/lib/data-api/trades'
-import { mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
-import { UserRepository } from '@/lib/db/queries/user'
 import { getPublicAssetUrl } from '@/lib/storage'
-import { normalizeAddress } from '@/lib/wallet'
-
-interface DataApiActivity {
-  proxyWallet?: string
-  timestamp?: number
-  conditionId?: string
-  type?: string
-  size?: number
-  usdcSize?: number
-  transactionHash?: string
-  price?: number
-  asset?: string
-  side?: string
-  outcomeIndex?: number
-  title?: string
-  slug?: string
-  icon?: string
-  eventSlug?: string
-  outcome?: string
-  name?: string
-  pseudonym?: string
-  profileImage?: string
-  profileImageOptimized?: string
-}
-
-interface HydratedActivityProfile {
-  username?: string | null
-  image?: string | null
-  created_at?: string
-}
+import { MICRO_UNIT } from '@/lib/constants'
 
 function normalizeAvatarUrl(image: string | null | undefined) {
-  if (!image) {
-    return ''
-  }
-
-  if (image.startsWith('http')) {
-    return image
-  }
-
+  if (!image) return ''
+  if (image.startsWith('http')) return image
   return getPublicAssetUrl(image)
-}
-
-function normalizeCreatedAt(value: string | Date | null | undefined) {
-  if (!value) {
-    return undefined
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return undefined
-  }
-
-  return date.toISOString()
-}
-
-function mergeHydratedProfiles(
-  preferred: HydratedActivityProfile,
-  fallback?: HydratedActivityProfile | null,
-): HydratedActivityProfile {
-  return {
-    username: preferred.username || fallback?.username,
-    image: preferred.image || fallback?.image,
-    created_at: preferred.created_at || fallback?.created_at,
-  }
-}
-
-function storeHydratedProfile(
-  profileLookup: Map<string, HydratedActivityProfile>,
-  addresses: Array<string | null | undefined>,
-  profile: HydratedActivityProfile,
-) {
-  for (const address of addresses) {
-    const normalized = normalizeAddress(address)?.toLowerCase()
-    if (!normalized) {
-      continue
-    }
-
-    const existing = profileLookup.get(normalized)
-    profileLookup.set(normalized, mergeHydratedProfiles(profile, existing))
-  }
 }
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const market = searchParams.get('market')
-  const parsedLimit = Number.parseInt(searchParams.get('limit') || `${EVENT_ACTIVITY_PAGE_SIZE}`, 10)
-  const parsedOffset = Number.parseInt(searchParams.get('offset') || '0', 10)
-  const parsedFilterAmount = Number.parseFloat(searchParams.get('filterAmount') || '0')
-
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(Math.max(parsedLimit, 1), 50)
-    : EVENT_ACTIVITY_PAGE_SIZE
-  const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0
-  const hasFilterAmount = Number.isFinite(parsedFilterAmount) && parsedFilterAmount > 0
-
+  
   if (!market) {
     return NextResponse.json({ error: 'Missing market parameter.' }, { status: 400 })
   }
 
-  const dataApiUrl = getDataApiUrl()
-  if (!dataApiUrl) {
-    return NextResponse.json({ error: 'DATA_URL environment variable is not configured.' }, { status: 500 })
-  }
+  const AMM_BASE_URL = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
 
   try {
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-      offset: offset.toString(),
-      market,
-      takerOnly: 'false',
-    })
+    const marketIds = market.split(',').map(id => id.trim()).filter(Boolean)
+    const responses = await Promise.all(marketIds.map(async (marketId) => {
+      const response = await fetch(`${AMM_BASE_URL}/markets/${marketId}/activity`)
+      if (!response.ok) return []
+      const payload = await response.json()
+      return Array.isArray(payload.data) ? payload.data : []
+    }))
+    const data = responses.flat()
 
-    if (hasFilterAmount) {
-      params.set('filterType', 'CASH')
-      params.set('filterAmount', parsedFilterAmount.toString())
+    const activities: ActivityOrder[] = []
+
+    for (const activity of data) {
+      if (activity.type === 'TRADE_TRANSACTION' && activity.transactions) {
+        for (const tx of activity.transactions) {
+          const isBuy = tx.type === 'TRADE_BUY'
+          const initiator = tx.initiator || {}
+          
+          let amount = '0'
+          let totalValue = 0
+
+          // Calculate amount and value from entries
+          if (tx.entries) {
+            const optionEntries = tx.entries.filter((entry: any) =>
+              entry.assetType === 'MARKET_OPTION'
+              && (!activity.option?.id || entry.assetId === activity.option.id))
+            const optionEntry = optionEntries.sort((left: any, right: any) =>
+              Math.abs(parseFloat(right.amount)) - Math.abs(parseFloat(left.amount)))[0]
+            const primaryEntry = tx.entries.find((e: any) => e.assetType === 'CURRENCY' && e.assetId === 'PRIMARY')
+            
+            if (optionEntry) {
+              amount = Math.abs(parseFloat(optionEntry.amount)).toString()
+            }
+            if (primaryEntry) {
+              totalValue = Math.abs(parseFloat(primaryEntry.amount))
+            }
+          }
+
+          const price = parseFloat(amount) > 0 ? totalValue / parseFloat(amount) : 0
+          const optionName = String(activity.option?.name || 'Outcome')
+          const outcomeIndex = optionName.trim().toLowerCase() === 'no' ? 1 : 0
+
+          activities.push({
+            id: tx.id,
+            type: isBuy ? 'buy' : 'sell',
+            user: {
+              id: initiator.id || 'unknown',
+              username: initiator.username || initiator.displayName || 'trader',
+              address: initiator.id || 'unknown',
+              image: normalizeAvatarUrl(initiator.avatarUrl),
+              created_at: initiator.createdAt,
+            },
+            side: isBuy ? 'buy' : 'sell',
+            amount: Math.round(parseFloat(amount) * MICRO_UNIT).toString(),
+            price: price.toString(),
+            outcome: {
+              index: outcomeIndex,
+              text: optionName,
+            },
+            market: {
+              condition_id: tx.marketId,
+              title: tx.market?.question || 'Market',
+              slug: tx.market?.slug || tx.marketId,
+              icon_url: '',
+            },
+            total_value: Math.round(totalValue * MICRO_UNIT),
+            created_at: tx.createdAt,
+            status: 'completed',
+            tx_hash: tx.id,
+          })
+        }
+      }
     }
 
-    const response = await fetch(`${dataApiUrl}/trades?${params.toString()}`)
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => null)
-      const errorMessage = errorBody?.error || DEFAULT_ERROR_MESSAGE
-      return NextResponse.json({ error: errorMessage }, { status: 500 })
-    }
-
-    const result = await response.json()
-    if (!Array.isArray(result)) {
-      return NextResponse.json({ error: 'Unexpected response from data service.' }, { status: 500 })
-    }
-
-    const activities = (result as DataApiActivity[]).map(mapDataApiActivityToActivityOrder)
-    const minAmount = hasFilterAmount ? parsedFilterAmount * MICRO_UNIT : undefined
-    const filtered = filterActivitiesByMinAmount(activities, minAmount)
-
-    const addressSet = new Set<string>()
-    filtered.forEach((activity) => {
-      const normalized = normalizeAddress(activity.user.address)?.toLowerCase()
-      if (normalized) {
-        addressSet.add(normalized)
-      }
-    })
-
-    const profileLookup = new Map<string, HydratedActivityProfile>()
-
-    if (addressSet.size > 0) {
-      const { data: profiles, error } = await UserRepository.getUsersByAddresses(Array.from(addressSet))
-
-      if (error) {
-        console.error('Failed to load activity profiles', error)
-      }
-
-      for (const profile of profiles || []) {
-        const normalizedAddress = normalizeAddress(profile.address)?.toLowerCase()
-        const normalizedDepositWallet = normalizeAddress(profile.deposit_wallet_address)?.toLowerCase()
-        const imageUrl = normalizeAvatarUrl(profile.image)
-
-        const createdAt = normalizeCreatedAt(profile.created_at)
-
-        storeHydratedProfile(
-          profileLookup,
-          [normalizedAddress, normalizedDepositWallet],
-          { username: profile.username, image: imageUrl, created_at: createdAt },
-        )
-      }
-    }
-
-    const hydrated: ActivityOrder[] = filtered.map((activity) => {
-      const normalized = normalizeAddress(activity.user.address)?.toLowerCase()
-      const matchedProfile = normalized ? profileLookup.get(normalized) : null
-      const fallbackAddress = activity.user.address || activity.user.id
-
-      const username = activity.user.username || matchedProfile?.username || fallbackAddress || 'trader'
-      const image = normalizeAvatarUrl(activity.user.image || matchedProfile?.image)
-
-      return {
-        ...activity,
-        user: {
-          ...activity.user,
-          username,
-          image,
-          created_at: matchedProfile?.created_at,
-        },
-      }
-    })
-
-    return NextResponse.json(hydrated)
-  }
-  catch (error) {
+    return NextResponse.json(activities)
+  } catch (error) {
     console.error('Failed to load event activity', error)
-    return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

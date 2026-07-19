@@ -3,8 +3,6 @@
 import type { Route } from 'next'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
-import { useExtracted } from 'next-intl'
-import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import FilterToolbar from '@/app/[locale]/(platform)/(home)/_components/FilterToolbar'
@@ -16,10 +14,6 @@ import { usePathname, useRouter } from '@/i18n/navigation'
 import { getDefaultHomeRouteSortBy } from '@/lib/home-route-sort'
 import { parsePlatformPathname, resolvePlatformNavigationSelection } from '@/lib/platform-navigation'
 import { buildDynamicHomeCategorySlugSet } from '@/lib/platform-routing'
-
-const CategorySidebar = dynamic(
-  () => import('@/app/[locale]/(platform)/(home)/_components/CategorySidebar'),
-)
 
 interface HomeClientProps {
   initialEvents: Event[]
@@ -222,22 +216,9 @@ function useHomeClientContentState({
     && dynamicHomeCategorySlugSet.has(activeNavigationTag.slug)
   ), [activeNavigationTag, dynamicHomeCategorySlugSet, navigationSelection.pathState.isMainTagPathPage, navigationSelection.pathState.selectedMainTagPathSlug])
 
-  const categorySidebar = useMemo(() => {
-    if (!activeNavigationTag || !showCategoryPathTitle || !dynamicHomeCategorySlugSet.has(activeNavigationTag.slug)) {
-      return null
-    }
-
-    return {
-      slug: activeNavigationTag.slug,
-      sidebarItems: activeNavigationTag.sidebarItems,
-      title: activeNavigationTag.name,
-      childs: activeNavigationTag.childs,
-    }
-  }, [activeNavigationTag, dynamicHomeCategorySlugSet, showCategoryPathTitle])
-
-  const hasCategorySidebar = categorySidebar !== null
+  const hasCategorySidebar = false
   const shouldUsePathSubcategoryNavigation = hasCategorySidebar
-    && navigationSelection.pathState.selectedMainTagPathSlug === categorySidebar.slug
+    && navigationSelection.pathState.selectedMainTagPathSlug === activeNavigationTag?.slug
 
   const activeSecondaryTagSlug = useMemo(() => {
     if (!activeNavigationTag) {
@@ -253,10 +234,6 @@ function useHomeClientContentState({
       ? navigationSelection.activeTagSlug
       : activeNavigationTag.slug
   }, [activeNavigationTag, navigationSelection.activeTagSlug])
-
-  const activeSidebarSubcategorySlug = hasCategorySidebar && activeSecondaryTagSlug !== categorySidebar.slug
-    ? activeSecondaryTagSlug
-    : null
 
   const handleSecondaryNavigation = useCallback(({ slug: targetTag, href }: { href?: string, slug: string }) => {
     if (!activeNavigationTag) {
@@ -297,10 +274,7 @@ function useHomeClientContentState({
     handleFiltersChange,
     handleClearFilters,
     hasCategorySidebar,
-    categorySidebar,
-    activeSidebarSubcategorySlug,
     secondaryNavigation,
-    handleSecondaryNavigation,
   }
 }
 
@@ -320,17 +294,13 @@ function HomeClientContent({
   targetMainTag,
   targetTag,
 }: HomeClientContentProps) {
-  const t = useExtracted()
   const {
     homeFilters,
     canUseServerInitialEvents,
     handleFiltersChange,
     handleClearFilters,
     hasCategorySidebar,
-    categorySidebar,
-    activeSidebarSubcategorySlug,
     secondaryNavigation,
-    handleSecondaryNavigation,
   } = useHomeClientContentState({
     childParentMap,
     dynamicHomeCategorySlugSet,
@@ -341,22 +311,11 @@ function HomeClientContent({
     targetMainTag,
     targetTag,
   })
-  const hasFeaturedEvents = pathState.isHomePage && initialFeaturedEvents.length > 0
+  const hasFeaturedEvents = targetTag === 'trending' && targetMainTag === 'trending' && initialFeaturedEvents.length > 0
 
   return (
     <>
       <div className="flex min-w-0 gap-6 lg:items-start lg:gap-10">
-        {categorySidebar && (
-          <CategorySidebar
-            categorySlug={categorySidebar.slug}
-            categoryTitle={categorySidebar.title}
-            activeSubcategorySlug={activeSidebarSubcategorySlug}
-            onNavigate={handleSecondaryNavigation}
-            sidebarItems={categorySidebar.sidebarItems}
-            subcategories={categorySidebar.childs}
-          />
-        )}
-
         <div className="min-w-0 flex-1 space-y-4 lg:space-y-5">
           {hasFeaturedEvents && (
             <HomeFeaturedEventsCarousel
@@ -366,36 +325,15 @@ function HomeClientContent({
             />
           )}
 
-          {hasFeaturedEvents
-            ? (
-                <div className="grid gap-3">
-                  <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <h1 className="shrink-0 text-2xl font-semibold tracking-tight">
-                      {t('All markets')}
-                    </h1>
-
-                    <div className="min-w-0 md:max-w-xl">
-                      <FilterToolbar
-                        filters={homeFilters}
-                        onFiltersChange={handleFiltersChange}
-                        showFilterCheckboxes={pathState.isHomePage}
-                      />
-                    </div>
-                  </div>
-
-                  {secondaryNavigation}
-                </div>
-              )
-            : (
-                <FilterToolbar
-                  filters={homeFilters}
-                  onFiltersChange={handleFiltersChange}
-                  hideDesktopSecondaryNavigation={hasCategorySidebar}
-                  desktopTitle={categorySidebar?.title}
-                  secondaryNavigation={secondaryNavigation}
-                  showFilterCheckboxes={pathState.isHomePage}
-                />
-              )}
+          {!hasFeaturedEvents && (
+            <FilterToolbar
+              filters={homeFilters}
+              onFiltersChange={handleFiltersChange}
+              hideDesktopSecondaryNavigation={hasCategorySidebar}
+              secondaryNavigation={secondaryNavigation}
+              showFilterCheckboxes={pathState.isHomePage}
+            />
+          )}
 
           <EventsGrid
             filters={homeFilters}
@@ -404,7 +342,6 @@ function HomeClientContent({
             onClearFilters={handleClearFilters}
             routeMainTag={targetMainTag}
             routeTag={targetTag}
-            maxColumns={hasCategorySidebar ? 3 : undefined}
           />
         </div>
       </div>

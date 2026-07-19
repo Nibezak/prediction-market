@@ -43,6 +43,7 @@ function createBrowserPublicClient(rpcUrl: string): PublicClient {
 
 export function useBalance(options: UseBalanceOptions = {}) {
   const user = useUser()
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const { polygonRpcUrl } = usePublicRuntimeConfig()
   const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const client = useMemo(
@@ -71,7 +72,9 @@ export function useBalance(options: UseBalanceOptions = {}) {
   }, [client, depositWalletAddress])
 
   const isOptionsEnabled = options.enabled ?? true
-  const isQueryEnabled = Boolean(client && depositWalletAddress && isOptionsEnabled)
+  const isQueryEnabled = Boolean(isOptionsEnabled && (
+    isPlayMoneyAmm ? user?.id : client && depositWalletAddress
+  ))
 
   const {
     data,
@@ -79,39 +82,54 @@ export function useBalance(options: UseBalanceOptions = {}) {
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY, depositWalletAddress],
+    queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY, isPlayMoneyAmm ? user?.id : depositWalletAddress],
     enabled: isQueryEnabled,
     staleTime: 'static',
     gcTime: 5 * 60 * 1000,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     queryFn: async (): Promise<Balance> => {
-      if (!depositWalletAddress) {
+      if (isPlayMoneyAmm) {
+        try {
+          const ammRes = await fetch('/api/amm/users/me/balance', {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+          if (ammRes.ok) {
+            const ammBody = await ammRes.json()
+            if (ammBody?.data?.balance != null) {
+              const balanceValue = typeof ammBody.data.balance === 'object'
+                ? ammBody.data.balance.total
+                : ammBody.data.balance
+              let usdcBal = Number(balanceValue)
+              if (Number.isNaN(usdcBal)) {
+                usdcBal = 0
+              }
+              return {
+                raw: usdcBal,
+                text: usdcBal.toFixed(2),
+                symbol: 'USDC',
+              }
+            }
+          }
+        }
+        catch (err) {
+          console.error('Failed to fetch AMM balance:', err)
+        }
         return INITIAL_STATE
       }
 
-      if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
-        try {
-          const res = await fetch(`/api/tellwise-clob/balances?userAddress=${depositWalletAddress}`)
-          const data = await res.json()
-          const usdcBal = Number(data?.usdc ?? 0)
-          return {
-            raw: usdcBal,
-            text: usdcBal.toFixed(2),
-            symbol: 'USDC',
-          }
-        } catch {
-          return INITIAL_STATE
-        }
-      }
-
-      if (!client || !contract) {
+      if (!client || !contract || !depositWalletAddress) {
         return INITIAL_STATE
       }
 
       try {
         const balanceRaw = await contract.read.balanceOf([depositWalletAddress])
-        const balanceNumber = Number(balanceRaw) / 10 ** USDC_DECIMALS
+        let balanceNumber = Number(balanceRaw) / 10 ** USDC_DECIMALS
+        if (Number.isNaN(balanceNumber)) {
+          balanceNumber = 0
+        }
 
         return {
           raw: balanceNumber,

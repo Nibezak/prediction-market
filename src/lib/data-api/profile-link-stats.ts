@@ -147,7 +147,25 @@ export async function fetchProfileLinkStats(
   userAddress?: string | null,
   signal?: AbortSignal,
 ): Promise<ProfileLinkStats | null> {
+  const rawIdentifier = userAddress?.trim() ?? ''
   const address = normalizeAddress(userAddress)
+  if (!address && rawIdentifier) {
+    const [statsResponse, positionsResponse] = await Promise.all([
+      fetch(`/api/amm/users/${encodeURIComponent(rawIdentifier)}/stats`, { signal }),
+      fetch(`/api/amm/users/${encodeURIComponent(rawIdentifier)}/positions?limit=100`, { signal }),
+    ])
+    if (!statsResponse.ok || !positionsResponse.ok) return null
+    const statsPayload = await statsResponse.json()
+    const positionsPayload = await positionsResponse.json()
+    const positions = Array.isArray(positionsPayload?.data) ? positionsPayload.data : []
+    const positionsValue = positions.reduce((sum: number, row: any) => sum + (toNumber(row?.value) ?? 0), 0)
+    const positionsCost = positions.reduce((sum: number, row: any) => sum + (toNumber(row?.cost) ?? 0), 0)
+    return {
+      positionsValue,
+      profitLoss: positionsValue - positionsCost,
+      volume: parseVolumeValue(statsPayload?.data?.tradingVolume),
+    }
+  }
   if (!address) {
     return null
   }

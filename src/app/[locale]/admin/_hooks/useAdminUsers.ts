@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
+import { useLocale } from 'next-intl'
 
 interface AdminUserRow {
   id: string
@@ -31,7 +32,7 @@ interface AdminUsersResponse {
   totalCount: number
 }
 
-async function fetchAdminUsers(params: UseAdminUsersParams): Promise<AdminUsersResponse> {
+async function fetchAdminUsers(params: UseAdminUsersParams, locale: string): Promise<AdminUsersResponse> {
   const { limit = 50, search, sortBy = 'created_at', sortOrder = 'desc', pageIndex = 0 } = params
   const offset = pageIndex * limit
 
@@ -46,7 +47,7 @@ async function fetchAdminUsers(params: UseAdminUsersParams): Promise<AdminUsersR
     searchParams.set('search', search.trim())
   }
 
-  const response = await fetch(`/admin/api/users?${searchParams.toString()}`)
+  const response = await fetch(`/${locale}/admin/api/users?${searchParams.toString()}`)
 
   if (!response.ok) {
     throw new Error(`Failed to fetch users: ${response.statusText}`)
@@ -56,12 +57,13 @@ async function fetchAdminUsers(params: UseAdminUsersParams): Promise<AdminUsersR
 }
 
 function useAdminUsers(params: UseAdminUsersParams = {}) {
+  const locale = useLocale()
   const { limit = 50, search, sortBy = 'created_at', sortOrder = 'desc', pageIndex = 0 } = params
 
   const queryKey = useMemo(() => [
     'admin-users',
-    { limit, search, sortBy, sortOrder, pageIndex },
-  ], [limit, search, sortBy, sortOrder, pageIndex])
+    { locale, limit, search, sortBy, sortOrder, pageIndex },
+  ], [locale, limit, search, sortBy, sortOrder, pageIndex])
 
   const query = useQuery({
     queryKey,
@@ -71,7 +73,7 @@ function useAdminUsers(params: UseAdminUsersParams = {}) {
       sortBy,
       sortOrder,
       pageIndex,
-    }),
+    }, locale),
     staleTime: 30_000,
     gcTime: 300_000,
   })

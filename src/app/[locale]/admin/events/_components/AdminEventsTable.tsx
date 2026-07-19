@@ -41,10 +41,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { cn } from '@/lib/utils'
+import type { PlatformRole } from '@/lib/staff-role'
 
 interface AdminEventsTableProps {
   initialAutoDeployNewEventsEnabled: boolean
   mainCategoryOptions: { slug: string, name: string }[]
+  role: PlatformRole
 }
 
 function parseSportsScoreParts(score: string | null | undefined) {
@@ -119,7 +121,7 @@ function formatDayMonthLabel(date: Date | null) {
   return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(date)
 }
 
-function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
+function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean, role: PlatformRole) {
   const t = useExtracted()
   const queryClient = useQueryClient()
 
@@ -173,6 +175,11 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
   const [draftMainCategorySlug, setDraftMainCategorySlug] = useState(mainCategorySlug)
   const [draftCreator, setDraftCreator] = useState(creator)
   const [draftSeriesSlug, setDraftSeriesSlug] = useState(seriesSlug)
+  const [resolveEvent, setResolveEvent] = useState<AdminEventRow | null>(null)
+  const [resolveOutcomes, setResolveOutcomes] = useState<{ tokenId: string, outcomeText: string }[]>([])
+  const [resolveSelectedTokenId, setResolveSelectedTokenId] = useState<string>('')
+  const [isResolving, setIsResolving] = useState(false)
+  const [isFetchingOutcomes, setIsFetchingOutcomes] = useState(false)
 
   const handleToggleHidden = useCallback(async (event: AdminEventRow, checked: boolean) => {
     setPendingHiddenId(event.id)
@@ -376,16 +383,67 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     setSportsFinalError(null)
   }, [])
 
-  const handleCloseSportsFinalModal = useCallback(() => {
-    if (isSavingSportsFinal) {
-      return
-    }
+  function handleCloseSportsFinalModal() {
     setSportsFinalEvent(null)
     setSportsEndedValue(false)
     setSportsScoreHomeValue('')
     setSportsScoreAwayValue('')
     setSportsFinalError(null)
-  }, [isSavingSportsFinal])
+  }
+
+  const handleOpenResolutionModal = useCallback(async (event: AdminEventRow) => {
+    setResolveEvent(event)
+    setResolveSelectedTokenId('')
+    setIsFetchingOutcomes(true)
+    try {
+      const response = await fetch(`/api/admin/resolve-event?eventId=${encodeURIComponent(event.id)}`, {
+        cache: 'no-store',
+      })
+      const result = await response.json()
+      if (!response.ok || !Array.isArray(result.data)) {
+        throw new Error(result.error || 'Failed to fetch outcomes')
+      }
+      setResolveOutcomes(result.data)
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch outcomes')
+      setResolveEvent(null)
+    }
+    finally {
+      setIsFetchingOutcomes(false)
+    }
+  }, [])
+
+  function handleCloseResolutionModal() {
+    setResolveEvent(null)
+    setResolveOutcomes([])
+    setResolveSelectedTokenId('')
+  }
+
+  async function handleResolveMarket() {
+    if (!resolveEvent || !resolveSelectedTokenId) { return }
+    setIsResolving(true)
+    try {
+      const response = await fetch('/api/admin/resolve-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: resolveEvent.id, winningTokenId: resolveSelectedTokenId }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resolve market')
+      }
+      toast.success('Market resolved and payouts calculated successfully!')
+      handleCloseResolutionModal()
+      void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+    }
+    catch (error: any) {
+      toast.error(error.message)
+    }
+    finally {
+      setIsResolving(false)
+    }
+  }
 
   const handleSaveSportsFinalState = useCallback(async () => {
     if (!sportsFinalEvent) {
@@ -443,7 +501,11 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     onOpenAdditionalContextModal: handleOpenAdditionalContextModal,
     onOpenLivestreamModal: handleOpenLivestreamModal,
     onOpenSportsFinalModal: handleOpenSportsFinalModal,
-    isUpdatingHidden: eventId => pendingHiddenId === eventId,
+    onOpenResolutionModal: handleOpenResolutionModal,
+    isUpdatingHidden: id => id === pendingHiddenId,
+    canResolve: ['ADMIN', 'RESOLVER', 'MODERATOR'].includes(role),
+    canEdit: ['ADMIN', 'EDITOR'].includes(role),
+    canModerate: ['ADMIN', 'MODERATOR'].includes(role),
   })
 
   return {
@@ -512,6 +574,14 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     isSavingSportsFinal,
     handleCloseSportsFinalModal,
     handleSaveSportsFinalState,
+    resolveEvent,
+    resolveOutcomes,
+    resolveSelectedTokenId,
+    setResolveSelectedTokenId,
+    isResolving,
+    isFetchingOutcomes,
+    handleCloseResolutionModal,
+    handleResolveMarket,
     columns,
   }
 }
@@ -519,6 +589,7 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
 export default function AdminEventsTable({
   initialAutoDeployNewEventsEnabled,
   mainCategoryOptions,
+  role,
 }: AdminEventsTableProps) {
   const t = useExtracted()
   const isMobile = useIsMobile()
@@ -588,8 +659,18 @@ export default function AdminEventsTable({
     isSavingSportsFinal,
     handleCloseSportsFinalModal,
     handleSaveSportsFinalState,
+    resolveEvent,
+    resolveOutcomes,
+    resolveSelectedTokenId,
+    setResolveSelectedTokenId,
+    isResolving,
+    isFetchingOutcomes,
+    handleCloseResolutionModal,
+    handleResolveMarket,
     columns,
-  } = useAdminEventsTableState(initialAutoDeployNewEventsEnabled)
+  } = useAdminEventsTableState(initialAutoDeployNewEventsEnabled, role)
+  const canCreate = role === 'ADMIN' || role === 'EDITOR'
+  const canManageSettings = role === 'ADMIN'
 
   const settingsButton = (
     <Tooltip>
@@ -885,8 +966,8 @@ export default function AdminEventsTable({
         )}
         toolbarRightContent={(
           <div className="flex items-center gap-2">
-            {createEventButton}
-            {settingsButton}
+            {canCreate && createEventButton}
+            {canManageSettings && settingsButton}
           </div>
         )}
         searchInputClassName="h-9 sm:w-37.5 lg:w-62.5"
@@ -1191,6 +1272,104 @@ export default function AdminEventsTable({
                     disabled={isSavingLivestream}
                   >
                     {isSavingLivestream ? t('Saving...') : t('Save')}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+
+      {isMobile
+        ? (
+            <Drawer
+              open={Boolean(resolveEvent)}
+              onOpenChange={(open) => {
+                if (!open) { handleCloseResolutionModal() }
+              }}
+            >
+              <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
+                <div className="grid gap-4">
+                  <DrawerHeader className="space-y-2 p-0 text-left">
+                    <DrawerTitle>{t('Resolve Market')}</DrawerTitle>
+                    <DrawerDescription>
+                      Select the winning outcome for
+                      {' '}
+                      {resolveEvent?.title}
+                    </DrawerDescription>
+                  </DrawerHeader>
+                  <div className="space-y-4">
+                    {isFetchingOutcomes
+                      ? (
+                          <div className="text-sm text-muted-foreground">{t('Loading outcomes...')}</div>
+                        )
+                      : (
+                          <Select value={resolveSelectedTokenId} onValueChange={setResolveSelectedTokenId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('Select outcome')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {resolveOutcomes.map(o => (
+                                <SelectItem key={o.tokenId} value={o.tokenId}>
+                                  {o.outcomeText}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                  </div>
+                  <DrawerFooter className="mt-2 p-0">
+                    <Button type="button" variant="outline" onClick={handleCloseResolutionModal} disabled={isResolving}>
+                      {t('Cancel')}
+                    </Button>
+                    <Button type="button" onClick={handleResolveMarket} disabled={isResolving || !resolveSelectedTokenId}>
+                      {isResolving ? t('Resolving...') : t('Confirm Resolution')}
+                    </Button>
+                  </DrawerFooter>
+                </div>
+              </DrawerContent>
+            </Drawer>
+          )
+        : (
+            <Dialog
+              open={Boolean(resolveEvent)}
+              onOpenChange={(open) => {
+                if (!open) { handleCloseResolutionModal() }
+              }}
+            >
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{t('Resolve Market')}</DialogTitle>
+                  <DialogDescription>
+                    Select the winning outcome for
+                    {' '}
+                    {resolveEvent?.title}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  {isFetchingOutcomes
+                    ? (
+                        <div className="text-sm text-muted-foreground">{t('Loading outcomes...')}</div>
+                      )
+                    : (
+                        <Select value={resolveSelectedTokenId} onValueChange={setResolveSelectedTokenId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t('Select outcome')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {resolveOutcomes.map(o => (
+                              <SelectItem key={o.tokenId} value={o.tokenId}>
+                                {o.outcomeText}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={handleCloseResolutionModal} disabled={isResolving}>
+                    {t('Cancel')}
+                  </Button>
+                  <Button type="button" onClick={handleResolveMarket} disabled={isResolving || !resolveSelectedTokenId}>
+                    {isResolving ? t('Resolving...') : t('Confirm Resolution')}
                   </Button>
                 </DialogFooter>
               </DialogContent>

@@ -292,6 +292,9 @@ export default function AdminCreateEventForm({
     stepFourNextButtonContent,
   } = hook
 
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+
+
   return (
     <form
       className="space-y-6"
@@ -1626,6 +1629,23 @@ export default function AdminCreateEventForm({
                         </Button>
                       </div>
                     )}
+
+                    {form.marketMode && (
+                      <div className="space-y-2 rounded-md border p-4">
+                        <Label htmlFor="initial-liquidity">Starting liquidity per market</Label>
+                        <Input
+                          id="initial-liquidity"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={form.initialLiquidity}
+                          onChange={event => handleFieldChange('initialLiquidity', event.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This amount is funded from your Slimefish balance and initializes both outcomes.
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
           </CardContent>
@@ -1898,7 +1918,7 @@ export default function AdminCreateEventForm({
           <DialogHeader className="sr-only">
             <DialogTitle>Event preview</DialogTitle>
             <DialogDescription>
-              Review how your event and markets will look before starting signatures.
+              Review how your event and markets will look before creation.
             </DialogDescription>
           </DialogHeader>
 
@@ -2163,10 +2183,7 @@ export default function AdminCreateEventForm({
                         <ChevronRightIcon className="size-5 text-muted-foreground" />
                       )}
                   <p className="text-xl font-semibold text-foreground">
-                    EOA wallet balance (
-                    {requiredTotalRewardUsdc.toFixed(2)}
-                    {' '}
-                    USDC required)
+                    {isPlayMoneyAmm ? 'Play Money Virtual Balance' : `EOA wallet balance (${requiredTotalRewardUsdc.toFixed(2)} USDC required)`}
                   </p>
                 </button>
                 <CheckIndicator
@@ -2181,24 +2198,11 @@ export default function AdminCreateEventForm({
                       : t('This reward pays the UMA proposer who resolves the question correctly.')}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Need
-                    {' '}
-                    {requiredRewardUsdc.toFixed(2)}
-                    {' '}
-                    ×
-                    {' '}
-                    {marketCount}
-                    {' '}
-                    markets =
-                    {' '}
-                    {requiredTotalRewardUsdc.toFixed(2)}
-                    {' '}
-                    USDC. Balance:
-                    {' '}
-                    {eoaUsdcBalance.toFixed(2)}
-                    {' '}
-                    USDC.
+                    {isPlayMoneyAmm
+                      ? 'Using Play Money AMM virtual balance.'
+                      : `Need ${requiredRewardUsdc.toFixed(2)} × ${marketCount} markets = ${requiredTotalRewardUsdc.toFixed(2)} USDC. Balance: ${eoaUsdcBalance.toFixed(2)} USDC.`}
                   </p>
+                  {!isPlayMoneyAmm && (
                   <div className="flex items-center gap-1.5">
                     <p className="font-mono text-sm break-all text-muted-foreground">
                       {eoaAddress ?? 'Wallet not connected'}
@@ -2218,6 +2222,7 @@ export default function AdminCreateEventForm({
                       </button>
                     )}
                   </div>
+                  )}
                 </div>
               )}
               {fundingCheckError && <p className="mt-2 text-sm text-destructive">{fundingCheckError}</p>}
@@ -2615,7 +2620,7 @@ export default function AdminCreateEventForm({
       {currentStep === 5 && (
         <Card className="bg-background">
           <CardHeader className="pt-8 pb-6">
-            <CardTitle>Sign & create</CardTitle>
+            <CardTitle>{process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true' ? 'Create event' : 'Sign & create'}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pb-8">
             <div className="rounded-md border px-4 py-3">
@@ -2675,7 +2680,9 @@ export default function AdminCreateEventForm({
                       <p className="text-sm text-muted-foreground">
                         {pendingWorkflowRequestId
                           ? 'Server workflow is preparing your tx plan.'
-                          : 'Sign auth to load tx plan.'}
+                          : process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+                            ? 'Create this event in the AMM service.'
+                            : 'Sign auth to load tx plan.'}
                       </p>
                       {pendingWorkflowRequestId && (
                         <p className="font-mono text-xs text-muted-foreground">
@@ -2697,14 +2704,14 @@ export default function AdminCreateEventForm({
             <div className="rounded-md border px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-foreground">Sign EIP-712 auth challenge</p>
+                  <p className="text-sm font-semibold text-foreground">Confirm and create event</p>
                   <p className="text-xs text-muted-foreground">
                     {preparedSignaturePlan
                       ? authChallengeRemainingSeconds !== null
                         ? `Verified (auth time remaining: ${authChallengeCountdownLabel})`
                         : 'Verified'
                       : isSigningAuth
-                        ? 'Awaiting wallet'
+                        ? process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true' ? 'Creating event' : 'Awaiting wallet'
                         : isPreparingSignaturePlan || pendingWorkflowStatus === 'prepare_running'
                           ? 'Signed. Preparing tx plan on server'
                           : signatureFlowError

@@ -120,8 +120,11 @@ function resolveProceeds(position: DataApiPosition, size: number): number {
 }
 
 async function fetchDataApiPositions(address: string): Promise<DataApiPosition[]> {
-  const dataApiUrl = getDataApiUrl()
-  if (!dataApiUrl) {
+  let dataApiUrl: string
+  try {
+    dataApiUrl = getDataApiUrl()
+  }
+  catch {
     return []
   }
 

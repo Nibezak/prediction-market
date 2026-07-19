@@ -35,10 +35,14 @@ AGENTS.md
 *.pem
 
 # debug
+*.log
+*.pid
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+/scratch/
+/scratch-*
 
 # env files (can opt-in for committing if needed)
 .env

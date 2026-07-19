@@ -3,7 +3,7 @@ import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterPro
 export type SortOption = FilterState['sortBy']
 export type FrequencyOption = FilterState['frequency']
 export type StatusOption = FilterState['status']
-export type FilterCheckboxKey = 'hideSports' | 'hideCrypto' | 'hideEarnings'
+export type FilterCheckboxKey = 'hideSports' | 'hideCrypto' | 'hideEarnings' | 'bookmarked'
 
 export interface FilterSettings {
   sortBy: SortOption
@@ -12,6 +12,7 @@ export interface FilterSettings {
   hideSports: boolean
   hideCrypto: boolean
   hideEarnings: boolean
+  bookmarked: boolean
 }
 
 export interface FilterSettingsRowProps {
@@ -31,6 +32,7 @@ export const BASE_FILTER_SETTINGS = {
   hideSports: false,
   hideCrypto: false,
   hideEarnings: false,
+  bookmarked: false,
 } as const satisfies FilterSettings
 
 export function createDefaultFilters(overrides: Partial<FilterSettings> = {}): FilterSettings {

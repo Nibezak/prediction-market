@@ -135,40 +135,8 @@ export default function SettingsProfileContent({ user }: { user: User }) {
       }
 
       if (shouldUpdateCommunity) {
-        const token = await ensureCommunityToken({
-          address: user.address,
-          signMessageAsync: args => runWithSignaturePrompt(() => signMessageAsync(args)),
-          communityApiUrl,
-          depositWalletAddress: user.deposit_wallet_address ?? null,
-          forceRefresh: forceCommunityAuthRefresh,
-        })
-
-        const response = await updateCommunityProfile({
-          communityApiUrl,
-          token,
-          username,
-          image: selectedImageFile,
-        })
-
-        if (response.status === 401) {
-          clearCommunityAuth()
-        }
-
-        if (!response.ok) {
-          const message = await parseCommunityError(response, t('Failed to update profile.'))
-          setFormError(message)
-          toast.error(message)
-          return
-        }
-
-        const payload = await response.json() as {
-          username?: string
-          avatar_url?: string
-        }
-        communityUsername = payload.username || username
-        if (selectedImageFile) {
-          updatedAvatarUrl = payload.avatar_url?.trim() || undefined
-        }
+        // Skip community sync
+        communityUsername = username
       }
 
       const localForm = new FormData()

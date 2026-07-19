@@ -10,6 +10,11 @@ const globalForDb = globalThis as unknown as {
   db: DrizzleDb | undefined
 }
 
+export const pmSql = postgres(process.env.PLAY_MONEY_POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5434/playmoney', {
+  max: 10,
+  idle_timeout: 20,
+})
+
 function createDb(): DrizzleDb {
   const url = process.env.POSTGRES_URL
   if (!url) {
@@ -17,9 +22,10 @@ function createDb(): DrizzleDb {
   }
 
   const client = globalForDb.client ?? postgres(url, {
-    prepare: false,
-    connect_timeout: 10,
+    prepare: false, // Required for Supabase pooler
+    connect_timeout: 30,
     idle_timeout: 20,
+    ssl: /sslmode=(require|verify-ca|verify-full)/i.test(url) ? 'require' : undefined,
   })
   globalForDb.client = client
 
@@ -29,7 +35,7 @@ function createDb(): DrizzleDb {
   return database
 }
 
-function getDb(): DrizzleDb {
+export function getDb(): DrizzleDb {
   return globalForDb.db ?? createDb()
 }
 

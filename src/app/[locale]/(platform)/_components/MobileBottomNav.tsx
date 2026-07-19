@@ -4,17 +4,15 @@ import type { Route } from 'next'
 import type { ComponentProps, ReactNode } from 'react'
 import type { SupportedLocale } from '@/i18n/locales'
 import {
-  BookOpenIcon,
   ChartLineIcon,
   CheckIcon,
+  Clock3Icon,
+  CompassIcon,
   DownloadIcon,
+  EllipsisIcon,
   FileTextIcon,
-  HouseIcon,
   InfoIcon,
-  MenuIcon,
-  SearchIcon,
-  SparkleIcon,
-  TrophyIcon,
+  LayoutGridIcon,
   UnplugIcon,
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
@@ -28,7 +26,6 @@ import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
@@ -263,7 +260,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                   </>
                 )}
 
-                <DrawerClose asChild>
+                {/* <DrawerClose asChild>
                   <AppLink
                     intentPrefetch
                     href="/leaderboard"
@@ -272,7 +269,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                     <TrophyIcon className="size-4 text-amber-500" />
                     {t('Leaderboard')}
                   </AppLink>
-                </DrawerClose>
+                </DrawerClose> */}
 
                 <div className="mx-4 h-px bg-border/70" />
 
@@ -313,7 +310,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
 
                 <div className="mx-4 h-px bg-border/70" />
 
-                <DrawerClose asChild>
+                {/* <DrawerClose asChild>
                   <AppLink
                     intentPrefetch
                     href="/docs"
@@ -323,7 +320,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                     <BookOpenIcon className="size-4 text-muted-foreground" />
                     {t('Documentation')}
                   </AppLink>
-                </DrawerClose>
+                </DrawerClose> */}
 
                 <div className="mx-4 h-px bg-border/70" />
 
@@ -365,9 +362,9 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
           `)}
         >
           <div className="grid h-16.5 grid-cols-4">
-            <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={HouseIcon} />
-            <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={SearchIcon} />
-            <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={SparkleIcon} />
+            <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={LayoutGridIcon} />
+            <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={CompassIcon} />
+            <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={Clock3Icon} />
             {isAuthenticated
               ? (
                   <MobilePortfolioNavLink active={pathname.startsWith('/portfolio')} />
@@ -377,7 +374,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                     label={t('More')}
                     active={isGuestMenuOpen}
                     onClick={() => setIsGuestMenuOpen(true)}
-                    icon={MenuIcon}
+                    icon={EllipsisIcon}
                   />
                 )}
           </div>
@@ -390,7 +387,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
 interface MobileNavLinkProps {
   active: boolean
   href: ComponentProps<typeof AppLink>['href']
-  icon: typeof HouseIcon
+  icon: typeof LayoutGridIcon
   label: ReactNode
 }
 
@@ -440,20 +437,14 @@ function MobilePortfolioNavLink({ active }: { active: boolean }) {
       )}
     >
       <ChartLineIcon className="size-[17px]" />
-      {isLoadingValue
-        ? <Skeleton className="h-3 w-12 rounded-full" />
-        : (
-            <span className="max-w-full truncate">
-              {areValuesHidden ? '****' : portfolioValueLabel}
-            </span>
-          )}
+      <span className="max-w-full truncate">{t('Portfolio')}</span>
     </AppLink>
   )
 }
 
 interface MobileNavButtonProps {
   active: boolean
-  icon: typeof HouseIcon
+  icon: typeof LayoutGridIcon
   label: string
   onClick: () => void
 }

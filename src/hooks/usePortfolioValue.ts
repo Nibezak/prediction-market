@@ -1,7 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { normalizeAddress } from '@/lib/wallet'
-import { useUser } from '@/stores/useUser'
 
 interface PortfolioValueResult {
   value: number
@@ -18,40 +15,28 @@ export function usePortfolioValue(
   walletAddress?: string | null,
   options: PortfolioValueOptions = {},
 ): PortfolioValueResult {
-  const user = useUser()
-  const { dataUrl } = usePublicRuntimeConfig()
-  const userDepositWallet = user?.deposit_wallet_status === 'deployed' && user?.deposit_wallet_address
-    ? normalizeAddress(user.deposit_wallet_address)
-    : null
-  const useDefaultUser = options.useDefaultUser ?? true
-  const targetWallet = walletAddress
-    ? normalizeAddress(walletAddress)
-    : (useDefaultUser ? userDepositWallet : null)
-
   const {
     data,
     isLoading,
     isFetching,
   } = useQuery({
-    queryKey: ['portfolio-value', dataUrl, targetWallet],
-    enabled: Boolean(targetWallet),
+    queryKey: ['portfolio-value', 'me'],
     staleTime: 'static',
     gcTime: 5 * 60 * 1000,
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
     queryFn: async (): Promise<number> => {
-      if (!targetWallet) {
+      try {
+        const response = await fetch(`/api/amm/users/me/stats`)
+        if (!response.ok) {
+          return 0
+        }
+        const body = await response.json()
+        return body?.data?.netWorth || 0
+      }
+      catch (e) {
         return 0
       }
-
-      const response = await fetch(`${dataUrl}/value?user=${targetWallet}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch portfolio value')
-      }
-
-      const body = await response.json()
-
-      return body[0]?.value || 0
     },
   })
 

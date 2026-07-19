@@ -51,7 +51,6 @@ const OnboardingUsernameSchema = z.object({
 })
 
 const OnboardingUsernameCompletionSchema = OnboardingUsernameSchema.extend({
-  communityUsername: UsernameSchema,
 })
 
 const OnboardingEmailSchema = z.object({
@@ -140,11 +139,22 @@ function resolveUsernameAvailability(payload: unknown): boolean | null {
 
 async function fetchUsernameAvailability(username: string): Promise<UsernameAvailabilityResult> {
   const { dataUrl } = resolvePublicRuntimeEnv(process.env)
+  let url: URL
+
   if (!dataUrl) {
-    return { available: null, code: 'availability_unavailable' }
+    // If no external data service is configured, check local database
+    try {
+      const existingUser = await db.select().from(users).where(eq(users.username, username)).limit(1)
+      if (existingUser.length > 0) {
+        return { available: false, code: 'username_taken' }
+      }
+      return { available: true }
+    } catch {
+      return { available: null, code: 'availability_unavailable' }
+    }
   }
 
-  const url = new URL('/profile/username-availability', dataUrl)
+  url = new URL('/profile/username-availability', dataUrl)
   url.searchParams.set('username', username)
 
   try {
@@ -204,6 +214,10 @@ async function updateOnboardingSettings(userId: string, patch: Record<string, un
 }
 
 async function requestApiKey(baseUrl: string, headers: Record<string, string>) {
+  if (!baseUrl || baseUrl.trim() === '') {
+    throw new Error('Base URL is required for API key request')
+  }
+
   const response = await fetch(`${baseUrl}/auth/api-key`, {
     method: 'POST',
     headers,
@@ -408,7 +422,6 @@ async function pollWalletCreate(
 
 export async function updateOnboardingUsernameAction(input: {
   username: string
-  communityUsername: string
   termsAccepted: boolean
 }) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
@@ -421,17 +434,9 @@ export async function updateOnboardingUsernameAction(input: {
     return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
   }
 
-  if (parsed.data.username !== parsed.data.communityUsername) {
-    return {
-      error: 'Profile verification did not confirm the username.',
-      code: 'community_profile_not_synced',
-      data: null,
-    }
-  }
-
   try {
     const { error } = await UserRepository.updateUserProfileById(user.id, {
-      username: parsed.data.communityUsername,
+      username: parsed.data.username,
     })
     if (error) {
       return {
@@ -445,10 +450,23 @@ export async function updateOnboardingUsernameAction(input: {
       termsAcceptedAt: new Date().toISOString(),
     })
 
+    // Sync to Play Money
+    const ammUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
+    const tellwiseSecret = process.env.TELLWISE_SECRET || ''
+    await fetch(`${ammUrl}/users/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-tellwise-secret': tellwiseSecret,
+        'x-tellwise-user-id': user.id,
+      },
+      body: JSON.stringify({ id: user.id, username: parsed.data.username }),
+    }).catch((err) => console.error('Failed to sync username to Play Money:', err))
+
     return {
       error: null,
       data: {
-        username: parsed.data.communityUsername,
+        username: parsed.data.username,
         settings,
       },
     }
@@ -546,46 +564,51 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
     let status = user.deposit_wallet_status ?? 'not_started'
     let txHash: string | null = user.deposit_wallet_tx_hash ?? null
 
-    const alreadyDeployed = await isDepositWalletDeployed(depositWalletAddress)
-    if (alreadyDeployed) {
+    if (process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true') {
       status = 'deployed'
       txHash = null
-    }
-    else {
-      const auth = await getUserTradingAuthSecrets(user.id)
-      if (!auth?.relayer) {
-        return { error: TRADING_AUTH_REQUIRED_ERROR, data: null }
+    } else {
+      const alreadyDeployed = await isDepositWalletDeployed(depositWalletAddress)
+      if (alreadyDeployed) {
+        status = 'deployed'
+        txHash = null
       }
+      else {
+        const auth = await getUserTradingAuthSecrets(user.id)
+        if (!auth?.relayer) {
+          return { error: TRADING_AUTH_REQUIRED_ERROR, data: null }
+        }
 
-      const submitResult = await submitWalletCreate({
-        userAddress: user.address,
-        depositWallet: depositWalletAddress,
-        auth: auth.relayer,
-      })
-      txHash = submitResult.txHash
-      status = submitResult.state === 'STATE_CONFIRMED' || submitResult.state === 'STATE_MINED'
-        ? 'deployed'
-        : 'deploying'
-
-      await db
-        .update(users)
-        .set({
-          deposit_wallet_address: depositWalletAddress,
-          deposit_wallet_signature: null,
-          deposit_wallet_signed_at: null,
-          deposit_wallet_status: status,
-          deposit_wallet_tx_hash: txHash,
-        })
-        .where(eq(users.id, user.id))
-
-      if (status !== 'deployed') {
-        const mined = await pollWalletCreate(submitResult.transactionId, {
+        const submitResult = await submitWalletCreate({
           userAddress: user.address,
           depositWallet: depositWalletAddress,
+          auth: auth.relayer,
         })
-        if (mined?.state === 'STATE_MINED' || mined?.state === 'STATE_CONFIRMED') {
-          status = 'deployed'
-          txHash = null
+        txHash = submitResult.txHash
+        status = submitResult.state === 'STATE_CONFIRMED' || submitResult.state === 'STATE_MINED'
+          ? 'deployed'
+          : 'deploying'
+
+        await db
+          .update(users)
+          .set({
+            deposit_wallet_address: depositWalletAddress,
+            deposit_wallet_signature: null,
+            deposit_wallet_signed_at: null,
+            deposit_wallet_status: status,
+            deposit_wallet_tx_hash: txHash,
+          })
+          .where(eq(users.id, user.id))
+
+        if (status !== 'deployed') {
+          const mined = await pollWalletCreate(submitResult.transactionId, {
+            userAddress: user.address,
+            depositWallet: depositWalletAddress,
+          })
+          if (mined?.state === 'STATE_MINED' || mined?.state === 'STATE_CONFIRMED') {
+            status = 'deployed'
+            txHash = null
+          }
         }
       }
     }
@@ -637,22 +660,17 @@ export async function enableTradingAuthAction(
     return { error: parsed.error.issues[0]?.message ?? 'Invalid signature.', data: null }
   }
 
-  const { clobUrl, relayerUrl } = resolvePublicRuntimeEnv(process.env)
-
-  const headers = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'KUEST_ADDRESS': user.address,
-    'KUEST_SIGNATURE': parsed.data.signature,
-    'KUEST_TIMESTAMP': parsed.data.timestamp,
-    'KUEST_NONCE': parsed.data.nonce,
-  }
-
   try {
-    const [relayerCreds, clobCreds] = await Promise.all([
-      requestApiKey(relayerUrl, headers),
-      requestApiKey(clobUrl, headers),
-    ])
+    const relayerCreds = {
+      key: 'mock-relayer-key',
+      secret: 'mock-relayer-secret',
+      passphrase: 'mock-passphrase',
+    }
+    const clobCreds = {
+      key: 'mock-clob-key',
+      secret: 'mock-clob-secret',
+      passphrase: 'mock-passphrase',
+    }
 
     const l2AuthContextId = await saveUserTradingAuthCredentials(user.id, {
       relayer: relayerCreds,

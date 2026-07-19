@@ -1,6 +1,6 @@
 import type { QueryResult } from '@/types'
 import { and, eq, sql } from 'drizzle-orm'
-import { cacheTag, updateTag } from 'next/cache'
+import { cacheTag, revalidateTag } from 'next/cache'
 import { cacheTags } from '@/lib/cache-tags'
 import { hasDatabaseEnv } from '@/lib/db/env'
 import { settings } from '@/lib/db/schema/settings/tables'
@@ -9,35 +9,44 @@ import { db } from '@/lib/drizzle'
 
 type SettingsMap = Record<string, Record<string, { value: string, updated_at: string }>>
 
-async function getCachedSettings(): Promise<QueryResult<SettingsMap>> {
+async function getCachedSettings(): Promise<SettingsMap> {
   'use cache'
   cacheTag(cacheTags.settings)
 
-  return runQuery(async () => {
-    try {
-      const data = await db.select({
-        group: settings.group,
-        key: settings.key,
-        value: settings.value,
-        updated_at: settings.updated_at,
-      }).from(settings)
+  const data = await db.select({
+    group: settings.group,
+    key: settings.key,
+    value: settings.value,
+    updated_at: settings.updated_at,
+  }).from(settings)
 
-      const settingsByGroup: SettingsMap = {}
+  const settingsByGroup: SettingsMap = {}
 
-      for (const setting of data) {
-        settingsByGroup[setting.group] ??= {}
-        settingsByGroup[setting.group][setting.key] = {
-          value: setting.value,
-          updated_at: setting.updated_at.toISOString(),
-        }
-      }
-
-      return { data: settingsByGroup, error: null }
+  for (const setting of data) {
+    settingsByGroup[setting.group] ??= {}
+    settingsByGroup[setting.group][setting.key] = {
+      value: setting.value,
+      updated_at: setting.updated_at.toISOString(),
     }
-    catch {
-      return { data: null, error: 'Failed to fetch settings.' }
+  }
+
+  return settingsByGroup
+}
+
+async function loadSettings(): Promise<QueryResult<SettingsMap>> {
+  try {
+    return {
+      data: await getCachedSettings(),
+      error: null,
     }
-  })
+  }
+  catch (error) {
+    console.error('Failed to fetch settings.', error)
+    return {
+      data: null,
+      error: 'Failed to fetch settings.',
+    }
+  }
 }
 
 export const SettingsRepository = {
@@ -46,7 +55,7 @@ export const SettingsRepository = {
       return { data: null, error: 'Database env vars are not configured.' }
     }
 
-    return getCachedSettings()
+    return loadSettings()
   },
 
   async updateSettings(settingsArray: Array<{ group: string, key: string, value: string }>): Promise<QueryResult<Array<typeof settings.$inferSelect>>> {
@@ -69,7 +78,7 @@ export const SettingsRepository = {
           updated_at: settings.updated_at,
         })
 
-      updateTag(cacheTags.settings)
+      revalidateTag(cacheTags.settings, { expire: 0 })
 
       return { data, error: null }
     })
@@ -102,7 +111,7 @@ export const SettingsRepository = {
           updated_at: settings.updated_at,
         })
 
-      updateTag(cacheTags.settings)
+      revalidateTag(cacheTags.settings, { expire: 0 })
 
       return { data, error: null }
     })
@@ -143,7 +152,7 @@ export const SettingsRepository = {
         return touchedRows
       })
 
-      updateTag(cacheTags.settings)
+      revalidateTag(cacheTags.settings, { expire: 0 })
 
       return { data, error: null }
     })
@@ -182,7 +191,7 @@ export const SettingsRepository = {
         return deletedRows
       })
 
-      updateTag(cacheTags.settings)
+      revalidateTag(cacheTags.settings, { expire: 0 })
 
       return { data, error: null }
     })

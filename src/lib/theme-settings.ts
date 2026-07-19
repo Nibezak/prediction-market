@@ -20,6 +20,7 @@ import {
 import {
   buildSvgDataUri,
   createDefaultThemeSiteIdentity,
+  DEFAULT_THEME_SITE_LOGO_IMAGE_PATH,
   DEFAULT_THEME_SITE_LOGO_SVG,
   sanitizeThemeSiteLogoSvg,
   validateThemeSiteDescription,
@@ -488,20 +489,24 @@ function normalizeThemeSiteConfig(params: {
 
 function buildThemeSiteIdentity(config: NormalizedThemeSiteConfig): ThemeSiteIdentity {
   const defaultSite = createDefaultThemeSiteIdentity()
-  const logoImageUrl = config.logoMode === 'image'
-    ? getPublicAssetUrl(config.logoImagePath)
+  const resolvedLogoMode = config.logoMode
+  const resolvedLogoImagePath = config.logoImagePath
+  const logoImageUrl = resolvedLogoMode === 'image'
+    ? resolvedLogoImagePath === DEFAULT_THEME_SITE_LOGO_IMAGE_PATH
+      ? DEFAULT_THEME_SITE_LOGO_IMAGE_PATH
+      : getPublicAssetUrl(resolvedLogoImagePath)
     : null
   const pwaIcon192Url = getPublicAssetUrl(config.pwaIcon192Path) || defaultSite.pwaIcon192Url
   const pwaIcon512Url = getPublicAssetUrl(config.pwaIcon512Path) || defaultSite.pwaIcon512Url
 
-  const useImageLogo = config.logoMode === 'image' && Boolean(logoImageUrl)
+  const useImageLogo = resolvedLogoMode === 'image' && Boolean(logoImageUrl)
 
   return {
     name: config.siteName,
     description: config.siteDescription,
     logoMode: useImageLogo ? 'image' : 'svg',
     logoSvg: config.logoSvg,
-    logoImagePath: useImageLogo ? config.logoImagePath : null,
+    logoImagePath: useImageLogo ? resolvedLogoImagePath : null,
     logoImageUrl: useImageLogo ? logoImageUrl : null,
     logoUrl: useImageLogo && logoImageUrl ? logoImageUrl : buildSvgDataUri(config.logoSvg),
     googleAnalyticsId: config.googleAnalyticsId,

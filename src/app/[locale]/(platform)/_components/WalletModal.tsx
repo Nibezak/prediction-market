@@ -85,6 +85,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
           disabledBuy={!meldUrl}
           disabledReceive={!hasDeployedDepositWallet}
           meldUrl={meldUrl}
+          walletAddress={walletAddress}
           walletEoaAddress={walletEoaAddress}
           walletBalance={walletBalance}
           isBalanceLoading={isBalanceLoading}

@@ -13,7 +13,11 @@ const config: NextConfig = {
   cacheComponents: true,
   typedRoutes: true,
   reactStrictMode: false,
-  reactCompiler: true,
+  reactCompiler: process.env.NEXT_REACT_COMPILER === 'true',
+  productionBrowserSourceMaps: false,
+  typescript: {
+    ignoreBuildErrors: process.env.NEXT_SKIP_BUILD_TYPECHECK === 'true',
+  },
   staticPageGenerationTimeout: 180,
   experimental: {
     serverActions: {
@@ -37,6 +41,18 @@ const config: NextConfig = {
   async headers() {
     return [
       {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+          ...(process.env.NODE_ENV === 'production' ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' }] : []),
+        ],
+      },
+      {
         source: '/sw.js',
         headers: [
           {
@@ -57,14 +73,6 @@ const config: NextConfig = {
   },
   async rewrites() {
     return [
-      {
-        source: '/docs/:path*.md',
-        destination: '/llms.md/:path*',
-      },
-      {
-        source: '/:locale/docs/:path*.md',
-        destination: '/llms.md/:path*',
-      },
       {
         source: '/sitemaps/:id.xml',
         destination: '/sitemaps/sitemap/:id.xml',
@@ -88,20 +96,29 @@ const withMDX = createMDX({
   configPath: 'docs.config.ts',
 })
 
+const shouldExtractMessages = process.env.NODE_ENV === 'production'
+  || process.env.NEXT_INTL_EXTRACT === 'true'
+
 const withNextIntl = createNextIntlPlugin({
-  experimental: {
-    extract: true,
-    srcPath: './src',
-    messages: {
-      path: './src/i18n/messages',
-      format: 'json',
-      locales: 'infer',
-      sourceLocale: 'en',
-    },
-  },
+  experimental: shouldExtractMessages
+    ? {
+        extract: true,
+        srcPath: './src',
+        messages: {
+          path: './src/i18n/messages',
+          format: 'json',
+          locales: 'infer',
+          sourceLocale: 'en',
+        },
+      }
+    : undefined,
 })
 
-export default withSentryConfig(withNextIntl(withMDX(config)), {
-  telemetry: false,
-  silent: true,
-})
+const nextConfig = withNextIntl(withMDX(config))
+
+export default process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(nextConfig, {
+      telemetry: false,
+      silent: true,
+    })
+  : nextConfig

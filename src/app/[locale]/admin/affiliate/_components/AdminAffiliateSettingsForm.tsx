@@ -172,7 +172,7 @@ export default function AdminAffiliateSettingsForm({
             />
             <p className="text-sm text-muted-foreground">
               {takerKuestFeeLabel
-                ? t('Your fee plus Kuest {kuestFee}% fee.', { kuestFee: takerKuestFeeLabel })
+                ? t('Your fee plus Slimefish {kuestFee}% fee.', { kuestFee: takerKuestFeeLabel })
                 : t('Kuest fees unavailable.')}
             </p>
           </div>
@@ -190,7 +190,7 @@ export default function AdminAffiliateSettingsForm({
             />
             <p className="text-sm text-muted-foreground">
               {makerKuestFeeLabel
-                ? t('Your fee plus Kuest {kuestFee}% fee.', { kuestFee: makerKuestFeeLabel })
+                ? t('Your fee plus Slimefish {kuestFee}% fee.', { kuestFee: makerKuestFeeLabel })
                 : t('Kuest fees unavailable.')}
             </p>
           </div>

@@ -78,7 +78,7 @@ export default function EventChartCanvas({
         annotationMarkers={chartAnnotationMarkers}
         leadingGapStart={leadingGapStart}
         legendContent={legendContent}
-        showLegend={!isSingleMarket}
+        showLegend={!isSingleMarket || legendSeries.length > 1}
         watermark={isSingleMarket ? undefined : watermark}
         lineCurve="monotoneX"
         plotClipPadding={{ right: EVENT_PLOT_CLIP_RIGHT_PADDING }}

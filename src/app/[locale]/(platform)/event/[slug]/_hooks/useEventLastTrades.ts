@@ -1,72 +1,56 @@
 import type { MarketTokenTarget } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
-import type { LastTradePriceEntry } from '@/app/[locale]/(platform)/event/[slug]/_types/EventOrderBookTypes'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { normalizeClobMarketPrice } from '@/lib/clob-price'
 
 const LAST_TRADE_REFRESH_INTERVAL_MS = 60_000
 
-function normalizePrice(value: string | undefined) {
-  return normalizeClobMarketPrice(value)
-}
+async function fetchLastTradesByMarket(targets: MarketTokenTarget[]) {
+  const uniqueConditionIds = Array.from(new Set(targets.map(target => target.conditionId).filter(Boolean)))
 
-async function fetchLastTradesByMarket(targets: MarketTokenTarget[], clobUrl: string) {
-  const uniqueTokenIds = Array.from(new Set(targets.map(target => target.tokenId).filter(Boolean)))
-
-  if (!uniqueTokenIds.length) {
+  if (!uniqueConditionIds.length) {
     return {}
   }
 
-  if (!clobUrl) {
-    throw new Error('CLOB URL is not configured.')
-  }
+  const ammMaps = new Map<string, any>()
 
-  const response = await fetch(`${clobUrl}/last-trades-prices`, {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(uniqueTokenIds.map(tokenId => ({ token_id: tokenId }))),
-  })
-
-  if (!response.ok) {
-    const message = `Failed to fetch last trades (${response.status} ${response.statusText}).`
-    console.error(message)
-    throw new Error(message)
-  }
-
-  const payload = await response.json() as LastTradePriceEntry[]
-  const lastTradesByToken = new Map<string, number>()
-
-  payload.forEach((entry) => {
-    const normalized = normalizePrice(entry?.price)
-    if (normalized != null && entry?.token_id) {
-      lastTradesByToken.set(entry.token_id, normalized)
+  for (const conditionId of uniqueConditionIds) {
+    try {
+      // Use internal proxy
+      const res = await fetch(`/api/amm/markets/${conditionId}?extended=true`)
+      if (res.ok) {
+        const mkt = await res.json()
+        if (mkt?.data) {
+          ammMaps.set(conditionId, mkt.data)
+        }
+      }
     }
-  })
+    catch (err) {
+      // ignore
+    }
+  }
 
   return targets.reduce<Record<string, number>>((acc, target) => {
-    const lastTrade = lastTradesByToken.get(target.tokenId)
-    if (lastTrade != null) {
-      acc[target.conditionId] = lastTrade
+    const mkt = ammMaps.get(target.conditionId)
+    if (mkt && mkt.options && Array.isArray(mkt.options)) {
+      const opt = mkt.options.find((o: any) => o.id === target.tokenId)
+      if (opt && opt.probability) {
+        acc[target.conditionId] = Number(opt.probability)
+      }
     }
     return acc
   }, {})
 }
 
 export function useEventLastTrades(targets: MarketTokenTarget[]) {
-  const { clobUrl } = usePublicRuntimeConfig()
   const tokenSignature = useMemo(
     () => targets.map(target => `${target.conditionId}:${target.tokenId}`).sort().join(','),
     [targets],
   )
 
   const { data } = useQuery({
-    queryKey: ['event-last-trades', clobUrl, tokenSignature],
-    queryFn: () => fetchLastTradesByMarket(targets, clobUrl),
-    enabled: targets.length > 0 && Boolean(clobUrl),
+    queryKey: ['event-last-trades', tokenSignature],
+    queryFn: () => fetchLastTradesByMarket(targets),
+    enabled: targets.length > 0,
     staleTime: 'static',
     gcTime: LAST_TRADE_REFRESH_INTERVAL_MS,
     refetchInterval: LAST_TRADE_REFRESH_INTERVAL_MS,

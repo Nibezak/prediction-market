@@ -26,6 +26,10 @@ export async function fetchCommunityProfileByAddress({
   address: string
   signal?: AbortSignal
 }): Promise<CommunityProfile | null> {
+  if (!communityApiUrl || communityApiUrl.trim() === '') {
+    return null
+  }
+
   const url = buildCommunityApiUrl(communityApiUrl, '/profile')
   url.searchParams.set('address', address)
   return await fetchCommunityProfile(url, signal)

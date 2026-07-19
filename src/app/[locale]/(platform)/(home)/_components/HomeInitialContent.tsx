@@ -20,9 +20,8 @@ async function HomeInitialContentBody({
   initialMainTag,
   initialTag,
   locale,
-}: HomeInitialContentProps) {
-  const currentTimestamp = getHomeInitialCurrentTimestamp()
-
+  currentTimestamp,
+}: HomeInitialContentProps & { currentTimestamp?: number | null }) {
   return (
     <HomeContent
       locale={locale}
@@ -39,15 +38,21 @@ async function CachedHomeInitialContent(props: HomeInitialContentProps) {
   cacheTag(cacheTags.homeFeaturedEvents)
   cacheTag(cacheTags.settings)
 
-  return <HomeInitialContentBody {...props} />
+  const currentTimestamp = getHomeInitialCurrentTimestamp()
+  return <HomeInitialContentBody {...props} currentTimestamp={currentTimestamp} />
 }
 
 async function RuntimeHomeInitialContent(props: HomeInitialContentProps) {
   await deferPublicShellPrerenderIfNeeded()
 
-  return hasDatabaseEnv()
-    ? <CachedHomeInitialContent {...props} />
-    : <HomeInitialContentBody {...props} />
+  // Don't use cache when initialTag is provided (comes from route params)
+  const shouldUseCache = hasDatabaseEnv() && !props.initialTag
+  if (shouldUseCache) {
+    return <CachedHomeInitialContent {...props} />
+  }
+
+  // For non-cached path, pass null timestamp to avoid Date.now() during prerender
+  return <HomeInitialContentBody {...props} currentTimestamp={null} />
 }
 
 export default function HomeInitialContent({
@@ -55,9 +60,14 @@ export default function HomeInitialContent({
   ...props
 }: HomeInitialContentProps) {
   if (shouldPrerenderPublicShell() || !deferRuntimePrerender) {
-    return hasDatabaseEnv()
-      ? <CachedHomeInitialContent {...props} />
-      : <HomeInitialContentBody {...props} />
+    // Don't use cache when initialTag is provided (comes from route params)
+    const shouldUseCache = hasDatabaseEnv() && !props.initialTag
+    if (shouldUseCache) {
+      return <CachedHomeInitialContent {...props} />
+    }
+
+    // For non-cached path, pass null timestamp to avoid Date.now() during prerender
+    return <HomeInitialContentBody {...props} currentTimestamp={null} />
   }
 
   return <RuntimeHomeInitialContent {...props} />

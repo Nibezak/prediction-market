@@ -44,8 +44,10 @@ interface EventOrderPanelOrderInputProps {
     changePct: number
     multiplier: number
   }
+  isEarningsLoading: boolean
   shouldShowResolvedMarketMinimumWarning: boolean
   shouldShowResolvedNoLiquidityWarning: boolean
+  tradeErrorMessage: string | null
   showInsufficientSharesWarning: boolean
   showInsufficientBalanceWarning: boolean
   showAmountTooLowWarning: boolean
@@ -64,7 +66,6 @@ interface EventOrderPanelOrderInputProps {
   onLimitExpirationTimestampChange: (timestamp: number | null) => void
   onAmountUpdateFromLimit: (amount: string) => void
   isInteractiveWalletReady: boolean
-  shouldShowDepositCta: boolean
   isLoading: boolean
   selectedSubmitAccent: EventOrderPanelOutcomeSelectedAccent | null
   outcomeButtonStyleVariant: 'default' | 'sports3d'
@@ -95,8 +96,10 @@ export default function EventOrderPanelOrderInput({
   avgSellPriceCentsValue,
   avgBuyPriceCentsValue,
   buyPayoutSummary,
+  isEarningsLoading,
   shouldShowResolvedMarketMinimumWarning,
   shouldShowResolvedNoLiquidityWarning,
+  tradeErrorMessage,
   showInsufficientSharesWarning,
   showInsufficientBalanceWarning,
   showAmountTooLowWarning,
@@ -115,7 +118,6 @@ export default function EventOrderPanelOrderInput({
   onLimitExpirationTimestampChange,
   onAmountUpdateFromLimit,
   isInteractiveWalletReady,
-  shouldShowDepositCta,
   isLoading,
   selectedSubmitAccent,
   outcomeButtonStyleVariant,
@@ -200,6 +202,7 @@ export default function EventOrderPanelOrderInput({
                   buyProfit={buyPayoutSummary.profit}
                   buyChangePct={buyPayoutSummary.changePct}
                   buyMultiplier={buyPayoutSummary.multiplier}
+                  isQuoteLoading={isEarningsLoading}
                 />
               </div>
               {shouldShowResolvedMarketMinimumWarning && (
@@ -224,6 +227,18 @@ export default function EventOrderPanelOrderInput({
                   {t('No liquidity for this market order')}
                 </div>
               )}
+              {tradeErrorMessage && !shouldShowResolvedNoLiquidityWarning && (
+                <div
+                  className={cn(`
+                    mt-3 flex animate-order-shake items-center justify-center gap-2 pb-1 text-center text-sm
+                    font-semibold text-orange-500
+                  `)}
+                  role="alert"
+                >
+                  <TriangleAlertIcon className="size-4 shrink-0" />
+                  {tradeErrorMessage}
+                </div>
+              )}
             </>
           )}
 
@@ -243,7 +258,7 @@ export default function EventOrderPanelOrderInput({
       )}
 
       <EventOrderPanelSubmitButton
-        type={!isInteractiveWalletReady || shouldShowDepositCta ? 'button' : 'submit'}
+        type={!isInteractiveWalletReady ? 'button' : 'submit'}
         isLoading={isLoading}
         isDisabled={isLoading}
         selectedAccent={selectedSubmitAccent}

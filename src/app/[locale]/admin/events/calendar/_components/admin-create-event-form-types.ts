@@ -56,6 +56,7 @@ export interface FormState {
   binaryQuestion: string
   binaryOutcomeYes: string
   binaryOutcomeNo: string
+  initialLiquidity: string
   options: OptionItem[]
   resolutionSource: string
   resolutionRules: string
@@ -144,6 +145,7 @@ export interface PreparePayloadBody {
   binaryQuestion?: string
   binaryOutcomeYes?: string
   binaryOutcomeNo?: string
+  initialLiquidity: number
   options?: PreparePayloadOption[]
   resolutionSource: string
   resolutionRules: string

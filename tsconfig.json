@@ -39,6 +39,9 @@
   ],
   "exclude": [
     "node_modules",
-    "tests"
+    "tests",
+    "scratch-*.ts",
+    "scratch-*.cjs",
+    "scratch"
   ]
 }

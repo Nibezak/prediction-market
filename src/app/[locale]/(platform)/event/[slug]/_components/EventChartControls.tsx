@@ -24,7 +24,7 @@ export const defaultChartSettings = {
   horizontalGrid: true,
   verticalGrid: false,
   annotations: false,
-  bothOutcomes: false,
+  bothOutcomes: true,
 }
 
 export type ChartSettings = typeof defaultChartSettings

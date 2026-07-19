@@ -31,6 +31,7 @@ import {
   buildMarketSignature,
   filterChartDataForSeries,
   getMaxSeriesCount,
+  getOutcomeColorForMarket,
   getOutcomeLabelForMarket,
   getTopMarketIds,
   resolveEventHistoryEndAt,
@@ -63,14 +64,25 @@ function buildHistoryWithLatestPointOverride(
   normalizedHistory: Array<Record<string, number | Date> & { date: Date }>,
   valueByKey: Record<string, number>,
   nowMs: number | null,
+  fallbackStartMs: number | null,
+  fallbackEndMs: number | null,
 ) {
   const fallbackTimestamp = normalizedHistory.at(-1)?.date.getTime()
-  if (!Number.isFinite(nowMs) && !Number.isFinite(fallbackTimestamp)) {
+  if (
+    !Number.isFinite(nowMs)
+    && !Number.isFinite(fallbackTimestamp)
+    && !Number.isFinite(fallbackEndMs)
+    && !Number.isFinite(fallbackStartMs)
+  ) {
     return normalizedHistory
   }
   const nextTimestamp = Number.isFinite(nowMs)
     ? (nowMs as number)
-    : (fallbackTimestamp as number)
+    : Number.isFinite(fallbackTimestamp)
+      ? (fallbackTimestamp as number)
+      : Number.isFinite(fallbackEndMs)
+        ? (fallbackEndMs as number)
+        : (fallbackStartMs as number) + 60_000
   const nextDate = new Date(nextTimestamp)
   const sanitizedEntries = Object.entries(valueByKey)
     .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
@@ -81,8 +93,13 @@ function buildHistoryWithLatestPointOverride(
   }
 
   if (normalizedHistory.length === 0) {
+    const startTimestamp = Number.isFinite(fallbackStartMs)
+      ? Math.min(fallbackStartMs as number, nextTimestamp - 60_000)
+      : nextTimestamp - 60_000
+    const values = Object.fromEntries(sanitizedEntries)
     return [
-      Object.fromEntries([['date', nextDate], ...sanitizedEntries]) as Record<string, number | Date> & { date: Date },
+      { date: new Date(startTimestamp), ...values },
+      { date: nextDate, ...values },
     ]
   }
 
@@ -174,7 +191,12 @@ function EventChartComponent({
     storeChartSettings(nextSettings)
   }, [chartSettings])
 
-  const showBothOutcomes = isSingleMarket && chartSettings.bothOutcomes
+  const singleMarket = isSingleMarket ? event.markets[0] : null
+  const hasBinaryOutcomePair = Boolean(
+    singleMarket?.outcomes.some(outcome => outcome.outcome_index === OUTCOME_INDEX.YES)
+    && singleMarket?.outcomes.some(outcome => outcome.outcome_index === OUTCOME_INDEX.NO),
+  )
+  const showBothOutcomes = isSingleMarket && hasBinaryOutcomePair
   const eventHistoryEndAt = useMemo(
     () => resolveEventHistoryEndAt(event),
     [event],
@@ -370,17 +392,19 @@ function EventChartComponent({
     : primaryConditionId
   const yesOutcomeLabel = getOutcomeLabelForMarket(primaryMarket, OUTCOME_INDEX.YES)
   const noOutcomeLabel = getOutcomeLabelForMarket(primaryMarket, OUTCOME_INDEX.NO)
+  const yesOutcomeColor = getOutcomeColorForMarket(primaryMarket, OUTCOME_INDEX.YES, 'var(--primary)')
+  const noOutcomeColor = getOutcomeColorForMarket(primaryMarket, OUTCOME_INDEX.NO, '#FF6600')
   const bothOutcomeSeries = useMemo(
     () => {
       if (!showBothOutcomes || !primaryConditionId) {
         return []
       }
       return [
-        { key: yesSeriesKey, name: yesOutcomeLabel, color: 'var(--primary)' },
-        { key: noSeriesKey, name: noOutcomeLabel, color: '#FF6600' },
+        { key: yesSeriesKey, name: yesOutcomeLabel, color: yesOutcomeColor },
+        { key: noSeriesKey, name: noOutcomeLabel, color: noOutcomeColor },
       ]
     },
-    [showBothOutcomes, primaryConditionId, yesSeriesKey, noSeriesKey, yesOutcomeLabel, noOutcomeLabel],
+    [showBothOutcomes, primaryConditionId, yesSeriesKey, noSeriesKey, yesOutcomeLabel, noOutcomeLabel, yesOutcomeColor, noOutcomeColor],
   )
 
   const effectiveSeries = useMemo(() => {
@@ -390,11 +414,11 @@ function EventChartComponent({
     if (!isSingleMarket || baseSeries.length === 0) {
       return baseSeries
     }
-    const primaryColor = activeOutcomeIndex === OUTCOME_INDEX.NO ? '#FF6600' : 'var(--primary)'
+    const primaryColor = activeOutcomeIndex === OUTCOME_INDEX.NO ? noOutcomeColor : yesOutcomeColor
     return baseSeries.map((seriesItem, index) => (index === 0
       ? { ...seriesItem, color: primaryColor }
       : seriesItem))
-  }, [activeOutcomeIndex, baseSeries, isSingleMarket, showBothOutcomes, bothOutcomeSeries])
+  }, [activeOutcomeIndex, baseSeries, isSingleMarket, showBothOutcomes, bothOutcomeSeries, yesOutcomeColor, noOutcomeColor])
 
   const watermark = useMemo(
     () => ({
@@ -554,8 +578,12 @@ function EventChartComponent({
       normalizedHistory,
       latestPointOverrides,
       nowMs,
+      parseTimestampToMs(event.created_at),
+      parseTimestampToMs(eventHistoryEndAt),
     )
   }, [
+    event.created_at,
+    eventHistoryEndAt,
     latestPointOverrides,
     normalizedHistory,
     nowMs,
@@ -613,7 +641,7 @@ function EventChartComponent({
     ? (activeOutcomeIndex === OUTCOME_INDEX.NO ? noSeriesKey : yesSeriesKey)
     : legendSeries[0]?.key
   const primarySeriesColor = showBothOutcomes
-    ? (activeOutcomeIndex === OUTCOME_INDEX.NO ? '#FF6600' : 'var(--primary)')
+    ? (activeOutcomeIndex === OUTCOME_INDEX.NO ? noOutcomeColor : yesOutcomeColor)
     : (legendSeries[0]?.color ?? 'currentColor')
   const hoveredActiveChance = activeSeriesKey
     ? cursorSnapshot?.values?.[activeSeriesKey]

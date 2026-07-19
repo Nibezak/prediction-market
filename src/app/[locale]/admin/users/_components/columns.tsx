@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
+import { UserActions } from './UserActions'
 
 interface AdminUserRow {
   id: string
@@ -24,6 +25,8 @@ interface AdminUserRow {
   profileUrl: string
   created_at: string
   search_text: string
+  is_blocked?: boolean
+  role?: string
 }
 
 export function useAdminUsersColumns(): ColumnDef<AdminUserRow>[] {
@@ -74,12 +77,14 @@ export function useAdminUsersColumns(): ColumnDef<AdminUserRow>[] {
           <div className="min-w-44">
             <ProfileLink
               user={{
+                id: user.id,
                 address: user.address,
                 deposit_wallet_address: user.deposit_wallet_address,
                 image: user.avatarUrl,
                 username: user.username,
               }}
               profileSlug={profileSlug}
+              profileHref={`/@${user.username}`}
               layout="inline"
               usernameAddon={user.is_admin ? <Badge variant="outline" className="text-xs">{t('Admin')}</Badge> : null}
             />
@@ -192,5 +197,41 @@ export function useAdminUsersColumns(): ColumnDef<AdminUserRow>[] {
         )
       },
     },
+    {
+      accessorKey: 'role',
+      header: () => (
+        <div className="text-xs font-medium text-muted-foreground uppercase">
+          {t('Role')}
+        </div>
+      ),
+      cell: ({ row }) => (
+        <Badge variant="outline" className="text-xs">
+          {(row.original.role || 'USER').toLowerCase()}
+        </Badge>
+      ),
+      enableSorting: false,
+    },
+    {
+      id: 'status',
+      header: () => (
+        <div className="text-xs font-medium text-muted-foreground uppercase">
+          {t('Trading')}
+        </div>
+      ),
+      cell: ({ row }) => (
+        <Badge variant={row.original.is_blocked ? 'destructive' : 'secondary'} className="text-xs">
+          {row.original.is_blocked ? t('Blocked') : t('Allowed')}
+        </Badge>
+      ),
+      enableSorting: false,
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">{t('Actions')}</span>,
+      cell: ({ row }) => <UserActions user={row.original} />,
+      enableSorting: false,
+      enableHiding: false,
+    },
   ]
 }
+

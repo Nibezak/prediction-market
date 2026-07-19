@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from '@tanstack/react-table'
 import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
-import { ArrowUpDownIcon, BadgeInfoIcon, EyeIcon, EyeOffIcon, RadioIcon, RepeatIcon, TrophyIcon } from 'lucide-react'
+import { ArrowUpDownIcon, BadgeInfoIcon, CheckCircleIcon, EyeIcon, EyeOffIcon, RadioIcon, RepeatIcon, TrophyIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
@@ -18,7 +18,11 @@ interface EventColumnOptions {
   onOpenAdditionalContextModal: (event: AdminEventRow) => void
   onOpenLivestreamModal: (event: AdminEventRow) => void
   onOpenSportsFinalModal: (event: AdminEventRow) => void
+  onOpenResolutionModal: (event: AdminEventRow) => void
   isUpdatingHidden: (eventId: string) => boolean
+  canResolve: boolean
+  canEdit: boolean
+  canModerate: boolean
 }
 
 function resolveStatusVariant(status: AdminEventRow['status']): 'default' | 'secondary' | 'outline' | 'destructive' {
@@ -52,7 +56,11 @@ export function useAdminEventsColumns({
   onOpenAdditionalContextModal,
   onOpenLivestreamModal,
   onOpenSportsFinalModal,
+  onOpenResolutionModal,
   isUpdatingHidden,
+  canResolve,
+  canEdit,
+  canModerate,
 }: EventColumnOptions): ColumnDef<AdminEventRow>[] {
   const t = useExtracted()
 
@@ -233,7 +241,7 @@ export function useAdminEventsColumns({
 
         return (
           <div className="flex w-full items-center justify-end gap-1">
-            {event.is_sports_games_moneyline && !shouldHideSportsAdminControls && (
+            {canResolve && event.is_sports_games_moneyline && !shouldHideSportsAdminControls && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -253,7 +261,25 @@ export function useAdminEventsColumns({
               </Tooltip>
             )}
 
-            {!shouldHideSportsAdminControls && (
+            {canResolve && !shouldHideSportsAdminControls && event.status !== 'resolved' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => onOpenResolutionModal(event)}
+                    aria-label={t('Resolve Market')}
+                  >
+                    <CheckCircleIcon className="size-4 text-green-500" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('Resolve Market')}</TooltipContent>
+              </Tooltip>
+            )}
+
+            {canEdit && !shouldHideSportsAdminControls && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -273,7 +299,7 @@ export function useAdminEventsColumns({
               </Tooltip>
             )}
 
-            {!shouldHideSportsAdminControls && (
+            {canEdit && !shouldHideSportsAdminControls && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -297,7 +323,7 @@ export function useAdminEventsColumns({
               </Tooltip>
             )}
 
-            <Tooltip>
+            {canModerate && <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
@@ -314,7 +340,7 @@ export function useAdminEventsColumns({
               <TooltipContent>
                 {event.is_hidden ? t('Show event') : t('Hide event')}
               </TooltipContent>
-            </Tooltip>
+            </Tooltip>}
           </div>
         )
       },

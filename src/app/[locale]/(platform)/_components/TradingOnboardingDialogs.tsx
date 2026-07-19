@@ -58,6 +58,7 @@ interface TradingOnboardingDialogsProps {
   usernameError: string | null
   isUsernameSubmitting: boolean
   onUsernameSubmit: (username: string, termsAccepted: boolean) => void
+  onUsernameSkip: () => void
   emailDefaultValue: string
   emailError: string | null
   isEmailSubmitting: boolean
@@ -188,6 +189,7 @@ interface UsernameDialogProps {
   error: string | null
   isSubmitting: boolean
   onSubmit: (username: string, termsAccepted: boolean) => void
+  onSkip: () => void
 }
 
 type UsernameDialogFormProps = Omit<UsernameDialogProps, 'onOpenChange'>
@@ -199,6 +201,7 @@ function UsernameDialog({
   error,
   isSubmitting,
   onSubmit,
+  onSkip,
 }: UsernameDialogProps) {
   const t = useExtracted()
 
@@ -217,6 +220,7 @@ function UsernameDialog({
         error={error}
         isSubmitting={isSubmitting}
         onSubmit={onSubmit}
+        onSkip={onSkip}
       />
     </OnboardingDialogShell>
   )
@@ -228,6 +232,7 @@ function UsernameDialogForm({
   error,
   isSubmitting,
   onSubmit,
+  onSkip,
 }: UsernameDialogFormProps) {
   const t = useExtracted()
   const [usernameInput, setUsernameInput] = useState<string | null>(null)
@@ -413,6 +418,15 @@ function UsernameDialogForm({
       >
         {isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : t('Continue')}
       </Button>
+
+      <button
+        type="button"
+        className="mx-auto block text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        disabled={isSubmitting}
+        onClick={onSkip}
+      >
+        {t('Do this later')}
+      </button>
     </form>
   )
 }
@@ -651,7 +665,7 @@ function EnableTradingStatusDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('Enable Trading')}
-      description={null}
+      description={t('Complete the steps below to enable trading')}
       dismissible={dismissible}
       dialogContentClassName="max-w-sm border bg-background p-6"
       headerClassName="space-y-2 text-center"
@@ -871,6 +885,7 @@ export default function TradingOnboardingDialogs({
   usernameError,
   isUsernameSubmitting,
   onUsernameSubmit,
+  onUsernameSkip,
   emailDefaultValue,
   emailError,
   isEmailSubmitting,
@@ -908,6 +923,7 @@ export default function TradingOnboardingDialogs({
         error={usernameError}
         isSubmitting={isUsernameSubmitting}
         onSubmit={onUsernameSubmit}
+        onSkip={onUsernameSkip}
       />
 
       <EmailDialog

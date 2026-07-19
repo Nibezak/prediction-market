@@ -184,6 +184,9 @@ export function formatVolume(volume: number): string {
     return '$0'
   }
 
+  if (volume >= 1_000_000_000) {
+    return `$${(volume / 1_000_000_000).toFixed(1)}B`
+  }
   if (volume >= MICRO_UNIT) {
     return `$${(volume / MICRO_UNIT).toFixed(1)}M`
   }
@@ -195,6 +198,7 @@ export function formatVolume(volume: number): string {
 
 const COMPACT_THRESHOLD = 100_000
 const COMPACT_MILLION = 1_000_000
+const COMPACT_BILLION = 1_000_000_000
 
 export function formatCompactCount(value: number) {
   if (!Number.isFinite(value)) {
@@ -202,6 +206,10 @@ export function formatCompactCount(value: number) {
   }
 
   const abs = Math.abs(value)
+  if (abs >= COMPACT_BILLION) {
+    const compact = (abs / COMPACT_BILLION).toFixed(1).replace(/\.0$/, '')
+    return `${value < 0 ? '-' : ''}${compact}B`
+  }
   if (abs >= COMPACT_MILLION) {
     const compact = (abs / COMPACT_MILLION).toFixed(1).replace(/\.0$/, '')
     return `${value < 0 ? '-' : ''}${compact}M`
@@ -223,6 +231,10 @@ export function formatCompactCurrency(value: number) {
   }
 
   const abs = Math.abs(value)
+  if (abs >= COMPACT_BILLION) {
+    const compact = (abs / COMPACT_BILLION).toFixed(1).replace(/\.0$/, '')
+    return `${value < 0 ? '-' : ''}$${compact}B`
+  }
   if (abs >= COMPACT_MILLION) {
     const compact = (abs / COMPACT_MILLION).toFixed(1).replace(/\.0$/, '')
     return `${value < 0 ? '-' : ''}$${compact}M`

@@ -51,4 +51,4 @@ For code contributions:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Kuest Modified MIT License (with Custom Commons Clause), as described in [`LICENSE`](LICENSE).
+By contributing, you agree that your contributions will be licensed under the Slimefish Modified MIT License (with Custom Commons Clause), as described in [`LICENSE`](LICENSE).

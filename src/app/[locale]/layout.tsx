@@ -181,7 +181,6 @@ function LocaleBody({
                     />
                   )
                 : null}
-              {IS_TEST_MODE && !globalAnnouncement.disableFaucetBanner && <TestModeBannerDeferred />}
               <PwaInstallStateSync />
               {children}
               <CustomJavascriptCode locale={locale} codes={runtimeTheme.site.customJavascriptCodes} />

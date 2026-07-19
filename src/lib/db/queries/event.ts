@@ -8,7 +8,6 @@ import { and, asc, count, desc, eq, exists, ilike, inArray, not, or, sql } from 
 import { cacheTag } from 'next/cache'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
-import { resolveClobUrl } from '@/lib/clob'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { getSportsSlugResolverFromDb } from '@/lib/db/queries/sports-menu'
 import { bookmarks } from '@/lib/db/schema/bookmarks/tables'
@@ -28,14 +27,14 @@ import {
   v_main_tag_subcategories,
 } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
-import { db } from '@/lib/drizzle'
+import { db, pmSql } from '@/lib/drizzle'
+
 import {
   buildPublicEventListVisibilityCondition,
   HIDE_FROM_NEW_TAG_SLUG,
 } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
-import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import {
   isSportsAuxiliaryEventSlug,
   SPORTS_AUXILIARY_SLUG_SQL_REGEX,
@@ -47,21 +46,8 @@ import {
 } from '@/lib/sports-slug-mapping'
 import { getPublicAssetUrl } from '@/lib/storage'
 
-type PriceApiResponse = Record<string, { BUY?: string, SELL?: string } | undefined>
 interface OutcomePrices { buy?: number, sell?: number }
-const MAX_PRICE_BATCH = 500
 const DEFAULT_EVENT_LIST_LIMIT = 32
-
-interface LastTradePriceEntry {
-  token_id: string
-  price: string
-  side: 'BUY' | 'SELL'
-}
-
-interface FetchPriceBatchResult {
-  data: PriceApiResponse | null
-  aborted: boolean
-}
 
 function resolveSeriesEventDirection(outcomeText: string | null | undefined): 'up' | 'down' | null {
   if (!outcomeText) {
@@ -195,45 +181,6 @@ function isMoneylineMarketForAdminList(input: {
   return marketText.includes(' draw ') || marketText.includes(' moneyline ') || marketText.includes(' match winner ')
 }
 
-function isPrerenderAbortError(error: unknown) {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-
-  const record = error as { digest?: string, name?: string, code?: string, message?: string }
-
-  if (record.digest === 'HANGING_PROMISE_REJECTION') {
-    return true
-  }
-
-  if (record.name === 'AbortError' || record.code === 'UND_ERR_ABORTED') {
-    return true
-  }
-
-  if (typeof record.message === 'string' && record.message.includes('fetch() rejects when the prerender is complete')) {
-    return true
-  }
-
-  return false
-}
-
-function normalizeTradePrice(value: string | undefined) {
-  if (!value) {
-    return null
-  }
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) {
-    return null
-  }
-  if (parsed < 0) {
-    return 0
-  }
-  if (parsed > 1) {
-    return 1
-  }
-  return parsed
-}
-
 function invertPrice(value: number | null) {
   if (value == null) {
     return null
@@ -283,206 +230,36 @@ function resolveMarketDisplayPrice(
   return resolveOutcomeDisplayPrice(primaryOutcome) ?? 0.5
 }
 
-async function fetchPriceBatch(endpoint: string, tokenIds: string[]): Promise<FetchPriceBatchResult> {
-  if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' && typeof window === 'undefined') {
-    const data: PriceApiResponse = {}
-    for (const tokenId of tokenIds) {
-      try {
-        const rows = await db.execute<{ price_micro: string }>(sql`
-          SELECT price_micro
-          FROM tellwise_clob_trades
-          WHERE token_id = ${tokenId}
-          ORDER BY timestamp DESC
-          LIMIT 1
-        `)
-        const priceMicro = rows[0]?.price_micro ? BigInt(rows[0].price_micro) : 500000n
-        const basePrice = Number(priceMicro) / 1000000
-        const buyPrice = Math.max(0.01, Math.min(0.99, basePrice + 0.01)).toFixed(2)
-        const sellPrice = Math.max(0.01, Math.min(0.99, basePrice - 0.01)).toFixed(2)
-        data[tokenId] = {
-          BUY: buyPrice,
-          SELL: sellPrice,
-        }
-      }
-      catch (error) {
-        console.error('Failed to query local outcome price directly:', error)
-      }
-    }
-    return { data, aborted: false }
-  }
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(tokenIds.map(tokenId => ({
-        token_id: tokenId,
-      }))),
-    })
-
-    if (!response.ok) {
-      return { data: null, aborted: false }
-    }
-
-    return { data: await response.json() as PriceApiResponse, aborted: false }
-  }
-  catch (error) {
-    const aborted = isPrerenderAbortError(error)
-    if (!aborted) {
-      console.error('Failed to fetch outcome prices batch from CLOB.', error)
-    }
-    return { data: null, aborted }
-  }
-}
-
-async function fetchLastTradePrices(tokenIds: string[]): Promise<Map<string, number>> {
+async function fetchPlayMoneyPricing(tokenIds: string[]) {
   const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
+  const lastTradeMap = new Map<string, number>()
+  const priceMap = new Map<string, OutcomePrices>()
 
   if (!uniqueTokenIds.length) {
-    return new Map()
+    return { lastTradeMap, priceMap }
   }
-
-  if (process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' && typeof window === 'undefined') {
-    const lastTradeMap = new Map<string, number>()
-    for (const tokenId of uniqueTokenIds) {
-      try {
-        const rows = await db.execute<{ price_micro: string }>(sql`
-          SELECT price_micro
-          FROM tellwise_clob_trades
-          WHERE token_id = ${tokenId}
-          ORDER BY timestamp DESC
-          LIMIT 1
-        `)
-        const priceMicro = rows[0]?.price_micro ? BigInt(rows[0].price_micro) : 500000n
-        const price = Number(priceMicro) / 1000000
-        lastTradeMap.set(tokenId, price)
-      }
-      catch (error) {
-        console.error('Failed to query local last trade price directly:', error)
-        lastTradeMap.set(tokenId, 0.5)
-      }
-    }
-    return lastTradeMap
-  }
-
-  const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/last-trades-prices`
-  const lastTradeMap = new Map<string, number>()
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(uniqueTokenIds.map(tokenId => ({ token_id: tokenId }))),
-    })
+    const rows = await pmSql<{ id: string, probability: string }[]>`
+      SELECT id, probability FROM "MarketOption" WHERE id IN ${pmSql(uniqueTokenIds)}
+    `
 
-    if (!response.ok) {
-      return lastTradeMap
-    }
-
-    const payload = await response.json() as LastTradePriceEntry[]
-    payload.forEach((entry) => {
-      const normalized = normalizeTradePrice(entry?.price)
-      if (normalized != null && entry?.token_id) {
-        lastTradeMap.set(entry.token_id, normalized)
+    for (const row of rows) {
+      const probability = Number(row.probability)
+      if (!Number.isFinite(probability)) {
+        continue
       }
-    })
+
+      const normalized = probability > 1 ? probability / 100 : probability
+      lastTradeMap.set(row.id, normalized)
+      priceMap.set(row.id, { buy: normalized, sell: normalized })
+    }
   }
   catch (error) {
-    if (!isPrerenderAbortError(error)) {
-      console.error('Failed to fetch last trades prices', error)
-    }
-    return lastTradeMap
+    console.error('Failed to query Play Money DB for market prices', error)
   }
 
-  return lastTradeMap
-}
-
-function applyPriceBatch(
-  data: PriceApiResponse | null,
-  priceMap: Map<string, OutcomePrices>,
-  missingTokenIds: Set<string>,
-) {
-  if (!data) {
-    return
-  }
-
-  for (const [tokenId, priceBySide] of Object.entries(data ?? {})) {
-    if (!priceBySide) {
-      continue
-    }
-
-    const parsedBuy = priceBySide.BUY != null ? Number(priceBySide.BUY) : undefined
-    const parsedSell = priceBySide.SELL != null ? Number(priceBySide.SELL) : undefined
-    const normalizedBuy = parsedBuy != null && Number.isFinite(parsedBuy) ? parsedBuy : undefined
-    const normalizedSell = parsedSell != null && Number.isFinite(parsedSell) ? parsedSell : undefined
-
-    if (normalizedBuy == null && normalizedSell == null) {
-      continue
-    }
-
-    priceMap.set(tokenId, {
-      buy: normalizedSell ?? normalizedBuy,
-      sell: normalizedBuy ?? normalizedSell,
-    })
-    missingTokenIds.delete(tokenId)
-  }
-}
-
-async function fetchOutcomePrices(tokenIds: string[]): Promise<Map<string, OutcomePrices>> {
-  const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
-
-  if (uniqueTokenIds.length === 0) {
-    return new Map()
-  }
-
-  const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/prices`
-  const priceMap = new Map<string, OutcomePrices>()
-  const missingTokenIds = new Set(uniqueTokenIds)
-  let wasAborted = false
-
-  for (let i = 0; i < uniqueTokenIds.length; i += MAX_PRICE_BATCH) {
-    const batch = uniqueTokenIds.slice(i, i + MAX_PRICE_BATCH)
-    const batchResult = await fetchPriceBatch(endpoint, batch)
-    if (batchResult.aborted) {
-      wasAborted = true
-      break
-    }
-
-    if (batchResult.data) {
-      applyPriceBatch(batchResult.data, priceMap, missingTokenIds)
-    }
-
-    const batchMissingTokenIds = batch.filter(tokenId => missingTokenIds.has(tokenId))
-    if (batchMissingTokenIds.length === 0) {
-      continue
-    }
-
-    const tokenResults = await Promise.allSettled(
-      batchMissingTokenIds.map(tokenId => fetchPriceBatch(endpoint, [tokenId])),
-    )
-
-    for (const result of tokenResults) {
-      if (result.status === 'fulfilled') {
-        if (result.value.aborted) {
-          wasAborted = true
-          break
-        }
-        applyPriceBatch(result.value.data, priceMap, missingTokenIds)
-      }
-    }
-
-    if (wasAborted) {
-      break
-    }
-  }
-
-  return priceMap
+  return { lastTradeMap, priceMap }
 }
 
 interface ListEventsProps {
@@ -1154,13 +931,13 @@ async function buildEventResource(
       .map(eventTag => eventTag.tag?.id)
       .filter((tagId): tagId is number => typeof tagId === 'number'),
   ))
-  const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, liveChartSeriesSlugs] = await Promise.all([
-    fetchOutcomePrices(outcomeTokenIds),
-    fetchLastTradePrices(outcomeTokenIds),
+  const [pricing, localizedTagNamesById, localizedEventTitlesById, liveChartSeriesSlugs] = await Promise.all([
+    fetchPlayMoneyPricing(outcomeTokenIds),
     getLocalizedTagNamesById(tagIds, locale),
     getLocalizedEventTitlesById([eventResult.id], locale),
     getEnabledLiveChartSeriesSlugs(),
   ])
+  const { priceMap, lastTradeMap } = pricing
   return eventResource(
     eventResult,
     userId,
@@ -2027,14 +1804,14 @@ export const EventRepository = {
       const sportsVolumeGroupKeysForAggregation = Array.from(new Set(
         sportsVolumeGroupKeyByEventId.values(),
       ))
-      const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, groupedSportsVolumesByGroupKey] = await Promise.all([
-        skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
-        skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
+      const [pricing, localizedTagNamesById, localizedEventTitlesById, groupedSportsVolumesByGroupKey, liveChartSeriesSlugs] = await Promise.all([
+        fetchPlayMoneyPricing(skipLivePricing ? [] : tokensForPricing),
         getLocalizedTagNamesById(tagIds, locale),
         getLocalizedEventTitlesById(eventIds, locale),
         getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
+        getEnabledLiveChartSeriesSlugs(),
       ])
-      const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
+      const { priceMap, lastTradeMap } = pricing
 
       const eventsWithMarkets = eventsData
         .filter(event => event.markets?.length > 0)
@@ -2544,7 +2321,7 @@ export const EventRepository = {
     return {
       data: formattedRows,
       error: null,
-      totalCount: countResult?.[0]?.count ?? 0,
+      totalCount: Number(countResult?.[0]?.count ?? 0),
       creatorOptions: (creatorRows ?? [])
         .map(row => row.creator?.trim() ?? '')
         .filter(value => value.length > 0),
@@ -3215,14 +2992,14 @@ export const EventRepository = {
         ),
       ))
       const eventIds = hydratedGroupedEventsData.map(event => event.id)
-      const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, groupedVolumesByGroupKey] = await Promise.all([
-        fetchOutcomePrices(tokensForPricing),
-        fetchLastTradePrices(tokensForPricing),
+      const [pricing, localizedTagNamesById, localizedEventTitlesById, groupedVolumesByGroupKey, liveChartSeriesSlugs] = await Promise.all([
+        fetchPlayMoneyPricing(tokensForPricing),
         getLocalizedTagNamesById(tagIds, locale),
         getLocalizedEventTitlesById(eventIds, locale),
         getSportsAggregatedVolumesByGroupKey([baseGroupKey]),
+        getEnabledLiveChartSeriesSlugs(),
       ])
-      const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
+      const { priceMap, lastTradeMap } = pricing
 
       const groupedVolume = groupedVolumesByGroupKey.get(baseGroupKey)
       const eventsWithMarkets = hydratedGroupedEventsData
@@ -3540,11 +3317,11 @@ export const EventRepository = {
         .map(event => yesTokenIdByEventId.get(event.id))
         .filter((tokenId): tokenId is string => Boolean(tokenId))
       const eventIds = relatedCandidates.map(event => event.id)
-      const [priceMap, localizedEventTitlesById] = await Promise.all([
-        fetchOutcomePrices(tokenIds),
+      const [pricing, localizedEventTitlesById] = await Promise.all([
+        fetchPlayMoneyPricing(tokenIds),
         getLocalizedEventTitlesById(eventIds, locale),
       ])
-      const lastTradesByToken = await fetchLastTradePrices(tokenIds)
+      const { priceMap, lastTradeMap: lastTradesByToken } = pricing
 
       const transformedResults = relatedCandidates.map((row) => {
         const yesTokenId = yesTokenIdByEventId.get(row.id)

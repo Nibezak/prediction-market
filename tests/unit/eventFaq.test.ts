@@ -228,11 +228,11 @@ describe('buildEventFaqItems', () => {
       translate: testFaqTranslator,
     })
 
-    expect(items[0]?.answer).toContain('binary "Nothing Ever Happens: 2026" Kuest 63% 63¢')
+    expect(items[0]?.answer).toContain('binary "Nothing Ever Happens: 2026" Slimefish 63% 63¢')
     expect(items[1]?.answer).toContain('volume=$17.2K')
     expect(items[3]?.answer).toContain('current-binary "Nothing Ever Happens: 2026" probability=63%')
     expect(items[8]?.question).toBe('price-question-binary 63¢')
-    expect(items[8]?.answer).toContain('price-binary Kuest 63¢ "Nothing Ever Happens: 2026" 63% 37¢')
+    expect(items[8]?.answer).toContain('price-binary Slimefish 63¢ "Nothing Ever Happens: 2026" 63% 37¢')
     expect(items[10]?.answer).toContain('16')
   })
 

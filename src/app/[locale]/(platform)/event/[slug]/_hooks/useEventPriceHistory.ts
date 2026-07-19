@@ -282,9 +282,9 @@ export function useEventPriceHistory({
   )
 
   const { data: priceHistoryByMarket } = useQuery({
-    queryKey: ['event-price-history', clobUrl, eventId, range, tokenSignature, eventResolvedAt ?? ''],
+    queryKey: ['event-price-history', eventId, range, tokenSignature, eventResolvedAt ?? ''],
     queryFn: () => fetchEventPriceHistory(targets, range, eventCreatedAt, clobUrl, eventResolvedAt),
-    enabled: enabled && targets.length > 0 && Boolean(clobUrl),
+    enabled: enabled && targets.length > 0,
     staleTime: PRICE_REFRESH_INTERVAL_MS,
     gcTime: PRICE_REFRESH_INTERVAL_MS,
     refetchInterval: refetchIntervalMs,

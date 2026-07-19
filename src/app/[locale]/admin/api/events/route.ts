@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { EventRepository } from '@/lib/db/queries/event'
 import { UserRepository } from '@/lib/db/queries/user'
+import { isStaffUser } from '@/lib/staff-role'
 
 type AdminEventsSortBy = 'title' | 'status' | 'volume' | 'volume_24h' | 'created_at' | 'updated_at' | 'end_date'
 
@@ -19,7 +20,7 @@ const VALID_SORT_FIELDS: AdminEventsSortBy[] = [
 export async function GET(request: NextRequest) {
   try {
     const currentUser = await UserRepository.getCurrentUser({ minimal: true })
-    if (!currentUser || !currentUser.is_admin) {
+    if (!currentUser || !isStaffUser(currentUser)) {
       return NextResponse.json({ error: 'Unauthenticated.' }, { status: 401 })
     }
 

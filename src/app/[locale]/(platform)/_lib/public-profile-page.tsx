@@ -4,6 +4,9 @@ import type { CommunityProfile } from '@/lib/community-profile'
 import { notFound } from 'next/navigation'
 import PublicProfileHeroCards from '@/app/[locale]/(platform)/profile/_components/PublicProfileHeroCards'
 import PublicProfileTabs from '@/app/[locale]/(platform)/profile/_components/PublicProfileTabs'
+import PortfolioTabs from '@/app/[locale]/(platform)/portfolio/_components/PortfolioTabs'
+import { UserActions } from '@/app/[locale]/admin/users/_components/UserActions'
+import StaffBalanceActions from '@/app/[locale]/admin/users/_components/StaffBalanceActions'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import {
   COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS,
@@ -17,6 +20,7 @@ import { fetchPortfolioSnapshot } from '@/lib/portfolio'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import resolveSiteUrl from '@/lib/site-url'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
+import { canManageUsers, canViewUserAccounts } from '@/lib/staff-role'
 
 function buildLocalizedPagePath(path: string, locale: SupportedLocale) {
   if (locale === DEFAULT_LOCALE) {
@@ -128,6 +132,9 @@ function mapCommunityPublicProfile(profile: CommunityProfile | null) {
   }
 
   return {
+    id: profile.id ?? depositWalletAddress,
+    email: '',
+    settings: {} as Record<string, any>,
     username: profile.username?.trim() || null,
     image: profile.avatar_url?.trim() || '',
     created_at: profile.created_at ?? null,
@@ -151,6 +158,10 @@ function resolvePublicProfileDisplayUsername(profile: {
 async function resolvePublicProfileForSlug(
   normalized: ReturnType<typeof normalizePublicProfileSlug>,
 ) {
+  if (normalized.type === 'username') {
+    const { data: localProfile } = await UserRepository.getProfileByUsernameOrDepositWalletAddress(normalized.value)
+    if (localProfile) return localProfile
+  }
   const communityProfile = mapCommunityPublicProfile(await fetchCommunityProfileForSlug(normalized))
   if (communityProfile || normalized.type === 'invalid') {
     return communityProfile
@@ -224,6 +235,11 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
   }
 
   const profile = await resolvePublicProfileForSlug(normalized)
+  const viewer = await UserRepository.getCurrentUser({ minimal: true })
+
+  if (normalized.type === 'username' && !canViewUserAccounts(viewer)) {
+    notFound()
+  }
 
   if (!profile) {
     if (normalized.type === 'username') {
@@ -250,7 +266,8 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
     )
   }
 
-  const userAddress = profile.deposit_wallet_address!
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const userAddress = isPlayMoneyAmm ? profile.id : profile.deposit_wallet_address!
   const snapshot = await fetchPortfolioSnapshot(userAddress)
   const fallbackChartEndDate = buildFallbackChartEndDate()
 
@@ -264,9 +281,26 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
           portfolioAddress: userAddress,
         }}
         snapshot={snapshot}
+        actions={canViewUserAccounts(viewer)
+          ? (
+              <div className="flex items-center gap-2">
+                <StaffBalanceActions userId={profile.id} username={profile.username ?? 'user'} />
+                {canManageUsers(viewer) && (
+              <UserActions user={{
+                id: profile.id,
+                username: profile.username ?? '',
+                email: profile.email ?? '',
+                is_blocked: profile.settings?.is_blocked === true || profile.settings?.is_blocked === 'true',
+                role: profile.settings?.staff_role ?? 'USER',
+              }} />)}
+              </div>
+            )
+          : undefined}
         fallbackChartEndDate={fallbackChartEndDate}
       />
-      <PublicProfileTabs userAddress={userAddress} />
+      {isPlayMoneyAmm
+        ? <PortfolioTabs userAddress={userAddress} />
+        : <PublicProfileTabs userAddress={userAddress} />}
     </>
   )
 }

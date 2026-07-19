@@ -82,7 +82,7 @@ describe('copyVersion', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Fork is behind upstream' })).toBeInTheDocument()
-    expect(screen.getByText(/Your fork is not synced with the latest Kuest version/)).toBeInTheDocument()
+    expect(screen.getByText(/Your fork is not synced with the latest Slimefish version/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sync fork' })).toHaveAttribute(
       'href',
       'https://github.com/kuest-fork/prediction-market-fork',

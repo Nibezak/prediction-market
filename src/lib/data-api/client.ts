@@ -3,7 +3,7 @@ import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 export function getDataApiUrl() {
   const dataApiUrl = resolvePublicRuntimeEnv(process.env).dataUrl
   if (!dataApiUrl) {
-    throw new Error('DATA_URL environment variable is not configured.')
+    return '/api/amm/data'
   }
 
   return dataApiUrl

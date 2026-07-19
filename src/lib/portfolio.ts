@@ -73,7 +73,29 @@ export async function fetchPortfolioSnapshot(userAddress?: string | null): Promi
 
   const address = normalizeAddress(userAddress)
   if (!address) {
-    return defaultSnapshot
+    if (process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM !== 'true') return defaultSnapshot
+    try {
+      const baseUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
+      const [statsResponse, positionsResponse] = await Promise.all([
+        fetch(`${baseUrl}/users/${encodeURIComponent(userAddress)}/stats`, { cache: 'no-store' }),
+        fetch(`${baseUrl}/users/${encodeURIComponent(userAddress)}/positions?limit=100`, { cache: 'no-store' }),
+      ])
+      if (!statsResponse.ok || !positionsResponse.ok) return defaultSnapshot
+      const stats = await statsResponse.json()
+      const positions = await positionsResponse.json()
+      const rows = Array.isArray(positions?.data) ? positions.data : []
+      const positionsValue = rows.reduce((sum: number, row: any) => sum + toNumber(row?.value), 0)
+      const positionsCost = rows.reduce((sum: number, row: any) => sum + toNumber(row?.cost), 0)
+      return {
+        positionsValue,
+        profitLoss: positionsValue - positionsCost,
+        predictions: toNumber(stats?.data?.totalMarkets) || rows.length,
+        biggestWin: 0,
+      }
+    }
+    catch {
+      return defaultSnapshot
+    }
   }
 
   try {

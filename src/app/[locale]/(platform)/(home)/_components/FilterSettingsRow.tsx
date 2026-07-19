@@ -49,6 +49,7 @@ function useFilterSettingsRowOptions() {
     { key: 'hideSports', label: t('Hide sports?') },
     { key: 'hideCrypto', label: t('Hide crypto?') },
     { key: 'hideEarnings', label: t('Hide earnings?') },
+    { key: 'bookmarked', label: t('Bookmarked') },
   ], [t])
 
   return {

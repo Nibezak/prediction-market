@@ -3,11 +3,11 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { createClient } from '@supabase/supabase-js'
 import 'server-only'
 
-const ASSETS_BUCKET = 'kuest-assets'
+const ASSETS_BUCKET = 'slimefish-assets'
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on'])
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off'])
 
-export type StorageProvider = 'supabase' | 's3' | 'none'
+export type StorageProvider = 'supabase' | 's3' | 'none' | 'local'
 type UploadBody = ArrayBuffer | Uint8Array | string
 
 interface S3StorageConfig {
@@ -140,7 +140,7 @@ function resolveStorageRuntimeConfig(): StorageRuntimeConfig {
   }
 
   return {
-    provider: 'none',
+    provider: 'local',
     supabaseUrl: null,
     supabaseServiceRoleKey: null,
     s3: null,
@@ -270,6 +270,26 @@ export async function uploadPublicAsset(
     }
   }
 
+  if (config.provider === 'local') {
+    try {
+      const fs = await import('node:fs/promises')
+      const path = await import('node:path')
+      const publicDir = path.join(process.cwd(), 'public', 'uploads')
+      const filePath = path.join(publicDir, normalizedPath)
+
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+
+      const fileData = body instanceof ArrayBuffer ? Buffer.from(body) : body
+      await fs.writeFile(filePath, fileData as any)
+
+      return { error: null }
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { error: `Local upload failed: ${message}` }
+    }
+  }
+
   return {
     error: 'Storage provider is not configured. Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY or S3_BUCKET + S3 credentials.',
   }
@@ -294,6 +314,10 @@ export function getPublicAssetUrl(assetPath: string | null): string {
   if (config.provider === 's3' && config.s3) {
     const baseUrl = buildS3PublicAssetBaseUrl(config.s3)
     return `${baseUrl}/${normalizedPath}`
+  }
+
+  if (config.provider === 'local') {
+    return `/api/uploads/${normalizedPath}`
   }
 
   return ''

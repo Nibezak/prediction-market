@@ -50,37 +50,29 @@ const FEATURED_HOT_TOPICS_CACHE_LIFE = {
 const FEATURED_HOT_TOPICS_TARGET_COUNT = 5
 const FEATURED_HOT_TOPICS_RECENT_RESOLVED_WINDOW_MS = 36 * 60 * 60 * 1000
 const FEATURED_HOT_TOPICS_FALLBACK_RESOLVED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
-
 function isNegRiskEvent(event: Event) {
   return Boolean(event.neg_risk || event.enable_neg_risk || event.neg_risk_augmented || event.neg_risk_market_id)
 }
-
 function isSportsEvent(event: Event) {
   return Boolean(event.sports_sport_slug || event.sports_event_slug || event.sports_teams?.length)
 }
-
 function getActiveMarkets(event: Event) {
   const activeMarkets = event.markets.filter(market => market.is_active && !market.is_resolved && !market.condition?.resolved)
   return activeMarkets.length > 0 ? activeMarkets : event.markets
 }
-
 function resolveCardKind(event: Event): HomeFeaturedCardKind {
   if (isSportsEvent(event)) {
     return 'sports'
   }
-
   if (isNegRiskEvent(event) || getActiveMarkets(event).length > 2) {
     return 'neg-risk'
   }
-
   return 'standard'
 }
-
 function resolveMarketChance(market: Market) {
   if (typeof market.price === 'number' && Number.isFinite(market.price)) {
     return Math.max(0, Math.min(100, market.price * 100))
   }
-
   const yesOutcome = market.outcomes.find(outcome => outcome.outcome_index === OUTCOME_INDEX.YES)
   const noOutcome = market.outcomes.find(outcome => outcome.outcome_index === OUTCOME_INDEX.NO)
   const yesDisplayPrice = resolveDisplayPrice({
@@ -91,16 +83,13 @@ function resolveMarketChance(market: Market) {
   if (yesDisplayPrice != null) {
     return yesDisplayPrice * 100
   }
-
   const noDisplayPrice = resolveDisplayPrice({
     bid: noOutcome?.sell_price ?? null,
     ask: noOutcome?.buy_price ?? null,
     lastTrade: null,
   })
-
   return noDisplayPrice == null ? 0 : (1 - noDisplayPrice) * 100
 }
-
 function resolveOutcomeImageUrl(market: Market) {
   const metadata = market.metadata && typeof market.metadata === 'object'
     ? market.metadata as Record<string, unknown>
@@ -112,24 +101,19 @@ function resolveOutcomeImageUrl(market: Market) {
       : typeof metadata?.iconUrl === 'string'
         ? metadata.iconUrl
         : null
-
   return metadataImage || market.icon_url || null
 }
-
 function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeaturedOutcomeSummary[] {
   const activeMarkets = getActiveMarkets(event)
-
   if (kind === 'standard') {
     const primaryMarket = activeMarkets[0]
     if (!primaryMarket) {
       return []
     }
-
     return primaryMarket.outcomes.slice(0, 2).map((outcome, index) => {
       const chance = outcome.outcome_index === OUTCOME_INDEX.NO
         ? Math.max(0, Math.min(100, 100 - resolveMarketChance(primaryMarket)))
         : resolveMarketChance(primaryMarket)
-
       return {
         key: `${primaryMarket.condition_id}:${outcome.outcome_index}`,
         label: outcome.outcome_text,
@@ -139,7 +123,6 @@ function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeature
       }
     })
   }
-
   return activeMarkets
     .map((market, index) => ({
       key: market.condition_id,
@@ -155,34 +138,26 @@ function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeature
       color: CHART_COLORS[index % CHART_COLORS.length]!,
     }))
 }
-
 function buildPrimaryMarkets(event: Event, kind: HomeFeaturedCardKind) {
   const activeMarkets = getActiveMarkets(event)
-
   if (kind === 'standard') {
     return activeMarkets.slice(0, 1)
   }
-
   if (kind === 'sports') {
     return activeMarkets.slice(0, 6)
   }
-
   return activeMarkets
     .slice()
     .sort((left, right) => resolveMarketChance(right) - resolveMarketChance(left))
     .slice(0, 4)
 }
-
 function normalizeSportsMarketType(value: string | null | undefined) {
   return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? ''
 }
-
 const HOME_FEATURED_SPORTS_LINE_MARKET_LIMIT = 8
-
 function buildSportsMarketGroups(event: Event): HomeFeaturedSportsMarketGroup[] {
   const model = buildHomeSportsMoneylineModel(event)
   const groups: HomeFeaturedSportsMarketGroup[] = []
-
   if (model) {
     const buttons = [
       {
@@ -224,10 +199,8 @@ function buildSportsMarketGroups(event: Event): HomeFeaturedSportsMarketGroup[] 
         color: model.team2Button.color,
       },
     ]
-
     groups.push({ label: 'Moneyline', markets: buttons })
   }
-
   const compactGroups = new Map<string, Market[]>()
   for (const market of getActiveMarkets(event)) {
     const type = normalizeSportsMarketType(market.sports_market_type)
@@ -236,18 +209,15 @@ function buildSportsMarketGroups(event: Event): HomeFeaturedSportsMarketGroup[] 
       : type.includes('total') || type.includes('over under')
         ? 'Total'
         : ''
-
     if (!label) {
       continue
     }
-
     const markets = compactGroups.get(label) ?? []
     if (markets.length < HOME_FEATURED_SPORTS_LINE_MARKET_LIMIT) {
       markets.push(market)
       compactGroups.set(label, markets)
     }
   }
-
   for (const [label, markets] of compactGroups) {
     groups.push({
       label,
@@ -260,10 +230,8 @@ function buildSportsMarketGroups(event: Event): HomeFeaturedSportsMarketGroup[] 
       })),
     })
   }
-
   return groups.slice(0, 3)
 }
-
 function resolveMergedFeaturedSportsEvent(baseEvent: Event, eventsGroup: Event[]) {
   const displayEvent = eventsGroup.find(event => event.sports_parent_event_id == null)
     ?? eventsGroup.find(event => (event.sports_teams?.length ?? 0) >= 2)
@@ -272,12 +240,10 @@ function resolveMergedFeaturedSportsEvent(baseEvent: Event, eventsGroup: Event[]
   if (mergedMarkets.length === 0) {
     return baseEvent
   }
-
   const totalMarketsCount = sumFiniteSportsValues(eventsGroup.map(event => event.total_markets_count))
   const activeMarketsCount = mergedMarkets.filter(
     market => market.is_active && !market.is_resolved && !market.condition?.resolved,
   ).length
-
   return {
     ...displayEvent,
     markets: mergedMarkets,
@@ -286,12 +252,10 @@ function resolveMergedFeaturedSportsEvent(baseEvent: Event, eventsGroup: Event[]
     total_markets_count: totalMarketsCount > 0 ? totalMarketsCount : mergedMarkets.length,
   }
 }
-
 async function resolveFeaturedSportsEventPayload(event: Event, locale: SupportedLocale) {
   if (!isSportsEvent(event)) {
     return event
   }
-
   const { data: sportsEventsGroup, error } = await EventRepository.getSportsEventGroupBySlug(event.slug, '', locale)
   if (error) {
     console.warn('Failed to load featured sports event group:', error)
@@ -300,14 +264,11 @@ async function resolveFeaturedSportsEventPayload(event: Event, locale: Supported
   if (!sportsEventsGroup || sportsEventsGroup.length <= 1) {
     return event
   }
-
   return resolveMergedFeaturedSportsEvent(event, sportsEventsGroup)
 }
-
 function resolveHotTopicHref(slug: string) {
   return `/${slug.trim().toLowerCase()}`
 }
-
 export async function listHomeFeaturedHotTopics(
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<HomeFeaturedHotTopic[]> {
@@ -315,7 +276,6 @@ export async function listHomeFeaturedHotTopics(
   cacheLife(FEATURED_HOT_TOPICS_CACHE_LIFE)
   cacheTag(cacheTags.eventsList)
   cacheTag(cacheTags.mainTags(locale))
-
   const volume24h = sql<number>`COALESCE(SUM(${markets.volume_24h}), 0)::double precision`
   const fallbackVolume = sql<number>`
     COALESCE(
@@ -331,10 +291,8 @@ export async function listHomeFeaturedHotTopics(
     volume24h: number
     fallbackVolume: number
   }
-
   function mergeHotTopicRows(rows: HotTopicVolumeRow[], includeFallbackVolume: boolean) {
     const topicsBySlug = new Map<string, HomeFeaturedHotTopic & { score: number }>()
-
     for (const row of rows) {
       const slug = row.slug.trim()
       const volume24hValue = Number(row.volume24h ?? 0)
@@ -344,11 +302,9 @@ export async function listHomeFeaturedHotTopics(
         : includeFallbackVolume
           ? fallbackVolumeValue
           : 0
-
       if (!slug || topicScore <= 0) {
         continue
       }
-
       const existing = topicsBySlug.get(slug)
       topicsBySlug.set(slug, {
         label: existing?.label ?? row.label,
@@ -358,37 +314,31 @@ export async function listHomeFeaturedHotTopics(
         score: (existing?.score ?? 0) + topicScore,
       })
     }
-
     return Array.from(topicsBySlug.values())
       .sort((left, right) => right.score - left.score)
       .slice(0, FEATURED_HOT_TOPICS_TARGET_COUNT)
       .map(({ score: _score, ...topic }) => topic)
   }
-
   function appendMissingHotTopics(
     primaryTopics: HomeFeaturedHotTopic[],
     fallbackTopics: HomeFeaturedHotTopic[],
   ) {
     const nextTopics = [...primaryTopics]
     const seenSlugs = new Set(primaryTopics.map(topic => topic.slug))
-
     for (const topic of fallbackTopics) {
       if (seenSlugs.has(topic.slug)) {
         continue
       }
-
       nextTopics.push(topic)
       seenSlugs.add(topic.slug)
       if (nextTopics.length >= FEATURED_HOT_TOPICS_TARGET_COUNT) {
         break
       }
     }
-
     return nextTopics.slice(0, FEATURED_HOT_TOPICS_TARGET_COUNT)
   }
-
   const { data, error } = await runQuery(async () => {
-    const activeRows = await db
+    const activeRowsPromise = db
       .select({
         slug: tags.slug,
         label: localizedName,
@@ -414,7 +364,6 @@ export async function listHomeFeaturedHotTopics(
       ))
       .groupBy(tags.id, tags.slug, tags.name, tag_translations.name)
       .orderBy(desc(volume24h))
-
     async function listResolvedHotTopicRows(cutoff: Date) {
       return db
         .select({
@@ -437,47 +386,77 @@ export async function listHomeFeaturedHotTopics(
           eq(events.status, 'resolved'),
           eq(events.is_hidden, false),
           eq(markets.is_resolved, true),
-          sql`COALESCE(${events.resolved_at}, ${events.end_date}) >= ${cutoff}`,
+          sql`COALESCE(${events.resolved_at}, ${events.end_date}) >= ${cutoff.toISOString()}`,
           buildPublicEventListVisibilityCondition(events.id),
         ))
         .groupBy(tags.id, tags.slug, tags.name, tag_translations.name)
         .orderBy(desc(volume24h))
     }
-
     const recentResolvedCutoff = new Date(Date.now() - FEATURED_HOT_TOPICS_RECENT_RESOLVED_WINDOW_MS)
-    const recentResolvedRows = await listResolvedHotTopicRows(recentResolvedCutoff)
+    const [activeRows, recentResolvedRows] = await Promise.all([
+      activeRowsPromise,
+      listResolvedHotTopicRows(recentResolvedCutoff),
+    ])
     const primaryTopics = mergeHotTopicRows([...activeRows, ...recentResolvedRows], false)
-
     if (primaryTopics.length >= FEATURED_HOT_TOPICS_TARGET_COUNT) {
       return { data: primaryTopics, error: null }
     }
-
     const fallbackResolvedCutoff = new Date(Date.now() - FEATURED_HOT_TOPICS_FALLBACK_RESOLVED_WINDOW_MS)
     const fallbackResolvedRows = await listResolvedHotTopicRows(fallbackResolvedCutoff)
     const fallbackTopics = mergeHotTopicRows([...activeRows, ...fallbackResolvedRows], true)
-
-    return { data: appendMissingHotTopics(primaryTopics, fallbackTopics), error: null }
+    const mergedTopics = appendMissingHotTopics(primaryTopics, fallbackTopics)
+    if (mergedTopics.length > 0) {
+      return { data: mergedTopics, error: null }
+    }
+    const eventCount = sql<number>`COUNT(DISTINCT ${events.id})::double precision`
+    const countRows = await db
+      .select({
+        slug: tags.slug,
+        label: localizedName,
+        eventCount,
+      })
+      .from(tags)
+      .innerJoin(event_tags, eq(event_tags.tag_id, tags.id))
+      .innerJoin(events, eq(events.id, event_tags.event_id))
+      .leftJoin(tag_translations, and(
+        eq(tag_translations.tag_id, tags.id),
+        eq(tag_translations.locale, locale),
+      ))
+      .where(and(
+        eq(tags.is_main_category, true),
+        eq(tags.is_hidden, false),
+        eq(events.status, 'active'),
+        eq(events.is_hidden, false),
+        buildPublicEventListVisibilityCondition(events.id),
+      ))
+      .groupBy(tags.id, tags.slug, tags.name, tag_translations.name)
+      .orderBy(desc(eventCount))
+      .limit(FEATURED_HOT_TOPICS_TARGET_COUNT)
+    return {
+      data: countRows.map(row => ({
+        label: row.label,
+        slug: row.slug,
+        href: resolveHotTopicHref(row.slug),
+        volume24h: Number(row.eventCount ?? 0),
+      })),
+      error: null,
+    }
   })
-
   if (error || !data) {
     console.error('Failed to load home featured hot topics', error)
     return []
   }
-
   return data
 }
-
 function buildHomeFeaturedSideCard(input: {
   configured: HomeFeaturedSideCardSettings
   featuredEvents: HomeFeaturedEventCard[]
   hotTopics: HomeFeaturedHotTopic[]
 }): HomeFeaturedSideCardSettings {
   const { configured, featuredEvents, hotTopics } = input
-
   if (!configured.useAi) {
     return configured
   }
-
   const liveEvent = featuredEvents.find(item => item.temporalStatus === 'live')
   if (liveEvent) {
     return {
@@ -489,7 +468,6 @@ function buildHomeFeaturedSideCard(input: {
       icon: 'flame',
     }
   }
-
   const topTopic = hotTopics[0]
   if (topTopic) {
     return {
@@ -501,7 +479,6 @@ function buildHomeFeaturedSideCard(input: {
       icon: 'trending-up',
     }
   }
-
   const firstEvent = featuredEvents[0]
   if (firstEvent) {
     return {
@@ -513,10 +490,8 @@ function buildHomeFeaturedSideCard(input: {
       icon: 'sparkles',
     }
   }
-
   return configured
 }
-
 export async function getHomeFeaturedSideCard(
   featuredEvents: HomeFeaturedEventCard[],
   hotTopics: HomeFeaturedHotTopic[],
@@ -526,7 +501,6 @@ export async function getHomeFeaturedSideCard(
     console.error('Failed to load home featured side card settings', settingsError)
     return getHomeFeaturedSettingsFromSettings(undefined).sideCard
   }
-
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
   return buildHomeFeaturedSideCard({
     configured: settings.sideCard,
@@ -534,20 +508,16 @@ export async function getHomeFeaturedSideCard(
     hotTopics,
   })
 }
-
 function formatEndDateLabel(endDate: string | null, locale: SupportedLocale) {
   if (!endDate) {
     return 'Ends later'
   }
-
   const date = new Date(endDate)
   if (!Number.isFinite(date.getTime())) {
     return 'Ends later'
   }
-
   return `Ends ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)}`
 }
-
 function resolveTemporalStatus(event: Event, locale: SupportedLocale) {
   if (isSportsEvent(event)) {
     if (event.sports_live) {
@@ -556,20 +526,17 @@ function resolveTemporalStatus(event: Event, locale: SupportedLocale) {
         temporalLabel: 'LIVE',
       }
     }
-
     return {
       temporalStatus: 'ends' as const,
       temporalLabel: formatEndDateLabel(event.end_date, locale),
     }
   }
-
   if (event.has_live_chart) {
     return {
       temporalStatus: 'live' as const,
       temporalLabel: 'LIVE',
     }
   }
-
   const recurrence = event.series_recurrence?.trim().toLowerCase()
   if (recurrence === 'daily') {
     return {
@@ -577,20 +544,17 @@ function resolveTemporalStatus(event: Event, locale: SupportedLocale) {
       temporalLabel: 'Daily',
     }
   }
-
   if (recurrence === 'monthly') {
     return {
       temporalStatus: 'monthly' as const,
       temporalLabel: 'Monthly',
     }
   }
-
   return {
     temporalStatus: 'ends' as const,
     temporalLabel: formatEndDateLabel(event.end_date, locale),
   }
 }
-
 function shouldPreferComments(event: Event, targetType: 'event' | 'series') {
   const recurrence = event.series_recurrence?.trim().toLowerCase()
   return targetType === 'series'
@@ -599,33 +563,27 @@ function shouldPreferComments(event: Event, targetType: 'event' | 'series') {
     || recurrence === 'monthly'
     || Boolean(event.has_live_chart || event.sports_live)
 }
-
 function shouldPreferNews(event: Event) {
   const tokens = new Set([
     event.main_tag,
     ...event.tags.map(tag => tag.name),
     ...event.tags.map(tag => tag.slug),
   ].map(value => value?.trim().toLowerCase()).filter(Boolean))
-
   return ['politics', 'economy', 'finance', 'geopolitics', 'weather', 'elections', 'election'].some(token => tokens.has(token))
 }
-
 function resolveEffectiveContextMode(
   configuredMode: HomeFeaturedContextMode,
   defaultMode: HomeFeaturedContextMode,
 ) {
   return configuredMode === 'auto' && defaultMode !== 'auto' ? defaultMode : configuredMode
 }
-
 function sanitizeCommentContent(value: string) {
   return value.replace(/\s+/g, ' ').trim().slice(0, 140)
 }
-
 function containsBlacklistedCommentTerm(value: string, blacklist: string[]) {
   const normalizedValue = value.toLowerCase()
   return blacklist.some(term => term.trim() && normalizedValue.includes(term.trim().toLowerCase()))
 }
-
 async function fetchCompactComments(
   eventSlug: string,
   blacklist: string[],
@@ -634,27 +592,23 @@ async function fetchCompactComments(
   if (!communityUrl) {
     return { hasEnoughSeriesComments: false, items: [] }
   }
-
   try {
     const url = buildCommunityApiUrl(communityUrl, '/comments')
     url.searchParams.set('event_slug', eventSlug)
     url.searchParams.set('limit', String(FEATURED_COMMENTS_LIMIT))
     url.searchParams.set('offset', '0')
     url.searchParams.set('sort', 'recent')
-
     const response = await fetch(url.toString(), {
       next: { revalidate: 30 },
     })
     if (!response.ok) {
       return { hasEnoughSeriesComments: false, items: [] }
     }
-
     const payload = await response.json()
     const comments = Array.isArray(payload) ? payload as Comment[] : []
     const visibleComments = comments.filter(comment => !containsBlacklistedCommentTerm(comment.content, blacklist))
     const now = new Date()
     const expiresAt = new Date(now.getTime() + CONTEXT_ITEM_TTL_MS)
-
     const items = visibleComments
       .filter(comment => sanitizeCommentContent(comment.content).length > 0)
       .slice(0, FEATURED_CONTEXT_ITEMS_PER_EVENT)
@@ -674,7 +628,6 @@ async function fetchCompactComments(
           : null,
         isManual: false,
       }))
-
     return {
       hasEnoughSeriesComments: visibleComments.length >= MIN_COMMENTS_FOR_SERIES,
       items,
@@ -684,7 +637,6 @@ async function fetchCompactComments(
     return { hasEnoughSeriesComments: false, items: [] }
   }
 }
-
 function resolveContextItems(input: {
   event: Event
   targetType: 'event' | 'series'
@@ -694,54 +646,42 @@ function resolveContextItems(input: {
   hasEnoughSeriesComments: boolean
 }) {
   const { event, targetType, mode, newsItems, commentItems, hasEnoughSeriesComments } = input
-
   if (mode === 'hidden') {
     return []
   }
-
   if (mode === 'news') {
     return newsItems
   }
-
   if (mode === 'comments') {
     return commentItems
   }
-
   if (shouldPreferComments(event, targetType)) {
     return hasEnoughSeriesComments ? commentItems : []
   }
-
   if (shouldPreferNews(event) && newsItems.length > 0) {
     return newsItems
   }
-
   return newsItems.length > 0 ? newsItems : commentItems
 }
-
 export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_LOCALE): Promise<HomeFeaturedEventCard[]> {
   const { data: allSettings, error: settingsError } = await SettingsRepository.getSettings()
   if (settingsError) {
     console.error('Failed to load home featured settings', settingsError)
     return []
   }
-
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
-
   if (!settings.enabled) {
     return []
   }
-
   const { data: targets, error } = await HomeFeaturedEventsRepository.resolvePublicTargets(settings.maxCards)
   if (error) {
     console.error('Failed to resolve home featured targets', error)
     return []
   }
-
   if (!targets?.length) {
     console.warn('Home featured markets are enabled, but no public targets were resolved.')
     return []
   }
-
   const events = await Promise.all(targets.map(async (target) => {
     const { data } = await EventRepository.getEventBySlug(target.eventSlug, '', locale)
     return data ? { target, event: await resolveFeaturedSportsEventPayload(data, locale) } : null
@@ -758,17 +698,14 @@ export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_L
     if (!event.series_slug) {
       return [event.id, null] as const
     }
-
     const result = await EventRepository.getLiveChartConfigBySeriesSlug(event.series_slug)
     if (result.error) {
       console.warn('Failed to load featured event live chart config:', result.error)
       return [event.id, null] as const
     }
-
     return [event.id, result.data ?? null] as const
   }))
   const liveChartConfigByEventId = new Map(liveChartConfigEntries)
-
   const contextResult = await HomeFeaturedEventsRepository.listContextItems(
     resolvedEvents.map(entry => entry.target.featuredId),
     locale,
@@ -778,17 +715,16 @@ export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_L
     },
   )
   const newsItemsByFeaturedId = contextResult.data ?? new Map()
-  const commentsByEventSlug = new Map<string, { hasEnoughSeriesComments: boolean, items: HomeFeaturedContextItem[] }>()
-
-  for (const entry of resolvedEvents) {
-    const effectiveMode = resolveEffectiveContextMode(entry.target.contextMode, settings.defaultContextMode)
-    if (effectiveMode === 'hidden' || effectiveMode === 'news') {
-      continue
-    }
-
-    commentsByEventSlug.set(entry.event.slug, await fetchCompactComments(entry.event.slug, settings.commentBlacklist))
-  }
-
+  const commentSlugs = Array.from(new Set(resolvedEvents
+    .filter((entry) => {
+      const effectiveMode = resolveEffectiveContextMode(entry.target.contextMode, settings.defaultContextMode)
+      return effectiveMode !== 'hidden' && effectiveMode !== 'news'
+    })
+    .map(entry => entry.event.slug)))
+  const commentEntries = await Promise.all(commentSlugs.map(async slug => (
+    [slug, await fetchCompactComments(slug, settings.commentBlacklist)] as const
+  )))
+  const commentsByEventSlug = new Map(commentEntries)
   return resolvedEvents.map((entry, index, all): HomeFeaturedEventCard => {
     const { target, event } = entry
     const kind = resolveCardKind(event)
@@ -796,7 +732,6 @@ export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_L
     const newsItems = newsItemsByFeaturedId.get(target.featuredId) ?? []
     const commentResult = commentsByEventSlug.get(event.slug) ?? { hasEnoughSeriesComments: false, items: [] }
     const temporal = resolveTemporalStatus(event, locale)
-
     return {
       featuredId: target.featuredId,
       targetType: target.targetType,

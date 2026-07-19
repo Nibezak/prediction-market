@@ -21,6 +21,62 @@ async function fetchUserActivity({
   sortFilter: ActivitySort
   signal?: AbortSignal
 }): Promise<ActivityOrder[]> {
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  if (isPlayMoneyAmm) {
+    if (pageParam > 0) return []
+    const response = await fetch('/api/amm/users/me/transactions', { signal })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(payload?.error || 'Failed to load transaction history.')
+    const rows = Array.isArray(payload?.data) ? payload.data : []
+    return rows.map((transaction: any) => {
+      const transactionType = String(transaction.type || '')
+      const isSettlement = transactionType === 'TRADE_WIN' || transactionType === 'TRADE_LOSS'
+      const optionEntry = transaction.entries?.find((entry: any) => entry.assetType === 'MARKET_OPTION')
+      const option = transaction.options?.find((candidate: any) => candidate.id === optionEntry?.assetId)
+        || transaction.options?.[0]
+      const costEntry = transaction.entries?.find((entry: any) => entry.assetType === 'CURRENCY')
+      const shareEntry = transaction.entries?.find((entry: any) => entry.assetType === 'MARKET_OPTION'
+        && entry.assetId === option?.id
+        && (isSettlement
+          ? entry.fromAccountId === transaction.userAccountId
+          : entry.toAccountId === transaction.userAccountId))
+      const cost = Number(costEntry?.amount || 0)
+      const shares = Number(shareEntry?.amount || 0)
+      const side = transactionType === 'TRADE_SELL' ? 'sell' : 'buy'
+      const activityType = transactionType === 'TRADE_WIN'
+        ? 'redeem'
+        : transactionType === 'TRADE_LOSS'
+          ? 'loss'
+          : side
+      return {
+        id: transaction.id,
+        type: activityType,
+        user: {
+          id: transaction.initiator?.id || userAddress,
+          username: transaction.initiator?.username || 'Slimefish user',
+          address: transaction.initiator?.address || '',
+          image: transaction.initiator?.avatarUrl || '',
+        },
+        side,
+        amount: String(shares * 1_000_000),
+        price: shares > 0 ? String(cost / shares) : '0',
+        outcome: { index: String(option?.name).toLowerCase() === 'no' ? 1 : 0, text: option?.name || 'Outcome' },
+        market: {
+          condition_id: transaction.market?.id,
+          title: transaction.market?.question || 'Prediction market',
+          slug: transaction.market?.slug || transaction.market?.id,
+          icon_url: '',
+          event: transaction.market?.event?.slug
+            ? { slug: transaction.market.event.slug, show_market_icons: false }
+            : undefined,
+        },
+        total_value: cost * 1_000_000,
+        created_at: transaction.createdAt,
+        status: 'filled',
+      } satisfies ActivityOrder
+    })
+  }
+
   const { sortBy, sortDirection } = resolveActivitySort(sortFilter)
   const { type, side } = resolveActivityTypeParams(typeFilter)
 

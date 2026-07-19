@@ -1,8 +1,8 @@
 import type { OrderSide } from '@/types'
-import { InfoIcon } from 'lucide-react'
+import { BanknoteIcon, InfoIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import Image from 'next/image'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ORDER_SIDE } from '@/lib/constants'
 import { formatCurrency } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
@@ -19,6 +19,7 @@ interface EventOrderPanelEarningsProps {
   buyProfit: number
   buyChangePct: number
   buyMultiplier: number
+  isQuoteLoading: boolean
 }
 
 export default function EventOrderPanelEarnings({
@@ -33,6 +34,7 @@ export default function EventOrderPanelEarnings({
   buyProfit,
   buyChangePct,
   buyMultiplier,
+  isQuoteLoading,
 }: EventOrderPanelEarningsProps) {
   const t = useExtracted()
   const buyToWinLabel = formatCurrency(Math.max(0, buyPayout))
@@ -104,13 +106,7 @@ export default function EventOrderPanelEarnings({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex cursor-help items-center">
-                    <Image
-                      src="/images/trade/money.svg"
-                      alt=""
-                      width={20}
-                      height={14}
-                      className={cn(isMobile ? 'h-5 w-8' : 'ml-1 h-4 w-6')}
-                    />
+                    <BanknoteIcon className={cn(isMobile ? 'size-5' : 'ml-1 size-4')} aria-hidden />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent
@@ -146,9 +142,13 @@ export default function EventOrderPanelEarnings({
               </Tooltip>
             )}
             {isMobile && (
-              <span className={mobileEarningsClass}>
-                {mobileEarningsLabel}
-              </span>
+              isQuoteLoading
+                ? <Skeleton className="h-7 w-20" aria-label="Calculating quote" />
+                : (
+                    <span className={mobileEarningsClass}>
+                      {mobileEarningsLabel}
+                    </span>
+                  )
             )}
           </div>
           <div
@@ -216,7 +216,9 @@ export default function EventOrderPanelEarnings({
           </div>
         </div>
         {!isMobile && (
-          <div className={desktopEarningsClass}>{desktopEarningsLabel}</div>
+          isQuoteLoading
+            ? <Skeleton className="h-9 w-24" aria-label="Calculating quote" />
+            : <div className={desktopEarningsClass}>{desktopEarningsLabel}</div>
         )}
       </div>
     </div>

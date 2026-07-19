@@ -58,28 +58,6 @@ export async function fetchUserOpenOrders({
   conditionId,
   signal,
 }: FetchUserOpenOrdersParams): Promise<OpenOrdersPage> {
-  const params = new URLSearchParams({
-    next_cursor: pageParam,
-  })
-
-  if (conditionId) {
-    params.set('conditionId', conditionId)
-  }
-
-  const response = await fetch(`/api/events/${encodeURIComponent(eventSlug)}/open-orders?${params}`, {
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch open orders')
-  }
-
-  const payload = await response.json()
-  if (Array.isArray(payload)) {
-    return { data: payload, next_cursor: '' }
-  }
-  return {
-    data: Array.isArray(payload?.data) ? payload.data : [],
-    next_cursor: typeof payload?.next_cursor === 'string' ? payload.next_cursor : '',
-  }
+  // AMMs do not have limit open orders
+  return { data: [], next_cursor: '' }
 }

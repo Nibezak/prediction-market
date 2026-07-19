@@ -1,7 +1,6 @@
 import type { NextRequest } from 'next/server'
 import type { User } from '@/types'
 import { CLOB_ORDER_TYPE } from '@/lib/constants'
-import { isAdminWallet } from '@/lib/admin'
 
 export const TELLWISE_LOCAL_SESSION_COOKIE = 'tellwise_local_session'
 export const TELLWISE_LOCAL_SESSION_VALUE = 'active'
@@ -67,6 +66,17 @@ export function getTellwiseLocalEmail(env: NodeJS.ProcessEnv = process.env) {
   return username.includes('@') ? username : `${username}@tellwise.local`
 }
 
+function isLocalAdminIdentifier(value: string, env: NodeJS.ProcessEnv = process.env) {
+  const normalizedValue = value.trim().toLowerCase()
+  if (!normalizedValue) {
+    return false
+  }
+
+  return parseListEnvValue(env.ADMIN_WALLETS)
+    .map(item => item.toLowerCase())
+    .includes(normalizedValue)
+}
+
 export function createTellwiseLocalUser(env: NodeJS.ProcessEnv = process.env): User {
   const username = getTellwiseLocalUsername(env)
   const email = getTellwiseLocalEmail(env)
@@ -86,7 +96,7 @@ export function createTellwiseLocalUser(env: NodeJS.ProcessEnv = process.env): U
     },
     affiliate_code: null,
     referred_by_user_id: null,
-    is_admin: isAdminWallet(username) || isAdminWallet(email),
+    is_admin: isLocalAdminIdentifier(username, env) || isLocalAdminIdentifier(email, env),
     deposit_wallet_address: null,
     deposit_wallet_signature: null,
     deposit_wallet_signed_at: null,
@@ -138,7 +148,7 @@ export function getTellwiseLocalSessionFromHeaders(headers: Headers) {
       .split(';')
       .map((part) => {
         const [name, ...valueParts] = part.trim().split('=')
-        return [name, decodeURIComponent(valueParts.join('='))]
+        return [name, decodeURIComponent(valueParts.join('='))] as [string, string]
       })
       .filter(([name]) => Boolean(name)),
   )

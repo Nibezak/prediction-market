@@ -53,7 +53,8 @@ function usePnlSeries({
   })
 
   useEffect(function fetchPnlSeriesEffect() {
-    if (!pnlAddress || !pnlBaseUrl) {
+    const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+    if (!pnlAddress || (!isPlayMoneyAmm && !pnlBaseUrl)) {
       return
     }
 
@@ -70,9 +71,9 @@ function usePnlSeries({
       interval,
       fidelity,
     })
-    const endpoint = new URL('/user-pnl', pnlBaseUrl)
+    const endpoint = isPlayMoneyAmm ? '/api/amm/users/me/graph' : new URL('/user-pnl', pnlBaseUrl).toString()
 
-    fetch(`${endpoint.toString()}?${params.toString()}`, {
+    fetch(isPlayMoneyAmm ? endpoint : `${endpoint}?${params.toString()}`, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -82,18 +83,28 @@ function usePnlSeries({
         return await response.json()
       })
       .then((data) => {
-        if (!Array.isArray(data)) {
+        const rows = isPlayMoneyAmm && Array.isArray(data?.data) ? data.data : data
+        if (!Array.isArray(rows)) {
           setPnlSeriesState({ key: pnlSeriesKey, series: [] })
           return
         }
 
-        const normalized = data
-          .map((point: { t?: number, p?: number }) => ({
-            date: typeof point.t === 'number' ? new Date(point.t * 1000) : null,
-            value: typeof point.p === 'number' ? point.p : null,
+        const firstAmmValue = isPlayMoneyAmm && rows.length
+          ? Number(rows[0]?.balance || 0) + Number(rows[0]?.liquidity || 0) + Number(rows[0]?.markets || 0)
+          : 0
+        const cutoffMs = Date.now() - ({ '1D': 86_400_000, '1W': 604_800_000, '1M': 2_592_000_000, 'ALL': Number.POSITIVE_INFINITY } as const)[activeTimeframe]
+        const normalized = rows
+          .map((point: { t?: number, p?: number, startAt?: string, balance?: number, liquidity?: number, markets?: number }) => ({
+            date: isPlayMoneyAmm
+              ? (point.startAt ? new Date(point.startAt) : null)
+              : (typeof point.t === 'number' ? new Date(point.t * 1000) : null),
+            value: isPlayMoneyAmm
+              ? Number(point.balance || 0) + Number(point.liquidity || 0) + Number(point.markets || 0) - firstAmmValue
+              : (typeof point.p === 'number' ? point.p : null),
           }))
           .filter(point => point.date && Number.isFinite(point.value))
           .map(point => ({ date: point.date as Date, value: point.value as number }))
+          .filter(point => activeTimeframe === 'ALL' || point.date.getTime() >= cutoffMs)
           .sort((a, b) => a.date.getTime() - b.date.getTime())
 
         if (normalized.length === 0) {

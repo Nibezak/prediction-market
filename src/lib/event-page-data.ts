@@ -9,6 +9,7 @@ import { cacheTag } from 'next/cache'
 import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
+import { hydrateEventsWithAmmVolumes } from '@/lib/amm-volume'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import 'server-only'
 
@@ -69,10 +70,11 @@ export async function loadEventPagePublicContentData(
 
   const eventResult = await EventRepository.getEventBySlug(eventSlug, '', locale)
 
-  const { data: event, error } = eventResult
-  if (error || !event) {
+  const { data: rawEvent, error } = eventResult
+  if (error || !rawEvent) {
     return null
   }
+  const event = (await hydrateEventsWithAmmVolumes([rawEvent]))[0]
 
   let seriesEvents: EventSeriesEntry[] = []
   let liveChartConfig: EventLiveChartConfig | null = null

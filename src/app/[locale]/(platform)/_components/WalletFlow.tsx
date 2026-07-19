@@ -4,23 +4,14 @@ import type { DepositWalletStatus } from '@/types'
 import { useExtracted } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { isAddress } from 'viem'
-import { useSignTypedData } from 'wagmi'
 import { WalletDepositModal, WalletWithdrawModal } from '@/app/[locale]/(platform)/_components/WalletModal'
-import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
-import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useLiFiWalletUsdBalance } from '@/hooks/useLiFiWalletUsdBalance'
-import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { MAX_AMOUNT_INPUT } from '@/lib/amount-input'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
-import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
 import { formatAmountInputValue } from '@/lib/formatters'
-import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
-import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
-import { buildSendErc20Call } from '@/lib/wallet/transactions'
 
 type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
 
@@ -99,10 +90,6 @@ function useWalletSendHandler({
   setWalletSendTo,
   setWalletSendAmount,
   handleWithdrawModalChange,
-  openTradeRequirements,
-  openWalletModal,
-  runWithSignaturePrompt,
-  signTypedDataAsync,
   messages,
 }: {
   user: WalletFlowProps['user']
@@ -112,19 +99,11 @@ function useWalletSendHandler({
   setWalletSendTo: (value: string) => void
   setWalletSendAmount: (value: string) => void
   handleWithdrawModalChange: (next: boolean) => void
-  openTradeRequirements: ReturnType<typeof useTradingOnboarding>['openTradeRequirements']
-  openWalletModal: ReturnType<typeof useAppKit>['open']
-  runWithSignaturePrompt: ReturnType<typeof useSignaturePromptRunner>['runWithSignaturePrompt']
-  signTypedDataAsync: ReturnType<typeof useSignTypedData>['signTypedDataAsync']
   messages: WalletSendMessages
 }) {
   return useCallback(async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    if (!user?.deposit_wallet_address) {
-      toast.error(messages.depositWalletRequired)
-      return
-    }
-    if (!isAddress(walletSendTo)) {
+    if (!walletSendTo.trim()) {
       toast.error(messages.invalidRecipient)
       return
     }
@@ -136,36 +115,15 @@ function useWalletSendHandler({
 
     setIsWalletSending(true)
     try {
-      const call = buildSendErc20Call({
-        token: COLLATERAL_TOKEN_ADDRESS,
-        to: walletSendTo as `0x${string}`,
-        amount: walletSendAmount,
-        decimals: 6,
+      const response = await fetch('/api/withdrawals', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amountNumber, destination: walletSendTo.trim(), idempotencyKey: crypto.randomUUID() }),
       })
-
-      const result = await runWithSignaturePrompt(() => signAndSubmitDepositWalletCalls({
-        user,
-        calls: [call],
-        metadata: 'send_tokens',
-        signTypedDataAsync,
-      }))
-      if (result.error) {
-        if (isTradingAuthRequiredError(result.error)) {
-          handleWithdrawModalChange(false)
-          openTradeRequirements({ forceTradingAuth: true })
-        }
-        else if (result.code === 'wallet_connector_not_connected') {
-          toast.error(messages.reconnectWallet)
-          void openWalletModal({ view: 'Connect' })
-        }
-        else {
-          toast.error(result.error)
-        }
-        return
-      }
+      const result = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(result?.error || DEFAULT_ERROR_MESSAGE)
 
       toast.success(messages.withdrawalSubmitted, {
-        description: messages.withdrawalSubmittedDescription,
+        description: result?.data?.message || messages.withdrawalSubmittedDescription,
       })
       setWalletSendTo('')
       setWalletSendAmount('')
@@ -181,13 +139,9 @@ function useWalletSendHandler({
   }, [
     handleWithdrawModalChange,
     messages,
-    openTradeRequirements,
-    openWalletModal,
-    runWithSignaturePrompt,
     setIsWalletSending,
     setWalletSendAmount,
     setWalletSendTo,
-    signTypedDataAsync,
     user,
     walletSendAmount,
     walletSendTo,
@@ -261,9 +215,6 @@ export function WalletFlow({
 }: WalletFlowProps) {
   const isMobile = useIsMobile()
   const t = useExtracted()
-  const { signTypedDataAsync } = useSignTypedData()
-  const { runWithSignaturePrompt } = useSignaturePromptRunner()
-  const { open } = useAppKit()
   const { depositView, setDepositView, handleDepositModalChange } = useDepositViewState(onDepositOpenChange)
   const {
     walletSendTo,
@@ -283,15 +234,14 @@ export function WalletFlow({
   } = useLiFiWalletUsdBalance(user?.address, { enabled: depositOpen })
   const site = useSiteIdentity()
   const connectedWalletAddress = user?.address ?? null
-  const { openTradeRequirements } = useTradingOnboarding()
 
   const walletSendMessages = useMemo<WalletSendMessages>(() => ({
-    depositWalletRequired: t('Set up your Deposit Wallet first.'),
-    invalidRecipient: t('Enter a valid recipient address.'),
+    depositWalletRequired: t('Complete your account setup first.'),
+    invalidRecipient: t('Enter your M-Pesa phone number.'),
     invalidAmount: t('Enter a valid amount.'),
-    reconnectWallet: t('Your wallet connection expired. Reconnect your wallet and try again.'),
+    reconnectWallet: t('Your session expired. Sign in and try again.'),
     withdrawalSubmitted: t('Withdrawal submitted'),
-    withdrawalSubmittedDescription: t('We sent your withdrawal transaction.'),
+    withdrawalSubmittedDescription: t('Your withdrawal request has been recorded.'),
   }), [t])
 
   const handleWalletSend = useWalletSendHandler({
@@ -302,10 +252,6 @@ export function WalletFlow({
     setWalletSendTo,
     setWalletSendAmount,
     handleWithdrawModalChange,
-    openTradeRequirements,
-    openWalletModal: open,
-    runWithSignaturePrompt,
-    signTypedDataAsync,
     messages: walletSendMessages,
   })
 

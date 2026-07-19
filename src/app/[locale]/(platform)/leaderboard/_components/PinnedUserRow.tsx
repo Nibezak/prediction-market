@@ -65,7 +65,7 @@ export default function PinnedUserRow({
               ? buildPublicProfilePath(pinnedEntry.address || pinnedEntry.username) ?? undefined
               : undefined}
             layout="inline"
-            containerClassName="min-w-0 gap-3 text-base leading-tight [&_[data-avatar]]:h-10 [&_[data-avatar]]:w-10"
+            containerClassName="min-w-0 gap-3 text-base leading-tight [&_.profile-avatar]:h-10 [&_.profile-avatar]:w-10"
             avatarSize={40}
             avatarBadge={pinnedEntry.medalSrc
               ? (

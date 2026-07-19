@@ -5,12 +5,131 @@ import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
+import { resolveDisplayPrice } from '@/lib/market-chance'
 
 interface HomeContentProps {
   locale: string
   currentTimestamp?: number | null
   initialTag?: string
   initialMainTag?: string
+}
+
+function resolveFallbackMarketChance(event: Event) {
+  const market = event.markets[0]
+  if (!market) {
+    return 50
+  }
+
+  if (typeof market.price === 'number' && Number.isFinite(market.price)) {
+    return Math.max(0, Math.min(100, market.price * 100))
+  }
+
+  const yesOutcome = market.outcomes[0]
+  const yesPrice = resolveDisplayPrice({
+    bid: yesOutcome?.sell_price ?? null,
+    ask: yesOutcome?.buy_price ?? null,
+    lastTrade: null,
+  })
+
+  return yesPrice == null ? 50 : Math.max(0, Math.min(100, yesPrice * 100))
+}
+
+function buildFallbackFeaturedEvents(events: Event[], locale: SupportedLocale): HomeFeaturedEventCard[] {
+  const candidates = events.filter(event => event.markets.length > 0).slice(0, 6)
+
+  return candidates.map((event, index, all) => {
+    const market = event.markets[0]!
+    const yesChance = resolveFallbackMarketChance(event)
+    const noChance = Math.max(0, Math.min(100, 100 - yesChance))
+
+    return {
+      featuredId: `fallback:${event.id}`,
+      targetType: 'event',
+      source: 'manual',
+      rank: index,
+      contextMode: 'hidden',
+      kind: 'standard',
+      event,
+      primaryMarkets: [market],
+      topOutcomes: market.outcomes.slice(0, 2).map((outcome, outcomeIndex) => ({
+        key: `${market.condition_id}:${outcome.outcome_index}`,
+        label: outcome.outcome_text,
+        chance: outcomeIndex === 1 ? noChance : yesChance,
+        imageUrl: null,
+        color: outcomeIndex === 1 ? 'var(--chart-2)' : 'var(--chart-1)',
+      })),
+      contextItems: [],
+      previousTitle: all[index - 1]?.title ?? all.at(-1)?.title ?? null,
+      nextTitle: all[index + 1]?.title ?? all[0]?.title ?? null,
+      resolvedEventId: event.id,
+      resolvedSeriesSlug: event.series_slug ?? null,
+      temporalStatus: event.has_live_chart ? 'live' : 'ends',
+      temporalLabel: event.has_live_chart
+        ? 'LIVE'
+        : event.end_date
+          ? `Ends ${(() => { try { return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(event.end_date)) } catch { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(event.end_date)) } })()}`
+          : 'Ends later',
+      sportsMarketGroups: [],
+      liveChartConfig: null,
+    }
+  })
+}
+
+function buildFallbackHotTopics(events: Event[]): HomeFeaturedHotTopic[] {
+  const topics = new Map<string, HomeFeaturedHotTopic & { score: number }>()
+
+  for (const event of events) {
+    const mainTag = event.tags.find(tag => tag.isMainCategory)
+    const slug = (mainTag?.slug || event.main_tag || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    if (!slug) {
+      continue
+    }
+
+    const eventVolume = event.markets.reduce((total, market) => {
+      const recentVolume = Number(market.volume_24h ?? 0)
+      const totalVolume = Number(market.volume ?? 0)
+      return total + (recentVolume > 0 ? recentVolume : totalVolume > 0 ? totalVolume : 0)
+    }, 0)
+    const score = eventVolume > 0 ? eventVolume : 1
+    const existing = topics.get(slug)
+
+    topics.set(slug, {
+      label: existing?.label || mainTag?.name || event.main_tag || slug,
+      slug,
+      href: `/${slug}`,
+      volume24h: (existing?.volume24h ?? 0) + score,
+      score: (existing?.score ?? 0) + score,
+    })
+  }
+
+  return Array.from(topics.values())
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 5)
+    .map(({ score: _score, ...topic }) => topic)
+}
+
+function mergeHotTopics(
+  primary: HomeFeaturedHotTopic[],
+  fallback: HomeFeaturedHotTopic[],
+): HomeFeaturedHotTopic[] {
+  const merged = [...primary]
+  const seen = new Set(primary.map(topic => topic.slug))
+
+  for (const topic of fallback) {
+    if (!seen.has(topic.slug)) {
+      merged.push(topic)
+      seen.add(topic.slug)
+    }
+    if (merged.length >= 5) {
+      break
+    }
+  }
+
+  return merged.slice(0, 5)
 }
 
 export default async function HomeContent({
@@ -57,9 +176,7 @@ export default async function HomeContent({
           const featuredHotTopics = featuredEvents.length > 0
             ? await listHomeFeaturedHotTopics(resolvedLocale)
             : []
-          const featuredSideCard = featuredEvents.length > 0
-            ? await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics)
-            : DEFAULT_HOME_FEATURED_SETTINGS.sideCard
+          const featuredSideCard = await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics)
 
           return {
             featuredEvents,
@@ -89,8 +206,15 @@ export default async function HomeContent({
 
   initialEvents = initialEventsResult.events
   initialCurrentTimestamp = initialEventsResult.currentTimestamp
-  initialFeaturedEvents = featuredEventsResult.featuredEvents
-  initialFeaturedHotTopics = featuredEventsResult.featuredHotTopics
+  initialFeaturedEvents = featuredEventsResult.featuredEvents.length > 0
+    ? featuredEventsResult.featuredEvents
+    : shouldLoadFeaturedEvents
+      ? buildFallbackFeaturedEvents(initialEvents, resolvedLocale)
+      : []
+  initialFeaturedHotTopics = mergeHotTopics(
+    featuredEventsResult.featuredHotTopics,
+    buildFallbackHotTopics(initialEvents),
+  )
   initialFeaturedSideCard = featuredEventsResult.featuredSideCard
 
   return (

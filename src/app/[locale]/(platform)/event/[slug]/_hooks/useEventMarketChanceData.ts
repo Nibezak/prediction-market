@@ -50,6 +50,7 @@ export function useEventMarketChanceData({
   const marketQuotesByMarket = useEventMarketQuotes(yesMarketTargets, { enabled })
   const displayChanceByMarket = useMemo(() => {
     const marketIds = new Set([
+      ...event.markets.map(market => market.condition_id).filter(Boolean),
       ...Object.keys(marketQuotesByMarket),
       ...Object.keys(marketLastTradesByMarket),
     ])
@@ -58,12 +59,28 @@ export function useEventMarketChanceData({
     marketIds.forEach((marketId) => {
       const quote = marketQuotesByMarket[marketId]
       const lastTrade = marketLastTradesByMarket[marketId]
-      const displayPrice = resolveDisplayPrice({
+      let displayPrice = resolveDisplayPrice({
         bid: quote?.bid ?? null,
         ask: quote?.ask ?? null,
         midpoint: quote?.mid ?? null,
         lastTrade,
       })
+
+      if (displayPrice == null) {
+        const market = event.markets.find(m => m.condition_id === marketId)
+        if (market && typeof market.price === 'number') {
+          displayPrice = market.price
+        }
+        else if (market) {
+          const yesOutcome = market.outcomes?.find(o => o.outcome_index === 0)
+          if (yesOutcome && typeof yesOutcome.buy_price === 'number') {
+            displayPrice = yesOutcome.buy_price
+          }
+          else {
+            displayPrice = 0.5 // Default to 50% chance if everything is null
+          }
+        }
+      }
 
       if (displayPrice != null) {
         entries.push([marketId, displayPrice * 100])
@@ -71,7 +88,7 @@ export function useEventMarketChanceData({
     })
 
     return Object.fromEntries(entries)
-  }, [marketLastTradesByMarket, marketQuotesByMarket])
+  }, [marketLastTradesByMarket, marketQuotesByMarket, event.markets])
   const chanceChangeByMarket = useMemo(() => {
     if (!includePriceHistory) {
       return {}

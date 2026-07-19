@@ -1,6 +1,6 @@
 'use client'
 
-import { ActivityIcon, ChevronDownIcon, TrophyIcon } from 'lucide-react'
+import { ActivityIcon, ChevronDownIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AppLink from '@/components/AppLink'
@@ -88,7 +88,7 @@ export default function NavigationMoreMenu() {
             <span>{t('Activity')}</span>
           </AppLink>
         </DropdownMenuItem>
-        <DropdownMenuItem
+        {/* <DropdownMenuItem
           asChild
           className={cn(`
             group flex w-full items-center gap-2 px-2.5 py-1.5 text-sm font-medium text-muted-foreground
@@ -100,7 +100,7 @@ export default function NavigationMoreMenu() {
             <TrophyIcon className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
             <span>{t('Leaderboard')}</span>
           </AppLink>
-        </DropdownMenuItem>
+        </DropdownMenuItem> */}
       </DropdownMenuContent>
     </DropdownMenu>
   )

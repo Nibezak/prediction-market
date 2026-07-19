@@ -1,6 +1,6 @@
 <h1 align="center">
   <img src="https://github.com/user-attachments/assets/0cc687fb-89c4-43fa-a056-d89c307215ad" alt="Kuest" height="96" /><br/>
-  Kuest — Open-Source Prediction Market
+  Slimefish — Open-Source Prediction Market
 </h1>
 
 <p align="center">
@@ -35,7 +35,7 @@ Kalshi (CFTC-regulated, 200x annual volume growth) just signed its **first inter
 > *"It makes sense for us to go through these international partners. They already have the customers and the brand."*
 > — Luana Lopes Lara, co-founder & COO, Kalshi · [Bloomberg, March 2026](https://www.bloomberg.com/news/articles/2026-03-09/kalshi-teams-up-with-brazil-s-xp-for-first-international-push)
 
-Kalshi can do that one deal at a time. Kuest makes the same capability available to any operator — without a bilateral negotiation.
+Kalshi can do that one deal at a time. Slimefish makes the same capability available to any operator — without a bilateral negotiation.
 
 **Kuest is the infrastructure layer.** You bring the brand and audience. We handle the rest.
 
@@ -135,4 +135,4 @@ Kalshi can do that one deal at a time. Kuest makes the same capability available
 
 ---
 
-**License:** [Kuest MIT+Commons](LICENSE). Custom branding, frontend changes, and custom UX are welcome. Production deployments must use Kuest infrastructure. Running an independent trading stack or white-glove institutional deployment requires a [commercial agreement](mailto:hello@kuest.com).
+**License:** [Kuest MIT+Commons](LICENSE). Custom branding, frontend changes, and custom UX are welcome. Production deployments must use Slimefish infrastructure. Running an independent trading stack or white-glove institutional deployment requires a [commercial agreement](mailto:hello@kuest.com).

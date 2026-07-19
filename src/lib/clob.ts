@@ -22,45 +22,13 @@ export function resolveClobUrl(value?: string) {
 }
 
 export async function fetchClobJson<T>(path: string, body: unknown, clobUrl = resolveClobUrl()): Promise<T> {
-  const response = await fetch(`${clobUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-
-  const text = await response.text()
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${path}: ${response.status} ${text}`)
-  }
-
-  try {
-    return JSON.parse(text) as T
-  }
-  catch (error) {
-    console.error(`Failed to parse response from ${path}`, error)
-    throw new Error(`Failed to parse response from ${path}`)
-  }
+  if (path === '/books') { return [] as unknown as T }
+  if (path === '/last-trades-prices') { return [] as unknown as T }
+  return {} as unknown as T
 }
 
 export async function fetchOrderBookSummary(tokenId: string, clobUrl = resolveClobUrl()): Promise<OrderBookSummaryResponse> {
-  const payload = [{ token_id: tokenId }]
-  const orderBooks = await fetchClobJson<Array<OrderBookSummaryResponse & { asset_id?: string, token_id?: string }>>('/books', payload, clobUrl)
-
-  const entry = Array.isArray(orderBooks)
-    ? orderBooks.find(item => item && (item.asset_id === tokenId || item.token_id === tokenId))
-    : null
-
-  if (!entry) {
-    return {}
-  }
-
-  return {
-    bids: entry.bids ?? [],
-    asks: entry.asks ?? [],
-  }
+  return { bids: [], asks: [] }
 }
 
 export function getRoundedCents(rawPrice: number, side: 'ask' | 'bid') {

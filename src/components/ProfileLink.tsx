@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 
 interface ProfileLinkProps {
   user: {
+    id?: string
     address: string
     deposit_wallet_address?: string | null
     image: string
@@ -56,8 +57,8 @@ function useProfileTooltipStats(user: ProfileLinkProps['user']) {
   const [stats, setStats] = useState<Awaited<ReturnType<typeof fetchProfileLinkStats>>>(null)
   const [loadedStatsAddress, setLoadedStatsAddress] = useState<string | null>(null)
   const statsAddress = useMemo(
-    () => user.deposit_wallet_address ?? user.address,
-    [user.address, user.deposit_wallet_address],
+    () => user.id ?? user.deposit_wallet_address ?? user.address,
+    [user.address, user.deposit_wallet_address, user.id],
   )
   const normalizedStatsAddress = statsAddress ?? null
   const hasLoaded = normalizedStatsAddress === null || loadedStatsAddress === normalizedStatsAddress
@@ -170,7 +171,7 @@ export default function ProfileLink({
     : null
 
   const avatarNode = (
-    <AppLink href={profileHref} data-avatar-wrapper="true" className="relative isolate shrink-0">
+    <AppLink href={profileHref} data-avatar-wrapper="true" className="profile-avatar-wrapper relative isolate shrink-0">
       {!showPlaceholder && hasCustomAvatar
         ? (
             <Image
@@ -179,14 +180,14 @@ export default function ProfileLink({
               width={resolvedAvatarSize}
               height={resolvedAvatarSize}
               data-avatar="true"
-              className="aspect-square rounded-full border border-border/80 object-cover object-center"
+              className="profile-avatar aspect-square rounded-full border border-border/80 object-cover object-center"
             />
           )
         : (
             <div
               aria-hidden="true"
               data-avatar="true"
-              className="aspect-square rounded-full border border-border/80"
+              className="profile-avatar aspect-square rounded-full border border-border/80"
               style={{ ...fallbackStyle, width: resolvedAvatarSize, height: resolvedAvatarSize }}
             />
           )}

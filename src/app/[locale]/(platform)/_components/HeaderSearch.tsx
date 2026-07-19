@@ -359,34 +359,35 @@ export default function HeaderSearch({
             'focus-visible:ring-0 focus-visible:ring-offset-0',
           )}
         />
-        {query.length > 0
-          ? (
-              <button
-                type="button"
-                className={cn(`
-                  absolute top-1/2 right-3 inline-flex -translate-y-1/2 items-center justify-center rounded-sm p-1
-                  text-muted-foreground transition-colors
-                  hover:text-foreground
-                `)}
-                onClick={() => {
-                  clearSearch()
-                  setIsResultsDismissed(false)
-                  inputRef.current?.focus()
-                }}
-                aria-label="Clear search"
-              >
-                <XIcon className="size-4" />
-              </button>
-            )
-          : (
-              <span className={cn(`
-                absolute top-1/2 right-3 hidden -translate-y-1/2 font-mono text-xs text-muted-foreground
-                lg:inline-flex
-              `)}
-              >
-                /
-              </span>
-            )}
+
+        {query.length > 0 && (
+          <button
+            type="button"
+            className={cn(`
+              absolute top-1/2 right-3 z-10 inline-flex -translate-y-1/2 items-center justify-center rounded-sm p-1
+              text-muted-foreground transition-colors
+              hover:text-foreground
+            `)}
+            onClick={() => {
+              clearSearch()
+              setIsResultsDismissed(false)
+              inputRef.current?.focus()
+            }}
+            aria-label="Clear search"
+          >
+            <XIcon className="size-4" />
+          </button>
+        )}
+        {query.length === 0 && (
+          <span className="
+            absolute top-1/2 right-3 hidden -translate-y-1/2 font-mono text-xs text-muted-foreground
+            lg:inline-flex
+          "
+          >
+            /
+          </span>
+        )}
+
         {showDropdown && (
           <SearchResults
             results={results}

@@ -37,6 +37,8 @@ export const UserRepository = {
       const result = await db
         .select({
           id: users.id,
+          email: users.email,
+          settings: users.settings,
           deposit_wallet_address: users.deposit_wallet_address,
           username: users.username,
           image: users.image,
@@ -57,6 +59,8 @@ export const UserRepository = {
 
       const data = {
         id: rawData.id,
+        email: rawData.email,
+        settings: rawData.settings,
         deposit_wallet_address: rawData.deposit_wallet_address,
         username: rawData.username!,
         image: rawData.image ? getPublicAssetUrl(rawData.image) : '',

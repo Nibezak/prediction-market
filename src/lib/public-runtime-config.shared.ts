@@ -23,25 +23,25 @@ export interface PublicRuntimeConfig {
 }
 
 export const defaultPublicRuntimeConfig: PublicRuntimeConfig = {
-  clobUrl: 'https://clob.kuest.com',
+  clobUrl: '',
   commitSha: 'unknown',
-  communityUrl: 'https://community.kuest.com',
-  createMarketUrl: 'https://create-market.kuest.com',
-  dataUrl: 'https://data-api.kuest.com',
-  gammaUrl: 'https://gamma-api.kuest.com',
-  geoblockUrl: 'https://geoblock.kuest.com',
+  communityUrl: '',
+  createMarketUrl: '',
+  dataUrl: '',
+  gammaUrl: '',
+  geoblockUrl: '',
   isVercel: 'false',
   chainId: AMOY_CHAIN_ID,
   polygonRpcUrl: '',
-  priceReferenceUrl: 'https://price-reference.kuest.com',
-  relayerUrl: 'https://relayer.kuest.com',
+  priceReferenceUrl: '',
+  relayerUrl: '',
   reownAppKitProjectId: '',
-  sdkDownloadUrl: 'https://sdk-download.kuest.com',
+  sdkDownloadUrl: '',
   sentryDsn: '',
   siteUrl: 'http://localhost:3000',
-  userPnlUrl: 'https://user-pnl-api.kuest.com',
-  wsClobUrl: 'wss://ws-subscriptions-clob.kuest.com',
-  wsLiveDataUrl: 'wss://ws-live-data.kuest.com',
+  userPnlUrl: '',
+  wsClobUrl: '',
+  wsLiveDataUrl: '',
 }
 
 export function normalizePublicRuntimeEnvValue(value: string | undefined, fallback = '') {
@@ -50,28 +50,28 @@ export function normalizePublicRuntimeEnvValue(value: string | undefined, fallba
 }
 
 export function resolvePublicRuntimeEnv(env: NodeJS.ProcessEnv): Omit<PublicRuntimeConfig, 'commitSha' | 'siteUrl'> {
-  const isMock = env.NEXT_PUBLIC_MOCK_MODE === 'true'
-  const isLocalMatching = env.NEXT_PUBLIC_LOCAL_MATCHING === 'true' || isMock
   const siteUrl = env.SITE_URL || 'http://localhost:3000'
-  const tellwiseClobUrl = `${siteUrl}/api/tellwise-clob`
 
   return {
-    clobUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.CLOB_URL, defaultPublicRuntimeConfig.clobUrl),
-    communityUrl: normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, defaultPublicRuntimeConfig.communityUrl),
-    createMarketUrl: normalizePublicRuntimeEnvValue(env.CREATE_MARKET_URL, defaultPublicRuntimeConfig.createMarketUrl),
-    dataUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.DATA_URL, defaultPublicRuntimeConfig.dataUrl),
-    gammaUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.GAMMA_URL, defaultPublicRuntimeConfig.gammaUrl),
-    geoblockUrl: normalizePublicRuntimeEnvValue(env.GEOBLOCK_URL, defaultPublicRuntimeConfig.geoblockUrl),
+    clobUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_CLOB_URL, normalizePublicRuntimeEnvValue(env.CLOB_URL, env.AMM_BASE_URL || 'http://localhost:8000/api/v1')),
+    communityUrl: normalizePublicRuntimeEnvValue(
+      env.NEXT_PUBLIC_COMMUNITY_URL,
+      normalizePublicRuntimeEnvValue(env.TELLWISE_COMMUNITY_URL, normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, '/api/community')),
+    ),
+    createMarketUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_CREATE_MARKET_URL, normalizePublicRuntimeEnvValue(env.CREATE_MARKET_URL, defaultPublicRuntimeConfig.createMarketUrl)),
+    dataUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_DATA_URL, normalizePublicRuntimeEnvValue(env.DATA_URL, defaultPublicRuntimeConfig.dataUrl)),
+    gammaUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_GAMMA_URL, normalizePublicRuntimeEnvValue(env.GAMMA_URL, defaultPublicRuntimeConfig.gammaUrl)),
+    geoblockUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_GEOBLOCK_URL, normalizePublicRuntimeEnvValue(env.GEOBLOCK_URL, defaultPublicRuntimeConfig.geoblockUrl)),
     isVercel: env.VERCEL_ENV ? 'true' : 'false',
     chainId: parseNetworkChainId(env.CHAIN_ID, defaultPublicRuntimeConfig.chainId),
     polygonRpcUrl: normalizePublicRuntimeEnvValue(env.POLYGON_RPC_URL),
-    priceReferenceUrl: normalizePublicRuntimeEnvValue(env.PRICE_REFERENCE_URL, defaultPublicRuntimeConfig.priceReferenceUrl),
-    relayerUrl: isLocalMatching ? tellwiseClobUrl : normalizePublicRuntimeEnvValue(env.RELAYER_URL, defaultPublicRuntimeConfig.relayerUrl),
+    priceReferenceUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_PRICE_REFERENCE_URL, normalizePublicRuntimeEnvValue(env.PRICE_REFERENCE_URL, defaultPublicRuntimeConfig.priceReferenceUrl)),
+    relayerUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_RELAYER_URL, normalizePublicRuntimeEnvValue(env.RELAYER_URL, env.AMM_BASE_URL || 'http://localhost:8000/api/v1')),
     reownAppKitProjectId: normalizePublicRuntimeEnvValue(env.REOWN_APPKIT_PROJECT_ID),
-    sdkDownloadUrl: normalizePublicRuntimeEnvValue(env.SDK_DOWNLOAD_URL, defaultPublicRuntimeConfig.sdkDownloadUrl),
+    sdkDownloadUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_SDK_DOWNLOAD_URL, normalizePublicRuntimeEnvValue(env.SDK_DOWNLOAD_URL, defaultPublicRuntimeConfig.sdkDownloadUrl)),
     sentryDsn: normalizePublicRuntimeEnvValue(env.SENTRY_DSN),
-    userPnlUrl: normalizePublicRuntimeEnvValue(env.USER_PNL_URL, defaultPublicRuntimeConfig.userPnlUrl),
-    wsClobUrl: normalizePublicRuntimeEnvValue(env.WS_CLOB_URL, defaultPublicRuntimeConfig.wsClobUrl),
-    wsLiveDataUrl: normalizePublicRuntimeEnvValue(env.WS_LIVE_DATA_URL, defaultPublicRuntimeConfig.wsLiveDataUrl),
+    userPnlUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_USER_PNL_URL, normalizePublicRuntimeEnvValue(env.USER_PNL_URL, defaultPublicRuntimeConfig.userPnlUrl)),
+    wsClobUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_WS_CLOB_URL, normalizePublicRuntimeEnvValue(env.WS_CLOB_URL, defaultPublicRuntimeConfig.wsClobUrl)),
+    wsLiveDataUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_WS_LIVE_DATA_URL, normalizePublicRuntimeEnvValue(env.WS_LIVE_DATA_URL, defaultPublicRuntimeConfig.wsLiveDataUrl)),
   }
 }

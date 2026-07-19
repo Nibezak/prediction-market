@@ -542,7 +542,7 @@ function HomeFeaturedSettingsDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+          <Button type="submit" form="admin-general-settings-form" variant="secondary" onClick={() => onOpenChange(false)}>
             {t('Done')}
           </Button>
         </DialogFooter>

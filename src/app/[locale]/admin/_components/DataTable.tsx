@@ -109,7 +109,7 @@ function useDataTableState<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
-    pageCount: Math.ceil(totalCount / pageSize),
+    pageCount: totalCount > 0 ? Math.ceil(totalCount / pageSize) : -1,
     manualPagination: true,
     manualSorting: true,
     onSortingChange: handleSortingChange,
@@ -124,6 +124,9 @@ function useDataTableState<TData, TValue>({
         pageIndex,
         pageSize,
       },
+    },
+    onPaginationChange: (updater) => {
+      // Allow manual state injection to fully control pagination
     },
   })
 

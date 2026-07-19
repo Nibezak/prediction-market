@@ -1,5 +1,5 @@
-import { redirect } from '@/i18n/navigation'
 import type { SupportedLocale } from '@/i18n/locales'
+import { redirect } from '@/i18n/navigation'
 
 interface AdminDashboardPageProps {
   params: Promise<{ locale: string }>
@@ -8,7 +8,7 @@ interface AdminDashboardPageProps {
 export default async function AdminDashboardPage({ params }: AdminDashboardPageProps) {
   const { locale } = await params
   redirect({
-    href: '/admin/settings',
+    href: '/admin/dashboard',
     locale: locale as SupportedLocale,
   })
 }

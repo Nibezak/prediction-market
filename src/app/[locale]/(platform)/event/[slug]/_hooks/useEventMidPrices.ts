@@ -121,6 +121,7 @@ export function useEventMarketQuotes(
   options: UseEventMarketQuotesOptions = {},
 ) {
   const { clobUrl } = usePublicRuntimeConfig()
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const { enabled = true, refetchIntervalMs = PRICE_REFRESH_INTERVAL_MS } = options
   const tokenSignature = useMemo(
     () => targets.map(target => `${target.conditionId}:${target.tokenId}`).sort().join(','),
@@ -130,7 +131,7 @@ export function useEventMarketQuotes(
   const { data } = useQuery({
     queryKey: ['event-market-quotes', clobUrl, tokenSignature],
     queryFn: () => fetchQuotesByMarket(targets, clobUrl),
-    enabled: enabled && targets.length > 0 && Boolean(clobUrl),
+    enabled: !isPlayMoneyAmm && enabled && targets.length > 0 && Boolean(clobUrl),
     staleTime: 'static',
     gcTime: PRICE_REFRESH_INTERVAL_MS,
     refetchInterval: refetchIntervalMs,

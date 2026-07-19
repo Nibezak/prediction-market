@@ -1,7 +1,7 @@
 import type { ChartSettings } from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls'
 import { defaultChartSettings } from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls'
 
-const STORAGE_KEY = 'event-chart-settings'
+const STORAGE_KEY = 'event-chart-settings-v2'
 const chartSettingsListeners = new Set<() => void>()
 let cachedChartSettings: ChartSettings = defaultChartSettings
 

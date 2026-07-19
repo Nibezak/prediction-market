@@ -103,6 +103,46 @@ async function fetchUserPositions({
   searchQuery?: string
   signal?: AbortSignal
 }): Promise<PublicPosition[]> {
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  if (isPlayMoneyAmm) {
+    if (pageParam > 0) {
+      return []
+    }
+    const response = await fetch(`/api/amm/users/me/positions?status=${status}&limit=100`, { signal })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Failed to load positions')
+    }
+    const rows = Array.isArray(payload?.data) ? payload.data : []
+    return rows.map((position: any) => {
+      const options = Array.isArray(position.market?.options) ? position.market.options : []
+      const outcomeIndex = Math.max(0, options.findIndex((option: any) => option.id === position.optionId))
+      const quantity = Number(position.quantity || 0)
+      const cost = Number(position.cost || 0)
+      const currentValue = Number(position.value || 0)
+      const currentPrice = quantity > 0 ? currentValue / quantity : Number(position.option?.liquidityProbability || 0)
+      return {
+        id: position.id,
+        title: position.market?.question || 'Untitled market',
+        slug: position.market?.slug || position.marketId,
+        eventSlug: position.market?.event?.slug || position.market?.slug || position.marketId,
+        icon: position.market?.event?.iconUrl || '/images/branding/slimefish.svg',
+        avgPrice: quantity > 0 ? cost / quantity : 0,
+        currentValue,
+        timestamp: new Date(position.updatedAt || position.createdAt).getTime(),
+        status,
+        outcome: position.option?.name || 'Outcome',
+        conditionId: position.marketId,
+        outcomeIndex,
+        asset: position.optionId,
+        size: quantity,
+        curPrice: currentPrice,
+        redeemable: Boolean(position.market?.resolvedAt),
+        isResolved: Boolean(position.market?.resolvedAt),
+      } satisfies PublicPosition
+    })
+  }
+
   const endpoint = status === 'active' ? '/positions' : '/closed-positions'
   const { sortBy: apiSortBy, sortDirection: apiSortDirection } = resolvePositionsSortParams(sortBy, sortDirection)
   const { market, title } = resolvePositionsSearchParams(searchQuery ?? '')

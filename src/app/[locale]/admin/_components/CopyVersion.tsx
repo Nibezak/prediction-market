@@ -142,7 +142,7 @@ function ForkSyncWarning({ currentCommitSha, forkRepositoryUrl, upstreamCommitSh
           <div className="space-y-1">
             <p className="text-sm font-semibold text-foreground">{title}</p>
             <p className="text-xs text-muted-foreground">
-              {t('Your fork is not synced with the latest Kuest version. Open your project on GitHub and click')}
+              {t('Your fork is not synced with the latest Slimefish  version. Open your project on GitHub and click')}
               {' '}
               {forkRepositoryUrl
                 ? (
@@ -221,7 +221,7 @@ export default function CopyVersion({ forkRepositoryUrl }: CopyVersionProps) {
   }
 
   return (
-    <div className="mt-auto pt-4 flex items-center gap-1 text-[11px] text-muted-foreground/50 font-medium">
+    <div className="mt-auto flex items-center gap-1 pt-4 text-[11px] font-medium text-muted-foreground/50">
       {upstreamCommitForWarning && (
         <ForkSyncWarning
           currentCommitSha={commitSha}
@@ -233,15 +233,20 @@ export default function CopyVersion({ forkRepositoryUrl }: CopyVersionProps) {
         type="button"
         variant="ghost"
         size="sm"
-        className="group font-mono text-[11px] h-7 px-2 text-muted-foreground/50 hover:text-foreground"
+        className="group h-7 px-2 font-mono text-[11px] text-muted-foreground/50 hover:text-foreground"
         title={copied ? 'Copied' : 'Copy version payload'}
         onClick={() => void copyVersionPayload()}
       >
         v.1.0.2
         {copied
-          ? <CheckIcon className="text-yes size-3 ml-1" />
+          ? <CheckIcon className="ml-1 size-3 text-yes" />
           : (
-              <CopyIcon className="size-3 ml-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+              <CopyIcon className="
+                ml-1 size-3 opacity-0 transition-opacity
+                group-hover:opacity-100
+                group-focus-visible:opacity-100
+              "
+              />
             )}
       </Button>
     </div>

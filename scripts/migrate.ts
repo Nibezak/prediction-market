@@ -472,7 +472,7 @@ function resolveMigrationConnectionString(): string | null {
     return null
   }
 
-  return migrationUrl.replace('require', 'disable')
+  return migrationUrl
 }
 
 async function acquireMigrationLock(sql: ReservedSql): Promise<void> {
@@ -496,6 +496,7 @@ async function run(): Promise<void> {
     max: 1,
     connect_timeout: 30,
     idle_timeout: 5,
+    ssl: /sslmode=(require|verify-ca|verify-full)/i.test(connectionString) ? 'require' : undefined,
   })
   let reserved: ReservedSql | null = null
   let lockAcquired = false

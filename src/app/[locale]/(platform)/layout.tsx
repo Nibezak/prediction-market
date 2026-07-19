@@ -5,6 +5,8 @@ import Header from '@/app/[locale]/(platform)/_components/Header'
 import MobileBottomNav from '@/app/[locale]/(platform)/_components/MobileBottomNav'
 import NavigationTabs from '@/app/[locale]/(platform)/_components/NavigationTabs'
 import PlatformViewerState from '@/app/[locale]/(platform)/_components/PlatformViewerState'
+import PullToRefresh from '@/app/[locale]/(platform)/_components/PullToRefresh'
+import SiteFooter from '@/app/[locale]/(platform)/_components/SiteFooter'
 import { FilterProvider } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import PlatformNavigationProvider from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
@@ -37,7 +39,9 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
           <PlatformNavigationProvider tags={tags} childParentMap={childParentMap}>
             <Header />
             <NavigationTabs />
+            <PullToRefresh />
             {children}
+            <SiteFooter />
             <MobileBottomNav />
             <AffiliateQueryHandler />
           </PlatformNavigationProvider>

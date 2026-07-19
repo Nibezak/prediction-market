@@ -1,8 +1,14 @@
+import { and, eq } from 'drizzle-orm'
 import { SettingsRepository } from '@/lib/db/queries/settings'
+import { settings as settingsTable } from '@/lib/db/schema/settings/tables'
+import { db } from '@/lib/drizzle'
 
 const GENERAL_SETTINGS_GROUP = 'general'
 export const BLOCKED_COUNTRIES_SETTINGS_KEY = 'blocked_countries'
 const MAX_BLOCKED_COUNTRIES = 260
+const ENFORCEMENT_CACHE_TTL_MS = 30_000
+
+let enforcementCache: { blockedCountries: string[], expiresAt: number } | null = null
 
 const COUNTRY_INPUT_SPLIT_PATTERN = /[\s,;]+/
 const ALLOWED_COUNTRY_CODES = new Set([
@@ -329,6 +335,30 @@ export function getBlockedCountriesFromSettings(settings?: SettingsMap) {
 export async function loadBlockedCountries() {
   const { data } = await SettingsRepository.getSettings()
   return getBlockedCountriesFromSettings(data ?? undefined)
+}
+
+export async function loadBlockedCountriesForEnforcement() {
+  const now = Date.now()
+  if (enforcementCache && enforcementCache.expiresAt > now) {
+    return enforcementCache.blockedCountries
+  }
+
+  const rows = await db
+    .select({ value: settingsTable.value })
+    .from(settingsTable)
+    .where(and(
+      eq(settingsTable.group, GENERAL_SETTINGS_GROUP),
+      eq(settingsTable.key, BLOCKED_COUNTRIES_SETTINGS_KEY),
+    ))
+    .limit(1)
+
+  const blockedCountries = parseBlockedCountriesFromSettingsValue(rows[0]?.value)
+  enforcementCache = {
+    blockedCountries,
+    expiresAt: now + ENFORCEMENT_CACHE_TTL_MS,
+  }
+
+  return blockedCountries
 }
 
 export function validateBlockedCountriesInput(rawValue: string | null | undefined): BlockedCountriesValidationResult {

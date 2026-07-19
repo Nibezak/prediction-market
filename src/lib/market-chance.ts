@@ -77,7 +77,7 @@ export function buildChanceByMarket(
 ) {
   function getPrice(market: Market) {
     const override = priceOverrides[market.condition_id]
-    return normalizeMarketPrice(override ?? market.price) ?? 0
+    return normalizeMarketPrice(override ?? market.price ?? market.probability) ?? 0
   }
 
   return markets.reduce<Record<string, number>>((acc, market) => {

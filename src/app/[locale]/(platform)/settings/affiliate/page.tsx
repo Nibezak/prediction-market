@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { notFound } from 'next/navigation'
 import SettingsAffiliateContent from '@/app/[locale]/(platform)/settings/_components/SettingsAffiliateContent'
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { getAffiliateFeeSettings } from '@/lib/affiliate-fee-settings'
@@ -32,6 +33,10 @@ export default async function AffiliateSettingsPage({ params }: PageProps<'/[loc
   const t = await getExtracted()
 
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true })
+  if (!user) {
+    notFound()
+  }
+
   const affiliateCode = user.affiliate_code
   const receiverAddress = user.deposit_wallet_address ?? user.address
 

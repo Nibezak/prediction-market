@@ -105,6 +105,7 @@ export function AdminCreateEventFooter({
   onBack,
   onNext,
 }: AdminCreateEventFooterProps) {
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
   const signatureBusy = isLoadingPendingRequest
     || isSigningAuth
     || isPreparingSignaturePlan
@@ -173,7 +174,7 @@ export function AdminCreateEventFooter({
                                 ? 'Create another event'
                                 : hasPreparedSignaturePlan
                                   ? 'Continue signatures'
-                                  : 'Sign & prepare'}
+                                  : isPlayMoneyAmm ? 'Create event' : 'Sign & prepare'}
                   </>
                 )
               : currentStep === 4

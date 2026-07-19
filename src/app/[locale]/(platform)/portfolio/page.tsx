@@ -24,7 +24,8 @@ export default async function PortfolioPage({ params }: PageProps<'/[locale]/por
   const fallbackChartEndDate = getFallbackChartEndDate()
 
   const user = await UserRepository.getCurrentUser()
-  const userAddress = user?.deposit_wallet_address ?? ''
+  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const userAddress = isPlayMoneyAmm ? (user?.id ?? '') : (user?.deposit_wallet_address ?? '')
   const snapshotAddress = user?.deposit_wallet_address
   const publicAddress = user?.deposit_wallet_address ?? null
   const snapshot = await fetchPortfolioSnapshot(snapshotAddress)
@@ -36,7 +37,7 @@ export default async function PortfolioPage({ params }: PageProps<'/[locale]/por
           username: user?.username ?? 'Your portfolio',
           avatarUrl: user?.image ?? '',
           joinedAt: (user as any)?.created_at?.toString?.() ?? (user as any)?.createdAt?.toString?.(),
-          portfolioAddress: publicAddress ?? undefined,
+          portfolioAddress: (isPlayMoneyAmm ? user?.id : publicAddress) ?? undefined,
         }}
         snapshot={snapshot}
         actions={<PortfolioWalletActions />}

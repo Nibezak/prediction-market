@@ -14,10 +14,12 @@ function hasPositiveNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
-export function hasHomeCardMarketChance(market: Pick<Market, 'volume' | 'volume_24h' | 'condition'> | null | undefined) {
+export function hasHomeCardMarketChance(market: Pick<Market, 'volume' | 'volume_24h' | 'condition' | 'price' | 'probability'> | null | undefined) {
   return hasPositiveNumber(market?.volume)
     || hasPositiveNumber(market?.volume_24h)
     || hasPositiveNumber(market?.condition?.volume)
+    || (typeof market?.price === 'number' && Number.isFinite(market.price))
+    || (typeof market?.probability === 'number' && Number.isFinite(market.probability))
 }
 
 export function formatHomeCardChanceLabel(value: number | null | undefined) {

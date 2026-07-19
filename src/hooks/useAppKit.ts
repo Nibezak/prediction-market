@@ -1,10 +1,14 @@
 'use client'
 
-import type { OpenOptions, Views } from '@reown/appkit/react'
 import { createContext, use } from 'react'
 
+export interface AuthOpenOptions {
+  view?: string
+  mode?: 'sign-in' | 'sign-up'
+}
+
 export interface AppKitValue {
-  open: (options?: OpenOptions<Views>) => Promise<void>
+  open: (options?: AuthOpenOptions) => Promise<void>
   close: () => Promise<void>
   isReady: boolean
 }

@@ -3,7 +3,7 @@
 import type { User } from '@/types'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import QRCode from 'react-qr-code'
 import { toast } from 'sonner'
 import { enableTwoFactorAction } from '@/app/[locale]/(platform)/settings/_actions/enable-two-factor'
@@ -12,6 +12,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 import { Label } from '@/components/ui/label'
 import { useClipboard } from '@/hooks/useClipboard'
 import { authClient } from '@/lib/auth-client'
+import { isTellwiseLocalSessionEnabled, TELLWISE_LOCAL_USER_ID } from '@/lib/tellwise-local-session'
 import { useUser } from '@/stores/useUser'
 import { TwoFactorSetupSkeleton } from './TwoFactorSetupSkeleton'
 
@@ -33,6 +34,9 @@ const AUTHENTICATOR_APP_LINKS = {
   'Authy': 'https://www.authy.com/download/',
   'Google Authenticator': 'https://support.google.com/accounts/answer/1066447',
 } as const
+const LOCAL_2FA_STORAGE_KEY = 'tellwise_local_2fa_enabled'
+const LOCAL_2FA_SECRET = 'JBSWY3DPEHPK3PXP'
+const LOCAL_2FA_CODE = '123456'
 
 function useTwoFactorState(user: User) {
   const [state, setState] = useState<ComponentState>({
@@ -50,6 +54,22 @@ export default function SettingsTwoFactorAuthContent({ user }: { user: User }) {
   const t = useExtracted()
   const { copied, copy } = useClipboard()
   const { state, setState } = useTwoFactorState(user)
+  const isLocalTwoFactor = isTellwiseLocalSessionEnabled() && user.id === TELLWISE_LOCAL_USER_ID
+
+  useEffect(() => {
+    if (!isLocalTwoFactor) {
+      return
+    }
+
+    const isEnabled = window.localStorage.getItem(LOCAL_2FA_STORAGE_KEY) === 'true'
+    setState(prev => ({ ...prev, isEnabled }))
+    if (isEnabled && !user.twoFactorEnabled) {
+      useUser.setState({
+        ...user,
+        twoFactorEnabled: true,
+      })
+    }
+  }, [isLocalTwoFactor, setState, user])
 
   function extractTotpSecret() {
     try {
@@ -97,6 +117,20 @@ export default function SettingsTwoFactorAuthContent({ user }: { user: User }) {
   }
 
   async function handleEnableTwoFactor() {
+    if (isLocalTwoFactor) {
+      const issuer = encodeURIComponent('Tellwise Local')
+      const account = encodeURIComponent(user.email || user.username || 'local-user')
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        setupData: {
+          totpURI: `otpauth://totp/${issuer}:${account}?secret=${LOCAL_2FA_SECRET}&issuer=${issuer}&digits=6&period=30`,
+          backupCodes: [],
+        },
+      }))
+      return
+    }
+
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
@@ -143,6 +177,21 @@ export default function SettingsTwoFactorAuthContent({ user }: { user: User }) {
     setState(prev => ({ ...prev, isDisabling: true }))
 
     try {
+      if (isLocalTwoFactor) {
+        window.localStorage.removeItem(LOCAL_2FA_STORAGE_KEY)
+        toast.success(t('Successfully disabled two-factor authentication.'))
+        setState(prev => ({
+          ...prev,
+          isEnabled: false,
+          isDisabling: false,
+        }))
+        useUser.setState({
+          ...user,
+          twoFactorEnabled: false,
+        })
+        return
+      }
+
       const { error } = await authClient.twoFactor.disable({})
 
       if (error) {
@@ -180,6 +229,33 @@ export default function SettingsTwoFactorAuthContent({ user }: { user: User }) {
     setState(prev => ({ ...prev, isVerifying: true }))
 
     try {
+      if (isLocalTwoFactor) {
+        if (state.code !== LOCAL_2FA_CODE) {
+          toast.error(t('Could not verify the code. Please try again.'))
+          setState(prev => ({
+            ...prev,
+            code: '',
+            isVerifying: false,
+          }))
+          return
+        }
+
+        window.localStorage.setItem(LOCAL_2FA_STORAGE_KEY, 'true')
+        toast.success(t('2FA enabled successfully.'))
+        setState(prev => ({
+          ...prev,
+          setupData: null,
+          isEnabled: true,
+          code: '',
+          isVerifying: false,
+        }))
+        useUser.setState({
+          ...user,
+          twoFactorEnabled: true,
+        })
+        return
+      }
+
       const { error } = await authClient.twoFactor.verifyTotp({
         code: state.code,
       })

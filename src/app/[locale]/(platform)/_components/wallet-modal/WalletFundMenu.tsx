@@ -22,6 +22,7 @@ function WalletFundMenu({
   disabledBuy,
   disabledReceive,
   meldUrl,
+  walletAddress,
   walletEoaAddress,
   walletBalance,
   isBalanceLoading,
@@ -32,6 +33,7 @@ function WalletFundMenu({
   disabledBuy: boolean
   disabledReceive: boolean
   meldUrl: string | null
+  walletAddress?: string | null
   walletEoaAddress?: string | null
   walletBalance?: string | null
   isBalanceLoading?: boolean
