@@ -2,6 +2,7 @@
 
 import type { Comment, User } from '@/types'
 import { HeartIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useAppKit } from '@/hooks/useAppKit'
 import { cn } from '@/lib/utils'
@@ -20,7 +21,16 @@ export default function EventCommentLikeForm({
   isSubmitting = false,
 }: EventCommentLikeFormProps) {
   const { open } = useAppKit()
-  const likesCount = comment.likes_count ?? 0
+  const initialLikesCount = comment.likes_count ?? 0
+  const initialHasLiked = Boolean(comment.user_has_liked)
+
+  const [hasLiked, setHasLiked] = useState(initialHasLiked)
+  const [likesCount, setLikesCount] = useState(initialLikesCount)
+
+  useEffect(() => {
+    setHasLiked(initialHasLiked)
+    setLikesCount(initialLikesCount)
+  }, [initialHasLiked, initialLikesCount])
 
   function handleClick() {
     if (isSubmitting) {
@@ -30,6 +40,10 @@ export default function EventCommentLikeForm({
       void open()
       return
     }
+
+    const nextLiked = !hasLiked
+    setHasLiked(nextLiked)
+    setLikesCount(prev => (nextLiked ? prev + 1 : Math.max(0, prev - 1)))
     onLikeToggled()
   }
 
@@ -40,15 +54,15 @@ export default function EventCommentLikeForm({
       variant="ghost"
       onClick={handleClick}
       disabled={isSubmitting}
-      aria-pressed={comment.user_has_liked}
-      title={comment.user_has_liked ? 'Remove like' : 'Like'}
+      aria-pressed={hasLiked}
+      title={hasLiked ? 'Remove like' : 'Like'}
       className={cn(`
         flex size-auto items-center gap-1 rounded-sm px-1.5 py-0.5 text-sm text-muted-foreground
         hover:bg-accent hover:text-foreground
       `)}
     >
       <HeartIcon className={cn({
-        'fill-current text-destructive': comment.user_has_liked,
+        'fill-current text-destructive': hasLiked,
       }, 'size-4')}
       />
       <span>{likesCount}</span>

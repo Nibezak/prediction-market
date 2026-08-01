@@ -1,6 +1,6 @@
 import type { Event } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, ShareIcon } from 'lucide-react'
+import { CheckIcon, DownloadIcon, ExternalLinkIcon, ImageIcon, LinkIcon, Share2Icon, ShareIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMarketSeriesLabel } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
@@ -296,6 +299,81 @@ export default function EventShare({ event }: EventShareProps) {
     }
   }
 
+  function handleShareOnX() {
+    const url = buildShareUrl(eventPath)
+    const intent = new URL('https://x.com/intent/post')
+    intent.searchParams.set('text', event.title)
+    intent.searchParams.set('url', url)
+    window.open(intent.toString(), '_blank', 'noopener,noreferrer')
+  }
+
+  async function fetchEventVisual() {
+    const visualUrl = new URL('/api/og/event', window.location.origin)
+    visualUrl.searchParams.set('slug', event.slug)
+    const response = await fetch(visualUrl.toString(), { cache: 'no-store' })
+    if (!response.ok) {
+      throw new Error(`Visual export failed with ${response.status}`)
+    }
+    return response.blob()
+  }
+
+  async function handleDownloadVisual() {
+    try {
+      const blob = await fetchEventVisual()
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `${event.slug || 'slimefish-market'}.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(objectUrl)
+    }
+    catch (error) {
+      console.error('Error downloading event visual:', error)
+    }
+  }
+
+  async function handleShareVisual() {
+    try {
+      const blob = await fetchEventVisual()
+      const file = new File([blob], `${event.slug || 'slimefish-market'}.png`, { type: 'image/png' })
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({ files: [file], title: event.title })
+        return
+      }
+      if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        markKeyAsCopied('visual')
+        return
+      }
+      throw new Error('Image sharing is not supported by this browser')
+    }
+    catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Error sharing event visual:', error)
+    }
+  }
+
+  const visualMenu = (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="rounded-none px-3 py-2.5 text-sm font-semibold">
+        <ImageIcon className="size-4" />
+        {copiedKey === 'visual' ? 'Image copied!' : 'Get odds as Image'}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuItem onSelect={() => { void handleDownloadVisual() }}>
+          <DownloadIcon className="size-4" />
+          Download
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => { void handleShareVisual() }}>
+          <Share2Icon className="size-4" />
+          Share
+        </DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+
   if (isMultiMarket) {
     return (
       <div
@@ -333,6 +411,10 @@ export default function EventShare({ event }: EventShareProps) {
             collisionPadding={16}
             className="max-h-80 w-48 border border-border bg-background p-0 text-foreground shadow-xl"
           >
+            <DropdownMenuItem onSelect={handleShareOnX} className="rounded-none px-3 py-2.5 text-sm font-semibold">
+              <ExternalLinkIcon className="size-4" />
+              Share on X
+            </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={(menuEvent) => {
                 menuEvent.preventDefault()
@@ -344,8 +426,10 @@ export default function EventShare({ event }: EventShareProps) {
                 'hover:bg-muted/70 hover:text-foreground focus:bg-muted',
               )}
             >
+              <LinkIcon className="size-4" />
               {copiedKey === 'event' ? 'Copied!' : 'Copy link'}
             </DropdownMenuItem>
+            {visualMenu}
             <DropdownMenuSeparator className="my-0 bg-border" />
             {event.markets
               .filter(market => market.slug)
@@ -380,22 +464,38 @@ export default function EventShare({ event }: EventShareProps) {
   }
 
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className={cn(headerIconButtonClass, 'size-auto p-0')}
-      onClick={(event) => {
-        if (maybeHandleDebugCopy(event)) {
-          return
-        }
-        void handleShare()
-      }}
-      aria-label="Copy event link"
-    >
-      {shareSuccess
-        ? <CheckIcon className="size-4 text-primary" />
-        : <ShareIcon className="size-4" />}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(headerIconButtonClass, 'size-auto p-0')}
+          onPointerDown={maybeHandleDebugCopy}
+          aria-label="Share event"
+        >
+          {shareSuccess
+            ? <CheckIcon className="size-4 text-primary" />
+            : <ShareIcon className="size-4" />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8} className="w-52 p-0">
+        <DropdownMenuItem onSelect={handleShareOnX} className="rounded-none px-3 py-2.5 text-sm font-semibold">
+          <ExternalLinkIcon className="size-4" />
+          Share on X
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(menuEvent) => {
+            menuEvent.preventDefault()
+            void handleShare()
+          }}
+          className="rounded-none px-3 py-2.5 text-sm font-semibold"
+        >
+          <LinkIcon className="size-4" />
+          {shareSuccess ? 'Copied!' : 'Copy link'}
+        </DropdownMenuItem>
+        {visualMenu}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

@@ -1,5 +1,5 @@
-import { count, eq, inArray, sql } from 'drizzle-orm'
-import { event_creations, events, jobs, markets, notifications, sessions, users } from '@/lib/db/schema'
+import { and, count, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { event_creations, events, jobs, markets, notifications, risk_cases, sessions, users } from '@/lib/db/schema'
 import { db, pmSql } from '@/lib/drizzle'
 
 export interface AdminDashboardData {
@@ -33,8 +33,8 @@ export interface AdminDashboardData {
   }
   services: {
     tellwiseDatabase: 'operational'
-    playMoneyDatabase: 'operational' | 'unavailable'
-    playMoneyError: string | null
+    slimefishBackendDatabase: 'operational' | 'unavailable'
+    slimefishBackendError: string | null
   }
 }
 
@@ -64,7 +64,7 @@ async function loadTellwiseMetrics() {
   ] = await Promise.all([
     db.select({ value: count() }).from(users),
     db.select({ value: count() }).from(sessions),
-    db.select({ value: count() }).from(markets).where(eq(markets.is_active, true)),
+    db.select({ value: count() }).from(markets).innerJoin(events, eq(events.id, markets.event_id)).where(and(eq(markets.is_active, true), eq(markets.is_resolved, false), eq(events.is_hidden, false))),
     db.select({ value: count() }).from(markets).where(eq(markets.is_resolved, true)),
     db.select({ value: count() }).from(event_creations).where(inArray(event_creations.status, ['draft', 'pending'])),
     db.select({ value: count() }).from(jobs).where(eq(jobs.status, 'failed')),
@@ -76,7 +76,7 @@ async function loadTellwiseMetrics() {
       volume24h: markets.volume_24h,
       endDate: markets.end_time,
       updatedAt: markets.updated_at,
-    }).from(markets).innerJoin(events, eq(events.id, markets.event_id)).where(eq(markets.is_active, true)).orderBy(sql`${markets.volume}::numeric DESC`).limit(30),
+    }).from(markets).innerJoin(events, eq(events.id, markets.event_id)).where(and(eq(markets.is_active, true), eq(markets.is_resolved, false), eq(events.is_hidden, false))).orderBy(sql`${markets.volume}::numeric DESC`).limit(30),
     db.select({
       id: markets.condition_id,
       title: markets.title,
@@ -112,7 +112,7 @@ async function loadTellwiseMetrics() {
   }
 }
 
-async function loadPlayMoneyMetrics() {
+async function loadSlimefishBackendMetrics() {
   const [summaryRows, volumeRows, tradeRows, balanceRows, positionRows, liquidityRows, resolutionRows, traderRows, riskRows] = await Promise.all([
     pmSql`
       SELECT
@@ -162,6 +162,8 @@ async function loadPlayMoneyMetrics() {
       FROM "User" u
       LEFT JOIN "Balance" b ON b."accountId" = u."primaryAccountId" AND b."assetType" = 'CURRENCY' AND b."assetId" = 'PRIMARY' AND b."marketId" IS NULL
       LEFT JOIN (SELECT "accountId", SUM(value) AS "positionValue" FROM "MarketOptionPosition" GROUP BY "accountId") p ON p."accountId" = u."primaryAccountId"
+      WHERE lower(COALESCE(u.email, '')) <> 'treasury@slimefish.local'
+        AND lower(COALESCE(u.username, '')) <> 'house'
       ORDER BY (COALESCE(b.total, 0) + COALESCE(p."positionValue", 0)) DESC, u."createdAt" DESC LIMIT 100
     `,
     pmSql`
@@ -214,6 +216,8 @@ async function loadPlayMoneyMetrics() {
       FROM "User" u
       JOIN "MarketOptionPosition" p ON p."accountId" = u."primaryAccountId"
       LEFT JOIN "MarketResolution" mr ON mr."marketId" = p."marketId"
+      WHERE lower(COALESCE(u.email, '')) <> 'treasury@slimefish.local'
+        AND lower(COALESCE(u.username, '')) <> 'house'
       GROUP BY u.id, u.username
       ORDER BY COALESCE(SUM(p.value - p.cost), 0) DESC LIMIT 50
     `,
@@ -231,10 +235,14 @@ async function loadPlayMoneyMetrics() {
         u."updatedAt" AS "updatedAt"
       FROM "User" u
       LEFT JOIN "Balance" b ON b."accountId" = u."primaryAccountId" AND b."assetType" = 'CURRENCY' AND b."assetId" = 'PRIMARY' AND b."marketId" IS NULL
-      WHERE COALESCE((u.settings->>'is_blocked')::boolean, false)
-        OR COALESCE((u.settings->>'tradingBlocked')::boolean, false)
-        OR COALESCE((u.settings->>'suspicious')::boolean, false)
-        OR COALESCE(b.total, 0) < 0
+      WHERE lower(COALESCE(u.email, '')) <> 'treasury@slimefish.local'
+        AND lower(COALESCE(u.username, '')) <> 'house'
+        AND (
+          COALESCE((u.settings->>'is_blocked')::boolean, false)
+          OR COALESCE((u.settings->>'tradingBlocked')::boolean, false)
+          OR COALESCE((u.settings->>'suspicious')::boolean, false)
+          OR COALESCE(b.total, 0) < 0
+        )
       ORDER BY u."updatedAt" DESC LIMIT 100
     `,
   ])
@@ -266,7 +274,7 @@ async function loadPlayMoneyMetrics() {
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const [tellwise, ledgerResult] = await Promise.all([
     loadTellwiseMetrics(),
-    loadPlayMoneyMetrics()
+    loadSlimefishBackendMetrics()
       .then(data => ({ data, error: null }))
       .catch(error => ({ data: null, error })),
   ])
@@ -278,14 +286,14 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       ...ledger,
       markets: tellwise.markets,
       activity: tellwise.activity,
-      services: { tellwiseDatabase: 'operational', playMoneyDatabase: 'operational', playMoneyError: null },
+      services: { tellwiseDatabase: 'operational', slimefishBackendDatabase: 'operational', slimefishBackendError: null },
     }
   }
 
-  const playMoneyError = ledgerResult.error instanceof Error
+  const slimefishBackendError = ledgerResult.error instanceof Error
     ? ledgerResult.error.message
-    : 'Play Money database is unavailable.'
-  console.error('Failed to load Play Money admin dashboard data', ledgerResult.error)
+    : 'Slimefish ledger database is unavailable.'
+  console.error('Failed to load Slimefish ledger admin dashboard data', ledgerResult.error)
   return {
     stats: {
       ...tellwise.counts,
@@ -307,7 +315,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     riskSignals: [],
     markets: tellwise.markets,
     activity: tellwise.activity,
-    services: { tellwiseDatabase: 'operational', playMoneyDatabase: 'unavailable', playMoneyError },
+    services: { tellwiseDatabase: 'operational', slimefishBackendDatabase: 'unavailable', slimefishBackendError },
   }
 }
 
@@ -321,4 +329,29 @@ export async function getAdminMarkets() {
 
 export async function getAdminVolumeData() {
   return (await getAdminDashboardData()).volumeData
+}
+
+export async function getAdminRiskSignalCount() {
+  const [databaseRows, ledgerRows] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(risk_cases)
+      .where(notInArray(risk_cases.status, ['cleared', 'closed'])),
+    pmSql`
+      SELECT COUNT(*)::int AS value
+      FROM "User" u
+      LEFT JOIN "Balance" b ON b."accountId" = u."primaryAccountId"
+        AND b."assetType" = 'CURRENCY' AND b."assetId" = 'PRIMARY' AND b."marketId" IS NULL
+      WHERE lower(COALESCE(u.email, '')) <> 'treasury@slimefish.local'
+        AND lower(COALESCE(u.username, '')) <> 'house'
+        AND (
+          COALESCE((u.settings->>'is_blocked')::boolean, false)
+          OR COALESCE((u.settings->>'tradingBlocked')::boolean, false)
+          OR COALESCE((u.settings->>'suspicious')::boolean, false)
+          OR COALESCE(b.total, 0) < 0
+        )
+    `.catch(() => []),
+  ])
+
+  return Number(databaseRows[0]?.value ?? 0) + Number(ledgerRows[0]?.value ?? 0)
 }

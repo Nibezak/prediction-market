@@ -12,8 +12,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const { lightSurface } = resolvePwaThemeColors(runtimeTheme.theme)
 
   return {
-    name: site.name,
-    short_name: site.name.slice(0, 32),
+    name: site.mobileAppName,
+    short_name: site.mobileAppName.slice(0, 32),
     description: site.description,
     start_url: `/${DEFAULT_LOCALE}`,
     scope: '/',

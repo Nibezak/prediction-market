@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { User } from '@/types'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { createConfig, http, WagmiProvider } from 'wagmi'
 import { polygonAmoy } from 'wagmi/chains'
 import { AuthDialog } from '@/components/AuthDialog'
@@ -27,12 +27,20 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
     isReady: true,
   }), [])
 
-  async function handleAuthenticated() {
-    const result = await authClient.getSession()
-    if (result.data?.user) {
-      useUser.setState(previous => mergeSessionUserState(previous, result.data!.user as unknown as User))
+  const handleAuthenticated = useCallback(async () => {
+    authClient.$store.notify('$sessionSignal')
+    const response = await fetch('/api/auth/get-session', {
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { 'cache-control': 'no-cache' },
+    })
+    const session = await response.json().catch(() => null)
+    if (!response.ok || !session?.user) {
+      throw new Error('The application session could not be loaded.')
     }
-  }
+
+    useUser.setState(previous => mergeSessionUserState(previous, session.user as User))
+  }, [])
 
   return (
     <WagmiProvider config={legacyWagmiConfig}>

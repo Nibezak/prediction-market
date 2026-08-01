@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { setRequestLocale } from 'next-intl/server'
+import { redirect } from 'next/navigation'
 import { connection } from 'next/server'
 import PortfolioMarketsWonCard from '@/app/[locale]/(platform)/portfolio/_components/PortfolioMarketsWonCard'
 import PortfolioTabs from '@/app/[locale]/(platform)/portfolio/_components/PortfolioTabs'
@@ -24,8 +25,11 @@ export default async function PortfolioPage({ params }: PageProps<'/[locale]/por
   const fallbackChartEndDate = getFallbackChartEndDate()
 
   const user = await UserRepository.getCurrentUser()
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-  const userAddress = isPlayMoneyAmm ? (user?.id ?? '') : (user?.deposit_wallet_address ?? '')
+  if (!user) {
+    redirect(`/${locale}`)
+  }
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const userAddress = isSlimefishBackendAmm ? (user?.id ?? '') : (user?.deposit_wallet_address ?? '')
   const snapshotAddress = user?.deposit_wallet_address
   const publicAddress = user?.deposit_wallet_address ?? null
   const snapshot = await fetchPortfolioSnapshot(snapshotAddress)
@@ -37,7 +41,7 @@ export default async function PortfolioPage({ params }: PageProps<'/[locale]/por
           username: user?.username ?? 'Your portfolio',
           avatarUrl: user?.image ?? '',
           joinedAt: (user as any)?.created_at?.toString?.() ?? (user as any)?.createdAt?.toString?.(),
-          portfolioAddress: (isPlayMoneyAmm ? user?.id : publicAddress) ?? undefined,
+          portfolioAddress: (isSlimefishBackendAmm ? user?.id : publicAddress) ?? undefined,
         }}
         snapshot={snapshot}
         actions={<PortfolioWalletActions />}

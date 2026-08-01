@@ -14,7 +14,9 @@
       "@/*": [
         "./src/*"
       ],
-      "fumadocs-mdx:collections/*": ["./.source/*"]
+      "fumadocs-mdx:collections/*": [
+        "./.source/*"
+      ]
     },
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
@@ -32,8 +34,10 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/**/*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],

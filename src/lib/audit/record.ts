@@ -38,6 +38,16 @@ export type AuditEventInput = {
 
 export async function recordAuditEvent(input: AuditEventInput) {
   try {
+    let requestContext: Partial<ReturnType<typeof requestAuditContext>> = {}
+    if (!input.requestId || !input.ipAddress || !input.userAgent) {
+      try {
+        const { headers } = await import('next/headers')
+        requestContext = requestAuditContext(await headers())
+      }
+      catch {
+        // Background jobs do not have a request context.
+      }
+    }
     await db.insert(audit_events).values({
       event_type: input.eventType,
       category: input.category,
@@ -49,11 +59,11 @@ export async function recordAuditEvent(input: AuditEventInput) {
       subject_user_id: input.subjectUserId || null,
       entity_type: input.entityType || null,
       entity_id: input.entityId || null,
-      request_id: input.requestId || null,
+      request_id: input.requestId || requestContext.requestId || null,
       correlation_id: input.correlationId || null,
       idempotency_key: input.idempotencyKey || null,
-      ip_address: input.ipAddress || null,
-      user_agent: input.userAgent || null,
+      ip_address: input.ipAddress || requestContext.ipAddress || null,
+      user_agent: input.userAgent || requestContext.userAgent || null,
       risk_score: input.riskScore ?? null,
       metadata: sanitize(input.metadata || {}) as Record<string, unknown>,
       before_values: sanitize(input.beforeValues) as Record<string, unknown> | null,

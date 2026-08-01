@@ -12,12 +12,15 @@ function clampUnitPrice(value: number | null | undefined) {
     return null
   }
 
-  if (value < 0) {
-    return 0
+  const MIN_UNIT_PRICE = 0.001
+  const MAX_UNIT_PRICE = 0.999
+
+  if (value < MIN_UNIT_PRICE) {
+    return MIN_UNIT_PRICE
   }
 
-  if (value > 1) {
-    return 1
+  if (value > MAX_UNIT_PRICE) {
+    return MAX_UNIT_PRICE
   }
 
   return value
@@ -28,10 +31,10 @@ function normalizeMarketUnitPrice(market: Market | null | undefined) {
     return null
   }
 
-  const value = Number.isFinite(market.price)
-    ? market.price
-    : Number.isFinite(market.probability)
-      ? Number(market.probability) / 100
+  const value = Number.isFinite(market.probability)
+    ? Number(market.probability) / 100
+    : Number.isFinite(market.price)
+      ? market.price
       : null
 
   return clampUnitPrice(value)
@@ -58,20 +61,20 @@ export function resolveFallbackOutcomeUnitPrice(
     ? resolveMarketOutcome(market, outcomeOrIndex)
     : outcomeOrIndex ?? null
 
+  const isNoOutcome = outcome?.outcome_index === OUTCOME_INDEX.NO || outcomeOrIndex === OUTCOME_INDEX.NO
+
+  const marketPrice = normalizeMarketUnitPrice(market)
+  if (marketPrice != null) {
+    return isNoOutcome
+      ? clampUnitPrice(1 - marketPrice)
+      : marketPrice
+  }
+
   if (outcome && Number.isFinite(outcome.buy_price)) {
     return clampUnitPrice(Number(outcome.buy_price))
   }
 
-  const marketPrice = normalizeMarketUnitPrice(market)
-  if (marketPrice == null) {
-    return null
-  }
-
-  const isNoOutcome = outcome?.outcome_index === OUTCOME_INDEX.NO || outcomeOrIndex === OUTCOME_INDEX.NO
-
-  return isNoOutcome
-    ? clampUnitPrice(1 - marketPrice)
-    : marketPrice
+  return null
 }
 
 function resolveOutcomeSelectionUnitPrice(
@@ -81,6 +84,7 @@ function resolveOutcomeSelectionUnitPrice(
     orderBookSummaries?: OrderBookSummariesResponse | null
     side?: typeof ORDER_SIDE.BUY | typeof ORDER_SIDE.SELL
     fallbackIsNoOutcome?: boolean
+    fallbackUnitPrice?: number | null
   },
 ) {
   const tokenId = outcome?.token_id ? String(outcome.token_id) : null
@@ -93,16 +97,20 @@ function resolveOutcomeSelectionUnitPrice(
     return topOfBookPrice
   }
 
+  if (options?.fallbackUnitPrice != null && Number.isFinite(options.fallbackUnitPrice)) {
+    return clampUnitPrice(options.fallbackUnitPrice)
+  }
+
+  const marketPrice = normalizeMarketUnitPrice(market)
+  if (marketPrice != null) {
+    return options?.fallbackIsNoOutcome ? clampUnitPrice(1 - marketPrice) : marketPrice
+  }
+
   if (outcome && Number.isFinite(outcome.buy_price)) {
     return clampUnitPrice(Number(outcome.buy_price))
   }
 
-  const marketPrice = normalizeMarketUnitPrice(market)
-  if (marketPrice == null) {
-    return null
-  }
-
-  return options?.fallbackIsNoOutcome ? clampUnitPrice(1 - marketPrice) : marketPrice
+  return null
 }
 
 function getTopOfBookUnitPrice(
@@ -119,6 +127,7 @@ export function resolveOutcomeUnitPrice(
   options?: {
     orderBookSummaries?: OrderBookSummariesResponse | null
     side?: typeof ORDER_SIDE.BUY | typeof ORDER_SIDE.SELL
+    fallbackUnitPrice?: number | null
   },
 ) {
   const outcome = resolveMarketOutcome(market, outcomeIndex)
@@ -126,6 +135,7 @@ export function resolveOutcomeUnitPrice(
     orderBookSummaries: options?.orderBookSummaries,
     side: options?.side,
     fallbackIsNoOutcome: outcomeIndex === OUTCOME_INDEX.NO,
+    fallbackUnitPrice: options?.fallbackUnitPrice,
   })
 }
 

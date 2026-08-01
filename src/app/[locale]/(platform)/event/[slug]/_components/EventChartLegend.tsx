@@ -31,8 +31,9 @@ export default function EventChartLegend({ compact = false, entries, variant }: 
       )}
     >
       {entriesWithValues.map((entry) => {
-        const resolvedValue = entry.value as number
+        const rawVal = entry.value as number
         const isCardVariant = resolvedVariant === 'card'
+        const displayPercent = rawVal >= 99.5 ? 99 : rawVal <= 0.5 && rawVal > 0 ? 1 : Math.floor(rawVal)
         const valueNode = (
           <span
             className={cn(
@@ -43,7 +44,7 @@ export default function EventChartLegend({ compact = false, entries, variant }: 
               isCardVariant ? 'min-w-7 text-xs leading-none' : 'min-w-8 text-sm',
             )}
           >
-            {resolvedValue.toFixed(0)}
+            {displayPercent}
             <span className={cn('ml-0.5 text-foreground', isCardVariant ? 'text-xs' : 'text-sm')}>%</span>
           </span>
         )

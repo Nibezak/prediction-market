@@ -204,6 +204,30 @@ export function triggerConfetti(color: 'primary' | 'yes' | 'no', event?: any) {
   })
 }
 
+export function scheduleConfettiAfterReload(color: 'primary' | 'yes' | 'no') {
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem('pending_confetti', color)
+    }
+    catch {}
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('load', () => {
+    try {
+      const pendingColor = sessionStorage.getItem('pending_confetti')
+      if (pendingColor) {
+        sessionStorage.removeItem('pending_confetti')
+        setTimeout(() => {
+          triggerConfetti(pendingColor as 'primary' | 'yes' | 'no')
+        }, 500)
+      }
+    }
+    catch {}
+  })
+}
+
 export function calculateWinnings(amount: number, price: number): number {
   if (!Number.isFinite(amount) || !Number.isFinite(price) || amount <= 0 || price <= 0) {
     return 0

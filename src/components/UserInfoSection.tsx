@@ -1,23 +1,17 @@
-import { CheckIcon, CopyIcon, ExternalLinkIcon } from 'lucide-react'
 import Image from 'next/image'
 import AppLink from '@/components/AppLink'
-import { Button } from '@/components/ui/button'
-import { useClipboard } from '@/hooks/useClipboard'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
-import { truncateAddress } from '@/lib/formatters'
 import { buildPublicProfilePath, buildUsernameProfilePath } from '@/lib/platform-routing'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 
 export default function UserInfoSection() {
   const user = useUser()
-  const { copied, copy } = useClipboard()
 
   if (!user) {
     return null
   }
 
-  const depositWalletAddress = user.deposit_wallet_address!
   const displayUsername = user.username?.length > 12
     ? `${user.username.slice(0, 12)}...`
     : user.username
@@ -28,13 +22,8 @@ export default function UserInfoSection() {
     ? getAvatarPlaceholderStyle(avatarSeed)
     : undefined
 
-  const polygonscanUrl = `https://polygonscan.com/address/${depositWalletAddress}`
   const profileHref = buildUsernameProfilePath(user.username || '')
     ?? buildPublicProfilePath(user.deposit_wallet_address || user.address || '')
-
-  function handleCopyWallet() {
-    void copy(depositWalletAddress)
-  }
 
   return (
     <div className="flex items-center gap-4 p-4">
@@ -61,7 +50,7 @@ export default function UserInfoSection() {
               />
             )}
       </div>
-      <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="min-w-0 flex-1">
         {profileHref
           ? (
               <AppLink
@@ -81,39 +70,6 @@ export default function UserInfoSection() {
               </span>
             )}
 
-        <div className="flex items-center gap-1.5">
-          <Button
-            variant="ghost"
-            type="button"
-            size="sm"
-            onClick={handleCopyWallet}
-            className="-ml-2 text-xs text-muted-foreground"
-            title={copied ? 'Copied!' : 'Copy address'}
-          >
-            <span className="font-mono">
-              {truncateAddress(depositWalletAddress)}
-            </span>
-            {copied
-              ? (
-                  <CheckIcon
-                    className="size-3.5 text-yes"
-                    data-testid="check-icon"
-                  />
-                )
-              : <CopyIcon className="size-3.5" data-testid="copy-icon" />}
-          </Button>
-          <a href={polygonscanUrl} target="_blank">
-            <Button
-              variant="ghost"
-              type="button"
-              size="sm"
-              className="-ml-2 text-xs text-muted-foreground"
-              title="See on polygonscan"
-            >
-              <ExternalLinkIcon className="size-3.5" />
-            </Button>
-          </a>
-        </div>
       </div>
     </div>
   )

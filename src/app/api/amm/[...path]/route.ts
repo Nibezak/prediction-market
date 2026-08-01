@@ -2,20 +2,80 @@
 import { randomUUID } from 'node:crypto'
 import { headers } from 'next/headers'
 import { after, NextResponse } from 'next/server'
+import {
+  publishAccountSnapshot,
+  publishLiveSnapshots,
+  readCachedAccountSnapshot,
+  readCachedLiveSnapshots,
+} from '@/lib/amm-live'
 import { synchronizeAmmMarketVolumes } from '@/lib/amm-volume'
 import { recordAuditEvent, requestAuditContext } from '@/lib/audit'
 import { auth } from '@/lib/auth'
-import { conditions, events, markets, outcomes } from '@/lib/db/schema'
+import { UserRepository } from '@/lib/db/queries/user'
+import { conditions, event_sports, events, markets, outcomes } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
+import { loadEventActivities } from '@/lib/event-activity'
 import { assertOperationEnabled } from '@/lib/operations/controls'
 import { getAccountRestriction } from '@/lib/risk/account-restrictions'
 import { enforceRateLimit } from '@/lib/security/rate-limit'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 import { getUserPlatformRole } from '@/lib/staff-role'
 
 const AMM_BASE_URL = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
-const DEVELOPMENT_SERVICE_SECRET = 'tellwise_super_secret_bypass_key_123'
 const TELLWISE_SECRET = process.env.TELLWISE_SECRET?.trim()
-  || (process.env.NODE_ENV === 'development' ? DEVELOPMENT_SERVICE_SECRET : '')
+  || ''
+const USER_SYNC_CACHE_TTL_MS = 5 * 60 * 1000
+const globalForAmmProxy = globalThis as unknown as {
+  ammUserSyncCache?: Map<string, { userId: string, expiresAt: number }>
+  ammAccountSnapshotLoads?: Map<string, Promise<Awaited<ReturnType<typeof readCachedAccountSnapshot>>>>
+}
+const userSyncCache = globalForAmmProxy.ammUserSyncCache ?? new Map<string, { userId: string, expiresAt: number }>()
+globalForAmmProxy.ammUserSyncCache = userSyncCache
+const accountSnapshotLoads = globalForAmmProxy.ammAccountSnapshotLoads ?? new Map<string, Promise<Awaited<ReturnType<typeof readCachedAccountSnapshot>>>>()
+globalForAmmProxy.ammAccountSnapshotLoads = accountSnapshotLoads
+
+async function loadLegacyAccountSnapshot(sessionUser: { id: string, name?: string | null, email?: string | null }) {
+  const cached = await readCachedAccountSnapshot(sessionUser.id)
+  if (cached) return cached
+  const running = accountSnapshotLoads.get(sessionUser.id)
+  if (running) return running
+
+  const load = (async () => {
+    const baseServiceHeaders = {
+      'content-type': 'application/json',
+      'x-tellwise-secret': TELLWISE_SECRET,
+    }
+    const syncBody = JSON.stringify({
+      id: sessionUser.id,
+      username: sessionUser.name || `slimefish_${sessionUser.id.slice(0, 8)}`,
+      email: sessionUser.email || `${sessionUser.id}@slimefish.local`,
+    })
+    const syncUrl = `${AMM_BASE_URL}/users/sync`
+    const syncResponse = await fetch(`${AMM_BASE_URL}/users/sync`, {
+      method: 'POST',
+      headers: signSlimefishBackendRequest({ url: syncUrl, method: 'POST', body: syncBody, headers: { ...baseServiceHeaders, 'idempotency-key': `legacy-account-sync:${sessionUser.id}` } }),
+      body: syncBody,
+      signal: AbortSignal.timeout(3_000),
+    })
+    if (!syncResponse.ok) return null
+    const synced = await syncResponse.json() as { userId?: string, user?: { id?: string } }
+    const slimefishBackendUserId = synced.userId || synced.user?.id || sessionUser.id
+    userSyncCache.set(sessionUser.id, { userId: slimefishBackendUserId, expiresAt: Date.now() + USER_SYNC_CACHE_TTL_MS })
+    const liveUrl = `${AMM_BASE_URL}/users/${encodeURIComponent(slimefishBackendUserId)}/live`
+    const liveResponse = await fetch(liveUrl, {
+      headers: signSlimefishBackendRequest({ url: liveUrl, headers: baseServiceHeaders }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3_000),
+    })
+    if (!liveResponse.ok) return null
+    const body = await liveResponse.json() as { data?: Awaited<ReturnType<typeof readCachedAccountSnapshot>> }
+    if (!body.data) return null
+    await publishAccountSnapshot(sessionUser.id, body.data)
+    return body.data
+  })().catch(() => null).finally(() => accountSnapshotLoads.delete(sessionUser.id))
+  accountSnapshotLoads.set(sessionUser.id, load)
+  return load
+}
 
 async function proxyRequest(
   req: Request,
@@ -26,6 +86,21 @@ async function proxyRequest(
   }
   const resolvedParams = await params
   const path = resolvedParams.path
+  const isLegacyMarketRead = req.method === 'GET'
+    && path.length === 2
+    && path[0] === 'markets'
+
+  // Older browser bundles still poll this route. Serve the canonical public
+  // snapshot before touching auth or the database so stale tabs stay cheap.
+  if (isLegacyMarketRead) {
+    const [snapshot] = await readCachedLiveSnapshots([path[1]])
+    if (snapshot) {
+      return NextResponse.json(
+        { data: snapshot },
+        { headers: { 'cache-control': 'private, no-store', 'x-slimefish-cache': 'redis' } },
+      )
+    }
+  }
   // Quotes are read-only calculations even though the engine exposes them as POST.
   const isPublicQuote = req.method === 'POST'
     && path.length === 3
@@ -45,64 +120,145 @@ async function proxyRequest(
     }
   }
 
+  // Stale tabs may still call the pre-SSE account endpoints. Keep those calls
+  // authenticated, but answer from the live read model before database-backed
+  // role, restriction, and user-sync work. The stream uses the same snapshot.
+  const isLegacyAccountRead = req.method === 'GET'
+    && path.length === 3
+    && path[0] === 'users'
+    && path[1] === 'me'
+    && (path[2] === 'balance' || path[2] === 'stats')
+  if (isLegacyAccountRead && session?.user?.id) {
+    const accountSnapshot = await loadLegacyAccountSnapshot(session.user)
+    if (accountSnapshot) {
+      if (path[2] === 'balance') {
+        return NextResponse.json({
+          data: { balance: { total: accountSnapshot.balance, subtotals: {} } },
+        }, { headers: { 'cache-control': 'private, no-store', 'x-slimefish-cache': 'redis-fast' } })
+      }
+      const positionsValue = accountSnapshot.positions.reduce((total, position) => total + position.value, 0)
+      return NextResponse.json({
+        data: {
+          netWorth: accountSnapshot.balance + positionsValue,
+          tradingVolume: accountSnapshot.positions.reduce((total, position) => total + position.cost, 0),
+          totalMarkets: new Set(accountSnapshot.positions.map(position => position.marketId)).size,
+          lastTradeAt: null,
+          activeDayCount: 0,
+          otherIncome: 0,
+          quests: [],
+        },
+      }, { headers: { 'cache-control': 'private, no-store', 'x-slimefish-cache': 'redis-fast' } })
+    }
+  }
+
   // Every ledger-mutating request and session-scoped user request remains protected.
   const isProtectedPath = path.includes('me')
     || (!isPublicQuote && req.method !== 'GET' && req.method !== 'OPTIONS')
   if (isProtectedPath && !session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (isProtectedPath && session?.user?.id) {
+  const effectiveUser = session?.user
+    ? await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+    : null
+  if (isProtectedPath && !effectiveUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (isProtectedPath && effectiveUser?.id) {
     if (req.method !== 'GET' && req.method !== 'OPTIONS') {
       try { await assertOperationEnabled('trading') }
       catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Trading is unavailable' }, { status: 503 }) }
     }
     try {
-      await enforceRateLimit({ scope: req.method === 'GET' ? 'amm-user-read' : 'amm-user-write', identifier: session.user.id, limit: req.method === 'GET' ? 180 : 30, windowSeconds: 60 })
+      await enforceRateLimit({ scope: req.method === 'GET' ? 'amm-user-read' : 'amm-user-write', identifier: effectiveUser.id, limit: req.method === 'GET' ? 180 : 30, windowSeconds: 60 })
     }
     catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : 'Too many requests' }, { status: 429, headers: { 'retry-after': String((error as any)?.retryAfter || 60) } })
     }
-    const restriction = await getAccountRestriction(session.user.id)
+    const restriction = await getAccountRestriction(effectiveUser.id)
     if (restriction.restricted) {
       return NextResponse.json({ error: restriction.reason }, { status: 423 })
     }
   }
 
-  let userId = session?.user?.id || 'public-user'
+  let userId = effectiveUser?.id || 'public-user'
 
   // Construct the target URL
-  if (session?.user?.id) {
-    try {
-      const syncResponse = await fetch(`${AMM_BASE_URL}/users/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tellwise-secret': TELLWISE_SECRET,
-          'x-play-money-api-key': process.env.PLAY_MONEY_SERVICE_API_KEY?.trim() || TELLWISE_SECRET,
-          'idempotency-key': `user-sync:${session.user.id}`,
-        },
-        body: JSON.stringify({
-          id: session.user.id,
-          username: session.user.name || `tellwise_${session.user.id.slice(0, 8)}`,
-          email: session.user.email || `${session.user.id}@tellwise.local`,
-          isAdmin: (session.user as any).is_admin === true,
-          role: getUserPlatformRole(session.user as any),
-        }),
-      })
-      if (syncResponse.ok) {
-        const synced = await syncResponse.json() as { userId?: string, user?: { id?: string } }
-        userId = synced.userId || synced.user?.id || userId
-      }
+  if (effectiveUser?.id) {
+    const cachedSync = userSyncCache.get(effectiveUser.id)
+    if (cachedSync && cachedSync.expiresAt > Date.now()) {
+      userId = cachedSync.userId
     }
-    catch (e) {
-      console.error('Failed to sync user to AMM:', e)
+    else {
+      try {
+        const syncUrl = `${AMM_BASE_URL}/users/sync`
+        const syncBody = JSON.stringify({
+          id: effectiveUser.id,
+          username: effectiveUser.name || `slimefish_${effectiveUser.id.slice(0, 8)}`,
+          email: effectiveUser.email || `${effectiveUser.id}@slimefish.local`,
+          isAdmin: (effectiveUser as any).is_admin === true,
+          role: getUserPlatformRole(effectiveUser as any),
+        })
+        const syncResponse = await fetch(syncUrl, {
+          method: 'POST',
+          headers: signSlimefishBackendRequest({
+            url: syncUrl,
+            method: 'POST',
+            body: syncBody,
+            headers: {
+              'Content-Type': 'application/json',
+            'x-tellwise-secret': TELLWISE_SECRET,
+              'idempotency-key': `user-sync:${effectiveUser.id}`,
+            },
+          }),
+          body: syncBody,
+        })
+        if (syncResponse.ok) {
+          const synced = await syncResponse.json() as { userId?: string, user?: { id?: string } }
+          userId = synced.userId || synced.user?.id || userId
+          userSyncCache.set(effectiveUser.id, {
+            userId,
+            expiresAt: Date.now() + USER_SYNC_CACHE_TTL_MS,
+          })
+        }
+      }
+      catch (e) {
+        console.error('Failed to sync user to AMM:', e)
+      }
     }
   }
 
   // Resolve the session-scoped alias after syncing so every downstream endpoint
-  // uses Play Money's canonical ledger user id.
+  // uses Slimefish ledger's canonical ledger user id.
   const newPath = path.map((segment: string) => segment === 'me' ? userId : segment)
   const pathStr = newPath.join('/')
+
+  if (req.method === 'GET' && effectiveUser?.id) {
+    const accountSnapshot = await readCachedAccountSnapshot(effectiveUser.id)
+    if (accountSnapshot && pathStr === `users/${userId}/balance`) {
+      return NextResponse.json({
+        data: {
+          balance: {
+            total: accountSnapshot.balance,
+            subtotals: {},
+          },
+        },
+      }, { headers: { 'cache-control': 'private, no-store', 'x-slimefish-cache': 'redis' } })
+    }
+    if (accountSnapshot && pathStr === `users/${userId}/stats`) {
+      const positionsValue = accountSnapshot.positions.reduce((total, position) => total + position.value, 0)
+      return NextResponse.json({
+        data: {
+          netWorth: accountSnapshot.balance + positionsValue,
+          tradingVolume: accountSnapshot.positions.reduce((total, position) => total + position.cost, 0),
+          totalMarkets: new Set(accountSnapshot.positions.map(position => position.marketId)).size,
+          lastTradeAt: null,
+          activeDayCount: 0,
+          otherIncome: 0,
+          quests: [],
+        },
+      }, { headers: { 'cache-control': 'private, no-store', 'x-slimefish-cache': 'redis' } })
+    }
+  }
 
   const targetUrl = new URL(`${AMM_BASE_URL}/${pathStr}`)
 
@@ -116,9 +272,8 @@ async function proxyRequest(
   const proxyHeaders = new Headers()
   proxyHeaders.set('Content-Type', 'application/json')
   proxyHeaders.set('x-tellwise-secret', TELLWISE_SECRET)
-  proxyHeaders.set('x-play-money-api-key', process.env.PLAY_MONEY_SERVICE_API_KEY?.trim() || TELLWISE_SECRET)
   proxyHeaders.set('x-tellwise-user-id', userId)
-  proxyHeaders.set('x-tellwise-role', getUserPlatformRole(session?.user as any))
+  proxyHeaders.set('x-tellwise-role', getUserPlatformRole(effectiveUser as any))
   proxyHeaders.set('x-request-id', req.headers.get('x-request-id') || randomUUID())
   if (req.method !== 'GET' && req.method !== 'HEAD' && !isPublicQuote) {
     proxyHeaders.set('idempotency-key', req.headers.get('idempotency-key') || randomUUID())
@@ -134,17 +289,32 @@ async function proxyRequest(
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     const text = await req.text()
     if (text) {
-      requestInit.body = text
       try {
         requestBody = JSON.parse(text)
+        if (pathStr === 'sync/event-creations' && effectiveUser) {
+          requestBody = {
+            ...requestBody,
+            createdBy: userId,
+            creatorId: userId,
+            creatorEmail: effectiveUser.email || null,
+          }
+        }
+        requestInit.body = JSON.stringify(requestBody)
       }
       catch {
         requestBody = { bodyType: 'non-json' }
+        requestInit.body = text
       }
     }
   }
 
   try {
+    requestInit.headers = signSlimefishBackendRequest({
+      url: targetUrl,
+      method: req.method,
+      body: typeof requestInit.body === 'string' ? requestInit.body : null,
+      headers: proxyHeaders,
+    })
     const response = await fetch(targetUrl.toString(), requestInit)
     const data = await response.text()
 
@@ -162,66 +332,119 @@ async function proxyRequest(
       && req.method === 'POST'
       && pathStr === 'sync/event-creations'
       && jsonData?.event?.id
-      && jsonData?.market?.id
+      && (jsonData?.market?.id || Array.isArray(jsonData?.markets))
     ) {
       const createdEvent = jsonData.event
-      const createdMarket = jsonData.market
-      const closeDate = createdMarket.closeDate ? new Date(createdMarket.closeDate) : null
+      const createdMarkets = Array.isArray(jsonData.markets) && jsonData.markets.length > 0
+        ? jsonData.markets
+        : [jsonData.market]
+      const firstMarket = createdMarkets[0]
+      const closeDate = firstMarket?.closeDate ? new Date(firstMarket.closeDate) : null
+      const requestedOptions = Array.isArray(requestBody.options) ? requestBody.options as Array<Record<string, unknown>> : []
 
       await db.transaction(async (tx) => {
-        await tx.insert(conditions).values({
+        await tx.insert(conditions).values(createdMarkets.map((createdMarket: any) => ({
           id: createdMarket.id,
           oracle: '0x0000000000000000000000000000000000000000',
-          question_id: `play-money:${createdMarket.id}`,
+          question_id: `slimefish-backend:${createdMarket.id}`,
           resolved: false,
-        }).onConflictDoNothing()
+        }))).onConflictDoNothing()
 
         await tx.insert(events).values({
           id: createdEvent.id,
           slug: createdEvent.slug,
           title: createdEvent.title,
-          creator: '0x0000000000000000000000000000000000000000',
+          // In the internal-ledger model this field records the authenticated
+          // staff user who created the market, not a retired EOA address.
+          creator: userId,
           icon_url: createdEvent.iconUrl || '/images/branding/slimefish.svg',
           is_hidden: false,
-          rules: createdMarket.description || '',
+          rules: firstMarket?.description || '',
           status: 'active',
-          active_markets_count: 1,
-          total_markets_count: 1,
+          active_markets_count: createdMarkets.length,
+          total_markets_count: createdMarkets.length,
           start_date: createdEvent.startDate ? new Date(createdEvent.startDate) : new Date(),
           end_date: closeDate,
         }).onConflictDoNothing()
 
-        await tx.insert(markets).values({
+        await tx.insert(markets).values(createdMarkets.map((createdMarket: any, index: number) => ({
           condition_id: createdMarket.id,
           event_id: createdEvent.id,
-          title: createdMarket.question,
+          title: createdMarket.candidate || createdMarket.question,
           slug: createdMarket.slug,
           question: createdMarket.question,
           market_rules: createdMarket.description || '',
+          icon_url: typeof requestedOptions[index]?.imageUrl === 'string' ? requestedOptions[index].imageUrl as string : null,
           is_active: true,
           is_resolved: false,
           volume: '0',
-          end_time: closeDate,
-        }).onConflictDoNothing()
+          end_time: createdMarket.closeDate ? new Date(createdMarket.closeDate) : closeDate,
+        }))).onConflictDoNothing()
 
-        if (Array.isArray(createdMarket.options) && createdMarket.options.length > 0) {
-          await tx.insert(outcomes).values(createdMarket.options.map((option: any, index: number) => ({
-            condition_id: createdMarket.id,
-            outcome_text: option.name,
-            outcome_index: index,
-            token_id: option.id,
-            is_winning_outcome: false,
-            payout_value: '0',
-          }))).onConflictDoNothing()
+        const createdOutcomes = createdMarkets.flatMap((createdMarket: any) => (
+          Array.isArray(createdMarket.options)
+            ? createdMarket.options.map((option: any, index: number) => ({
+                condition_id: createdMarket.id,
+                outcome_text: option.name,
+                outcome_index: index,
+                token_id: option.id,
+                is_winning_outcome: false,
+                payout_value: '0',
+              }))
+            : []
+        ))
+        if (createdOutcomes.length > 0) {
+          await tx.insert(outcomes).values(createdOutcomes).onConflictDoNothing()
+        }
+
+        const mainTag = String(requestBody.mainTag || requestBody.category || '').toLowerCase()
+        const tagsArray = Array.isArray(requestBody.tags) ? requestBody.tags.map(t => String(t).toLowerCase()) : []
+        const isSports = mainTag === 'sports' || mainTag === 'esports' || tagsArray.includes('sports') || tagsArray.includes('esports')
+        if (isSports || requestBody.sportsSportSlug || requestBody.sportSlug) {
+          const sportSlug = String(requestBody.sportsSportSlug || requestBody.sportSlug || (mainTag === 'esports' ? 'esports' : 'sports')).toLowerCase()
+          await tx.insert(event_sports).values({
+            event_id: createdEvent.id,
+            sports_sport_slug: sportSlug,
+            sports_league_slug: typeof requestBody.sportsLeagueSlug === 'string' ? requestBody.sportsLeagueSlug.toLowerCase() : null,
+            sports_series_slug: typeof requestBody.sportsSeriesSlug === 'string' ? requestBody.sportsSeriesSlug.toLowerCase() : null,
+            sports_event_slug: createdEvent.slug,
+            sports_live: false,
+            sports_ended: false,
+          }).onConflictDoNothing()
         }
       })
     }
 
     const mutation = req.method !== 'GET' && !isPublicQuote
+    const isBuy = pathStr.endsWith('/buy')
+    const isSell = pathStr.endsWith('/sell')
+    const isLiquidity = pathStr.includes('liquidity')
+    const liveSnapshot = jsonData?.data?.snapshot
+    const publicLiveSnapshots = Array.isArray(jsonData?.data?.markets)
+      ? jsonData.data.markets
+      : []
+    after(async () => {
+      if (response.ok && publicLiveSnapshots.length > 0) {
+        await publishLiveSnapshots(publicLiveSnapshots).catch(() => null)
+      }
+      if (response.ok && liveSnapshot?.marketId && effectiveUser?.id && liveSnapshot.user) {
+        await publishAccountSnapshot(effectiveUser.id, {
+          userId: effectiveUser.id,
+          version: Number(liveSnapshot.version || Date.now()),
+          balance: Number(liveSnapshot.user.balance || 0),
+          positions: (liveSnapshot.user.positions || []).map((position: any) => ({
+            marketId: liveSnapshot.marketId,
+            optionId: position.optionId,
+            optionName: position.optionName,
+            outcomeIndex: Number.isFinite(position.outcomeIndex) ? Number(position.outcomeIndex) : undefined,
+            cost: Number(position.cost || 0),
+            quantity: Number(position.quantity || 0),
+            value: Number(position.value || 0),
+          })),
+        }).catch(() => null)
+      }
+    })
     if (mutation && session?.user) {
-      const isBuy = pathStr.endsWith('/buy')
-      const isSell = pathStr.endsWith('/sell')
-      const isLiquidity = pathStr.includes('liquidity')
       const eventType = isBuy
         ? (response.ok ? 'trade.buy.completed' : 'trade.buy.failed')
         : isSell
@@ -229,26 +452,29 @@ async function proxyRequest(
           : isLiquidity
             ? (response.ok ? 'trade.liquidity.added' : 'trade.liquidity.failed')
             : null
-      if (eventType) {
-        await recordAuditEvent({
-          eventType,
-          category: 'trading',
-          action: `${req.method} ${pathStr}`,
-          outcome: response.ok ? 'success' : 'failure',
-          severity: response.ok ? 'info' : 'warning',
-          actorUserId: session.user.id,
-          actorRole: getUserPlatformRole(session.user as any),
-          subjectUserId: session.user.id,
-          entityType: 'amm_market',
-          entityId: pathStr.split('/')[1] || null,
-          metadata: { request: requestBody, status: response.status, response: response.ok ? { id: jsonData?.id || jsonData?.transaction?.id } : jsonData },
-          ...requestAuditContext(req.headers),
-        })
-      }
-      if (response.ok && (isBuy || isSell)) {
-        const marketId = newPath[1]
-        if (marketId) { after(() => synchronizeAmmMarketVolumes([marketId])) }
-      }
+      const marketId = newPath[1]
+      after(async () => {
+        if (eventType) {
+          await recordAuditEvent({
+            eventType,
+            category: 'trading',
+            action: `${req.method} ${pathStr}`,
+            outcome: response.ok ? 'success' : 'failure',
+            severity: response.ok ? 'info' : 'warning',
+            actorUserId: session.user.id,
+            actorRole: getUserPlatformRole(session.user as any),
+            subjectUserId: effectiveUser?.id || session.user.id,
+            entityType: 'amm_market',
+            entityId: marketId || null,
+            metadata: { request: requestBody, status: response.status, response: response.ok ? { id: jsonData?.id || jsonData?.transaction?.id } : jsonData },
+            ...requestAuditContext(req.headers),
+          })
+        }
+        if (response.ok && marketId && (isBuy || isSell)) {
+          await synchronizeAmmMarketVolumes([marketId])
+          await loadEventActivities([marketId])
+        }
+      })
     }
     return NextResponse.json(jsonData, { status: response.status })
   }

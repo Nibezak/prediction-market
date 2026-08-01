@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 function getApiUrl() {
-  return process.env.NEXT_PUBLIC_PLAY_MONEY_API_URL || 'http://localhost:8000/api'
+  return process.env.NEXT_PUBLIC_SLIMEFISH_BACKEND_API_URL || 'http://localhost:8000/api'
 }
 
 export const maxDuration = 300
@@ -11,12 +12,13 @@ async function handleRequest() {
   try {
     const apiUrl = new URL(`${getApiUrl()}/v1/sync/event-creations`)
 
+    const secret = process.env.TELLWISE_SECRET || 'tellwise_super_secret_bypass_key_123'
     const res = await fetch(apiUrl.toString(), {
       method: 'POST',
-      headers: {
+      headers: signSlimefishBackendRequest({ url: apiUrl, method: 'POST', headers: {
         'Content-Type': 'application/json',
-        'x-tellwise-secret': process.env.TELLWISE_SECRET || 'tellwise_super_secret_bypass_key_123',
-      },
+        'x-tellwise-secret': secret,
+      } }),
     })
 
     if (!res.ok) {

@@ -32,6 +32,7 @@ import dynamic from 'next/dynamic'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
 import { Button } from '@/components/ui/button'
+import { useUser } from '@/stores/useUser'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -87,7 +88,11 @@ const AdminProposersDialog = dynamic(() => import('./AdminProposersDialog'), {
   ssr: false,
 })
 
-export default function AdminCreateEventForm({
+export default function AdminCreateEventForm(props: AdminCreateEventFormProps) {
+  return <AdminCreateEventFormContent {...props} />
+}
+
+function AdminCreateEventFormContent({
   sportsSlugCatalog,
   creationMode = 'single',
   initialDraftRecord = null,
@@ -100,6 +105,8 @@ export default function AdminCreateEventForm({
   serverDraftPayload = null,
   serverAssetPayload = null,
 }: AdminCreateEventFormProps) {
+  const user = useUser()
+  const userCreatorLabel = user?.email || user?.username || 'Signed-in Admin'
   const t = useExtracted()
   const hook = useAdminCreateEventForm({
     sportsSlugCatalog,
@@ -292,7 +299,7 @@ export default function AdminCreateEventForm({
     stepFourNextButtonContent,
   } = hook
 
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
 
 
   return (
@@ -534,18 +541,14 @@ export default function AdminCreateEventForm({
                       >
                         <SelectTrigger className="w-full min-w-0">
                           <SelectValue placeholder={creationMode === 'recurring'
-                            ? (isLoadingSigners ? 'Loading creators...' : 'Select creator')
-                            : (eoaAddress ? 'EOA wallet' : 'Connect EOA wallet')}
+                            ? (isLoadingSigners ? 'Loading creators...' : userCreatorLabel)
+                            : userCreatorLabel}
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          {creationMode !== 'recurring' && eoaAddress && (
-                            <SelectItem value="__eoa__">
-                              EOA wallet
-                              {' · '}
-                              {eoaShortAddress}
-                            </SelectItem>
-                          )}
+                          <SelectItem value="__signed_in_user__">
+                            {userCreatorLabel}
+                          </SelectItem>
                           {signers.map(signer => (
                             <SelectItem key={signer.address} value={signer.address}>
                               {signer.displayName}
@@ -1822,14 +1825,6 @@ export default function AdminCreateEventForm({
       <AdminProposersDialog
         open={proposersDialogOpen}
         onOpenChange={setProposersDialogOpen}
-        initialCreatorAddress={selectedCreatorAddress}
-        lockCreatorSelection
-        onStatusChange={(nextStatus) => {
-          if (!selectedCreatorAddress || nextStatus.creator.toLowerCase() !== selectedCreatorAddress.toLowerCase()) {
-            return
-          }
-          setProposerWhitelistCheckState(nextStatus.whitelistAddress ? 'ok' : 'missing')
-        }}
       />
 
       <Dialog open={recurringRequiresServerWalletSetup} onOpenChange={() => {}}>
@@ -2183,7 +2178,7 @@ export default function AdminCreateEventForm({
                         <ChevronRightIcon className="size-5 text-muted-foreground" />
                       )}
                   <p className="text-xl font-semibold text-foreground">
-                    {isPlayMoneyAmm ? 'Play Money Virtual Balance' : `EOA wallet balance (${requiredTotalRewardUsdc.toFixed(2)} USDC required)`}
+                    {isSlimefishBackendAmm ? 'Slimefish ledger Virtual Balance' : `EOA wallet balance (${requiredTotalRewardUsdc.toFixed(2)} USDC required)`}
                   </p>
                 </button>
                 <CheckIndicator
@@ -2198,11 +2193,11 @@ export default function AdminCreateEventForm({
                       : t('This reward pays the UMA proposer who resolves the question correctly.')}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {isPlayMoneyAmm
-                      ? 'Using Play Money AMM virtual balance.'
+                    {isSlimefishBackendAmm
+                      ? 'Using Slimefish treasury ledger.'
                       : `Need ${requiredRewardUsdc.toFixed(2)} × ${marketCount} markets = ${requiredTotalRewardUsdc.toFixed(2)} USDC. Balance: ${eoaUsdcBalance.toFixed(2)} USDC.`}
                   </p>
-                  {!isPlayMoneyAmm && (
+                  {!isSlimefishBackendAmm && (
                   <div className="flex items-center gap-1.5">
                     <p className="font-mono text-sm break-all text-muted-foreground">
                       {eoaAddress ?? 'Wallet not connected'}
@@ -2228,202 +2223,206 @@ export default function AdminCreateEventForm({
               {fundingCheckError && <p className="mt-2 text-sm text-destructive">{fundingCheckError}</p>}
             </div>
 
-            <div className="rounded-md border px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => togglePreSignCheck('nativeGas', nativeGasHasIssue)}
-                  disabled={nativeGasHasIssue}
-                  className={cn(
-                    'flex items-center gap-2 text-left',
-                    nativeGasHasIssue ? 'cursor-default' : 'cursor-pointer',
-                  )}
-                >
-                  {expandedPreSignChecks.nativeGas
-                    ? <ChevronDownIcon className="size-5 text-muted-foreground" />
-                    : (
-                        <ChevronRightIcon className="size-5 text-muted-foreground" />
+            {!isSlimefishBackendAmm && (
+              <>
+                <div className="rounded-md border px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => togglePreSignCheck('nativeGas', nativeGasHasIssue)}
+                      disabled={nativeGasHasIssue}
+                      className={cn(
+                        'flex items-center gap-2 text-left',
+                        nativeGasHasIssue ? 'cursor-default' : 'cursor-pointer',
                       )}
-                  <p className="text-xl font-semibold text-foreground">
-                    EOA wallet gas (
-                    {requiredGasPol.toFixed(4)}
-                    {' '}
-                    POL estimated)
-                  </p>
-                </button>
-                <CheckIndicator
-                  state={getCheckIndicatorState(nativeGasCheckState)}
-                />
-              </div>
-              {expandedPreSignChecks.nativeGas && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-sm text-muted-foreground">
-                    This POL pays gas for market creation transactions (approve + initialize).
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Estimated need:
-                    {' '}
-                    {requiredGasPol.toFixed(4)}
-                    {' '}
-                    POL. Balance:
-                    {' '}
-                    {eoaPolBalance.toFixed(4)}
-                    {' '}
-                    POL.
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-mono text-sm break-all text-muted-foreground">
-                      {eoaAddress ?? 'Wallet not connected'}
-                    </p>
-                    {eoaAddress && (
-                      <button
-                        type="button"
-                        onClick={() => void copyWalletAddress()}
-                        className="text-muted-foreground transition hover:text-foreground"
-                        aria-label="Copy wallet address"
-                      >
-                        {isAddressCopied
-                          ? <CheckIcon className="size-4 text-emerald-500" />
-                          : (
-                              <CopyIcon className="size-4" />
-                            )}
-                      </button>
-                    )}
+                    >
+                      {expandedPreSignChecks.nativeGas
+                        ? <ChevronDownIcon className="size-5 text-muted-foreground" />
+                        : (
+                            <ChevronRightIcon className="size-5 text-muted-foreground" />
+                          )}
+                      <p className="text-xl font-semibold text-foreground">
+                        EOA wallet gas (
+                        {requiredGasPol.toFixed(4)}
+                        {' '}
+                        POL estimated)
+                      </p>
+                    </button>
+                    <CheckIndicator
+                      state={getCheckIndicatorState(nativeGasCheckState)}
+                    />
                   </div>
-                </div>
-              )}
-              {nativeGasCheckError && <p className="mt-2 text-sm text-destructive">{nativeGasCheckError}</p>}
-            </div>
-
-            <div className="rounded-md border px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => togglePreSignCheck('allowedCreator', allowedCreatorHasIssue)}
-                  disabled={allowedCreatorHasIssue}
-                  className={cn(
-                    'flex items-center gap-2 text-left',
-                    allowedCreatorHasIssue ? 'cursor-default' : 'cursor-pointer',
+                  {expandedPreSignChecks.nativeGas && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        This POL pays gas for market creation transactions (approve + initialize).
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Estimated need:
+                        {' '}
+                        {requiredGasPol.toFixed(4)}
+                        {' '}
+                        POL. Balance:
+                        {' '}
+                        {eoaPolBalance.toFixed(4)}
+                        {' '}
+                        POL.
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-mono text-sm break-all text-muted-foreground">
+                          {eoaAddress ?? 'Wallet not connected'}
+                        </p>
+                        {eoaAddress && (
+                          <button
+                            type="button"
+                            onClick={() => void copyWalletAddress()}
+                            className="text-muted-foreground transition hover:text-foreground"
+                            aria-label="Copy wallet address"
+                          >
+                            {isAddressCopied
+                              ? <CheckIcon className="size-4 text-emerald-500" />
+                              : (
+                                  <CopyIcon className="size-4" />
+                                )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
-                >
-                  {expandedPreSignChecks.allowedCreator
-                    ? <ChevronDownIcon className="size-5 text-muted-foreground" />
-                    : (
-                        <ChevronRightIcon className="size-5 text-muted-foreground" />
+                  {nativeGasCheckError && <p className="mt-2 text-sm text-destructive">{nativeGasCheckError}</p>}
+                </div>
+
+                <div className="rounded-md border px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => togglePreSignCheck('allowedCreator', allowedCreatorHasIssue)}
+                      disabled={allowedCreatorHasIssue}
+                      className={cn(
+                        'flex items-center gap-2 text-left',
+                        allowedCreatorHasIssue ? 'cursor-default' : 'cursor-pointer',
                       )}
-                  <p className="text-xl font-semibold text-foreground">Wallet on allowed market creator wallets</p>
-                </button>
-                <CheckIndicator
-                  state={getCheckIndicatorState(allowedCreatorCheckState)}
-                />
-              </div>
-              {expandedPreSignChecks.allowedCreator && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-sm text-muted-foreground">
-                    Must be listed in "Allowed market creator wallets" in General settings so this wallet is recognized by the platform.
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-mono text-sm break-all text-muted-foreground">
-                      {eoaAddress ?? 'Wallet not connected'}
-                    </p>
-                    {eoaAddress && (
-                      <button
-                        type="button"
-                        onClick={() => void copyWalletAddress()}
-                        className="text-muted-foreground transition hover:text-foreground"
-                        aria-label="Copy wallet address"
-                      >
-                        {isAddressCopied
-                          ? <CheckIcon className="size-4 text-emerald-500" />
-                          : (
-                              <CopyIcon className="size-4" />
-                            )}
-                      </button>
-                    )}
+                    >
+                      {expandedPreSignChecks.allowedCreator
+                        ? <ChevronDownIcon className="size-5 text-muted-foreground" />
+                        : (
+                            <ChevronRightIcon className="size-5 text-muted-foreground" />
+                          )}
+                      <p className="text-xl font-semibold text-foreground">Wallet on allowed market creator wallets</p>
+                    </button>
+                    <CheckIndicator
+                      state={getCheckIndicatorState(allowedCreatorCheckState)}
+                    />
                   </div>
-                </div>
-              )}
-
-              {allowedCreatorCheckState === 'missing' && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-7"
-                  onClick={() => setCreatorWalletDialogOpen(true)}
-                  disabled={isAddingCreatorWallet || !eoaAddress}
-                >
-                  {isAddingCreatorWallet && <Loader2Icon className="mr-2 size-3.5 animate-spin" />}
-                  Add wallet
-                </Button>
-              )}
-              {allowedCreatorCheckError && <p className="mt-2 text-sm text-destructive">{allowedCreatorCheckError}</p>}
-            </div>
-
-            <div className="rounded-md border px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => togglePreSignCheck('proposerWhitelist', proposerWhitelistHasIssue)}
-                  disabled={proposerWhitelistHasIssue}
-                  className={cn(
-                    'flex items-center gap-2 text-left',
-                    proposerWhitelistHasIssue ? 'cursor-default' : 'cursor-pointer',
+                  {expandedPreSignChecks.allowedCreator && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        Must be listed in "Allowed market creator wallets" in General settings so this wallet is recognized by the platform.
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-mono text-sm break-all text-muted-foreground">
+                          {eoaAddress ?? 'Wallet not connected'}
+                        </p>
+                        {eoaAddress && (
+                          <button
+                            type="button"
+                            onClick={() => void copyWalletAddress()}
+                            className="text-muted-foreground transition hover:text-foreground"
+                            aria-label="Copy wallet address"
+                          >
+                            {isAddressCopied
+                              ? <CheckIcon className="size-4 text-emerald-500" />
+                              : (
+                                  <CopyIcon className="size-4" />
+                                )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
-                >
-                  {expandedPreSignChecks.proposerWhitelist
-                    ? <ChevronDownIcon className="size-5 text-muted-foreground" />
-                    : (
-                        <ChevronRightIcon className="size-5 text-muted-foreground" />
-                      )}
-                  <p className="text-xl font-semibold text-foreground">{t('Resolution proposers whitelist')}</p>
-                </button>
-                <CheckIndicator
-                  state={getCheckIndicatorState(proposerWhitelistCheckState)}
-                />
-              </div>
-              {expandedPreSignChecks.proposerWhitelist && (
-                <div className="mt-2 space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    {proposerWhitelistCheckState === 'missing' && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        onClick={() => setProposersDialogOpen(true)}
-                        disabled={!selectedCreatorAddress}
-                      >
-                        {t('Create whitelist')}
-                      </Button>
-                    )}
-                    {proposerWhitelistCheckState === 'ok' && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        onClick={() => setProposersDialogOpen(true)}
-                      >
-                        <UserCheckIcon className="mr-2 size-3.5" />
-                        {t('Manage proposers')}
-                      </Button>
-                    )}
+
+                  {allowedCreatorCheckState === 'missing' && (
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      className="h-7"
-                      onClick={() => void runProposerWhitelistCheck()}
-                      disabled={proposerWhitelistCheckState === 'checking' || !selectedCreatorAddress}
+                      className="mt-2 h-7"
+                      onClick={() => setCreatorWalletDialogOpen(true)}
+                      disabled={isAddingCreatorWallet || !eoaAddress}
                     >
-                      {t('Re-check')}
+                      {isAddingCreatorWallet && <Loader2Icon className="mr-2 size-3.5 animate-spin" />}
+                      Add wallet
                     </Button>
-                  </div>
+                  )}
+                  {allowedCreatorCheckError && <p className="mt-2 text-sm text-destructive">{allowedCreatorCheckError}</p>}
                 </div>
-              )}
-              {proposerWhitelistCheckError && <p className="mt-2 text-sm text-destructive">{proposerWhitelistCheckError}</p>}
-            </div>
+
+                <div className="rounded-md border px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => togglePreSignCheck('proposerWhitelist', proposerWhitelistHasIssue)}
+                      disabled={proposerWhitelistHasIssue}
+                      className={cn(
+                        'flex items-center gap-2 text-left',
+                        proposerWhitelistHasIssue ? 'cursor-default' : 'cursor-pointer',
+                      )}
+                    >
+                      {expandedPreSignChecks.proposerWhitelist
+                        ? <ChevronDownIcon className="size-5 text-muted-foreground" />
+                        : (
+                            <ChevronRightIcon className="size-5 text-muted-foreground" />
+                          )}
+                      <p className="text-xl font-semibold text-foreground">{t('Resolution proposers whitelist')}</p>
+                    </button>
+                    <CheckIndicator
+                      state={getCheckIndicatorState(proposerWhitelistCheckState)}
+                    />
+                  </div>
+                  {expandedPreSignChecks.proposerWhitelist && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {proposerWhitelistCheckState === 'missing' && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            onClick={() => setProposersDialogOpen(true)}
+                            disabled={!selectedCreatorAddress}
+                          >
+                            {t('Create whitelist')}
+                          </Button>
+                        )}
+                        {proposerWhitelistCheckState === 'ok' && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            onClick={() => setProposersDialogOpen(true)}
+                          >
+                            <UserCheckIcon className="mr-2 size-3.5" />
+                            {t('Manage proposers')}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7"
+                          onClick={() => void runProposerWhitelistCheck()}
+                          disabled={proposerWhitelistCheckState === 'checking' || !selectedCreatorAddress}
+                        >
+                          {t('Re-check')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {proposerWhitelistCheckError && <p className="mt-2 text-sm text-destructive">{proposerWhitelistCheckError}</p>}
+                </div>
+              </>
+            )}
 
             <div className="rounded-md border px-4 py-3">
               <div className="flex items-center justify-between gap-3">
@@ -2620,7 +2619,7 @@ export default function AdminCreateEventForm({
       {currentStep === 5 && (
         <Card className="bg-background">
           <CardHeader className="pt-8 pb-6">
-            <CardTitle>{process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true' ? 'Create event' : 'Sign & create'}</CardTitle>
+            <CardTitle>{process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? 'Create event' : 'Sign & create'}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pb-8">
             <div className="rounded-md border px-4 py-3">
@@ -2680,7 +2679,7 @@ export default function AdminCreateEventForm({
                       <p className="text-sm text-muted-foreground">
                         {pendingWorkflowRequestId
                           ? 'Server workflow is preparing your tx plan.'
-                          : process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+                          : process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
                             ? 'Create this event in the AMM service.'
                             : 'Sign auth to load tx plan.'}
                       </p>
@@ -2711,7 +2710,7 @@ export default function AdminCreateEventForm({
                         ? `Verified (auth time remaining: ${authChallengeCountdownLabel})`
                         : 'Verified'
                       : isSigningAuth
-                        ? process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true' ? 'Creating event' : 'Awaiting wallet'
+                        ? process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? 'Creating event' : 'Awaiting wallet'
                         : isPreparingSignaturePlan || pendingWorkflowStatus === 'prepare_running'
                           ? 'Signed. Preparing tx plan on server'
                           : signatureFlowError

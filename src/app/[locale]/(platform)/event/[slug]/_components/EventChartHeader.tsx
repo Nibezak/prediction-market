@@ -105,7 +105,7 @@ export default function EventChartHeader({
   })()
   const roundedYesChanceValue = (
     typeof yesChanceValue === 'number' && Number.isFinite(yesChanceValue)
-      ? Math.round(yesChanceValue)
+      ? (yesChanceValue >= 99.5 ? 99 : yesChanceValue <= 0.5 && yesChanceValue > 0 ? 1 : Math.floor(yesChanceValue))
       : null
   )
 

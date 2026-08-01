@@ -13,6 +13,7 @@ import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
 import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 import AppKitProvider from '@/providers/AppKitProvider'
+import MirrorSessionBanner from '@/components/MirrorSessionBanner'
 
 export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
   await deferPublicShellPrerenderIfNeeded()
@@ -33,6 +34,7 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
   return (
     <AppKitProvider>
       <TradingOnboardingProvider>
+        <MirrorSessionBanner />
         <PlatformViewerState />
         <FilterProvider>
           <PlatformNavigationProvider tags={tags} childParentMap={childParentMap}>

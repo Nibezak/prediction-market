@@ -1,4 +1,4 @@
-const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuestcom/embeds/dist/index.js'
+const EMBED_SCRIPT_URL = '/embed.js'
 
 type EmbedTheme = 'light' | 'dark'
 const CUSTOM_ELEMENT_NAME_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/
@@ -87,11 +87,12 @@ export function buildIframeCode(src: string, height: number, iframeTitle: string
     '\twidth="400"',
     `\theight="${height}"`,
     '\tframeBorder="0"',
-    '/>',
+    '></iframe>',
   ].join('\n')
 }
 
 export function buildWebComponentCode(
+  baseUrl: string,
   elementName: string,
   marketSlug: string,
   theme: EmbedTheme,
@@ -109,7 +110,7 @@ export function buildWebComponentCode(
     `<div id="${safeElementName}">`,
     '\t<script',
     '\t\ttype="module"',
-    `\t\tsrc="${EMBED_SCRIPT_URL}"`,
+    `\t\tsrc="${escapeHtmlAttr(`${normalizeEmbedBaseUrl(baseUrl)}${EMBED_SCRIPT_URL}`)}"`,
     '\t>',
     '\t</script>',
     `\t<${safeElementName}`,

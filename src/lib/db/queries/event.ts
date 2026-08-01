@@ -10,6 +10,7 @@ import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { getSportsSlugResolverFromDb } from '@/lib/db/queries/sports-menu'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 import { bookmarks } from '@/lib/db/schema/bookmarks/tables'
 import {
   conditions,
@@ -27,7 +28,7 @@ import {
   v_main_tag_subcategories,
 } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
-import { db, pmSql } from '@/lib/drizzle'
+import { db } from '@/lib/drizzle'
 
 import {
   buildPublicEventListVisibilityCondition,
@@ -35,6 +36,11 @@ import {
 } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
+import {
+  type AmmLiveSnapshot,
+  publishLiveSnapshots,
+  readCachedLiveSnapshots,
+} from '@/lib/amm-live'
 import {
   isSportsAuxiliaryEventSlug,
   SPORTS_AUXILIARY_SLUG_SQL_REGEX,
@@ -47,6 +53,20 @@ import {
 import { getPublicAssetUrl } from '@/lib/storage'
 
 interface OutcomePrices { buy?: number, sell?: number }
+interface SlimefishBackendMarketOption {
+  id: string
+  name: string
+  color?: string
+  probability: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+const SLIMEFISH_BACKEND_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000
+const slimefishBackendOptionsCache = new Map<string, {
+  expiresAt: number
+  options: SlimefishBackendMarketOption[]
+}>()
 const DEFAULT_EVENT_LIST_LIMIT = 32
 
 function resolveSeriesEventDirection(outcomeText: string | null | undefined): 'up' | 'down' | null {
@@ -230,36 +250,148 @@ function resolveMarketDisplayPrice(
   return resolveOutcomeDisplayPrice(primaryOutcome) ?? 0.5
 }
 
-async function fetchPlayMoneyPricing(tokenIds: string[]) {
-  const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
+async function fetchSlimefishBackendPricing(marketIds: string[]) {
+  const uniqueMarketIds = Array.from(new Set(marketIds.filter(Boolean)))
   const lastTradeMap = new Map<string, number>()
   const priceMap = new Map<string, OutcomePrices>()
 
-  if (!uniqueTokenIds.length) {
-    return { lastTradeMap, priceMap }
+  if (!uniqueMarketIds.length) {
+    return { lastTradeMap, priceMap, snapshots: [] as AmmLiveSnapshot[] }
   }
 
   try {
-    const rows = await pmSql<{ id: string, probability: string }[]>`
-      SELECT id, probability FROM "MarketOption" WHERE id IN ${pmSql(uniqueTokenIds)}
-    `
+    const serviceKey = process.env.SLIMEFISH_BACKEND_SERVICE_API_KEY?.trim()
+      || process.env.TELLWISE_SECRET?.trim()
+      || ''
+    if (!serviceKey) {
+      return { lastTradeMap, priceMap, snapshots: [] as AmmLiveSnapshot[] }
+    }
 
-    for (const row of rows) {
-      const probability = Number(row.probability)
-      if (!Number.isFinite(probability)) {
-        continue
+    const cachedSnapshots = await readCachedLiveSnapshots(uniqueMarketIds)
+    const cachedIds = new Set(cachedSnapshots.map(snapshot => snapshot.marketId))
+    const missingIds = uniqueMarketIds.filter(marketId => !cachedIds.has(marketId))
+    let freshSnapshots: AmmLiveSnapshot[] = []
+
+    if (missingIds.length > 0) {
+      const baseUrl = process.env.AMM_BASE_URL?.trim() || 'http://localhost:8000/api/v1'
+      const url = `${baseUrl}/live/markets?ids=${encodeURIComponent(missingIds.join(','))}`
+      const response = await fetch(url, {
+        headers: signSlimefishBackendRequest({ url, headers: {
+          'x-tellwise-secret': serviceKey,
+        } }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(1_200),
+      })
+      if (!response.ok) {
+        throw new Error(`Slimefish ledger live markets returned ${response.status}`)
       }
 
-      const normalized = probability > 1 ? probability / 100 : probability
-      lastTradeMap.set(row.id, normalized)
-      priceMap.set(row.id, { buy: normalized, sell: normalized })
+      const payload = await response.json() as { data?: AmmLiveSnapshot[] }
+      freshSnapshots = payload.data ?? []
+      await publishLiveSnapshots(freshSnapshots)
+    }
+
+    const snapshots = [...cachedSnapshots, ...freshSnapshots]
+    for (const snapshot of snapshots) {
+      for (const option of snapshot.options) {
+        const probability = Number(option.probability)
+        if (!Number.isFinite(probability)) continue
+        const normalized = Math.max(0, Math.min(1, probability > 1 ? probability / 100 : probability))
+        lastTradeMap.set(option.id, normalized)
+        priceMap.set(option.id, { buy: normalized, sell: normalized })
+      }
+    }
+    return { lastTradeMap, priceMap, snapshots }
+  }
+  catch {}
+
+  return { lastTradeMap, priceMap, snapshots: [] as AmmLiveSnapshot[] }
+}
+
+async function fetchSlimefishBackendMarketOptions(
+  marketIds: string[],
+  prefetchedSnapshots: AmmLiveSnapshot[] = [],
+) {
+  const uniqueMarketIds = Array.from(new Set(marketIds.filter(Boolean)))
+  const optionsByMarket = new Map<string, SlimefishBackendMarketOption[]>()
+  if (!uniqueMarketIds.length) return optionsByMarket
+
+  const now = Date.now()
+  const missingMarketIds = uniqueMarketIds.filter((marketId) => {
+    const cached = slimefishBackendOptionsCache.get(marketId)
+    if (!cached || cached.expiresAt <= now) {
+      slimefishBackendOptionsCache.delete(marketId)
+      return true
+    }
+    optionsByMarket.set(marketId, cached.options)
+    return false
+  })
+  if (!missingMarketIds.length) return optionsByMarket
+
+  const prefetchedById = new Map(prefetchedSnapshots.map(snapshot => [snapshot.marketId, snapshot]))
+  const prefetched = missingMarketIds.flatMap((marketId) => {
+    const snapshot = prefetchedById.get(marketId)
+    return snapshot ? [snapshot] : []
+  })
+  const prefetchedIds = new Set(prefetched.map(snapshot => snapshot.marketId))
+  const liveSnapshots = [
+    ...prefetched,
+    ...await readCachedLiveSnapshots(missingMarketIds.filter(marketId => !prefetchedIds.has(marketId))),
+  ]
+  for (const snapshot of liveSnapshots) {
+    const options = snapshot.options.map(option => ({
+      id: option.id,
+      name: option.name,
+      color: option.color ?? undefined,
+      probability: option.probability,
+      createdAt: new Date(snapshot.version).toISOString(),
+      updatedAt: new Date(snapshot.version).toISOString(),
+    }))
+    if (options.length > 0) {
+      optionsByMarket.set(snapshot.marketId, options)
+      slimefishBackendOptionsCache.set(snapshot.marketId, { expiresAt: now + SLIMEFISH_BACKEND_OPTIONS_CACHE_TTL_MS, options })
     }
   }
-  catch (error) {
-    console.error('Failed to query Play Money DB for market prices', error)
-  }
+  const cachedLiveIds = new Set(liveSnapshots.map(snapshot => snapshot.marketId))
+  const unresolvedMarketIds = missingMarketIds.filter(marketId => !cachedLiveIds.has(marketId))
+  if (unresolvedMarketIds.length === 0) return optionsByMarket
 
-  return { lastTradeMap, priceMap }
+  const serviceKey = process.env.SLIMEFISH_BACKEND_SERVICE_API_KEY?.trim()
+    || process.env.TELLWISE_SECRET?.trim()
+    || ''
+  if (!serviceKey) return optionsByMarket
+
+  try {
+    const baseUrl = process.env.AMM_BASE_URL?.trim() || 'http://localhost:8000/api/v1'
+    const url = `${baseUrl}/markets/options`
+    const body = JSON.stringify({ markets: unresolvedMarketIds })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: {
+        'content-type': 'application/json',
+        'x-tellwise-secret': serviceKey,
+      } }),
+      body,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(1_500),
+    })
+    if (!response.ok) throw new Error(`Slimefish ledger market options returned ${response.status}`)
+
+    const payload = await response.json() as { options?: Record<string, SlimefishBackendMarketOption[]> }
+    for (const marketId of unresolvedMarketIds) {
+      const options = payload.options?.[marketId]
+      if (Array.isArray(options) && options.length > 0) {
+        optionsByMarket.set(marketId, options)
+        slimefishBackendOptionsCache.set(marketId, {
+          expiresAt: now + SLIMEFISH_BACKEND_OPTIONS_CACHE_TTL_MS,
+          options,
+        })
+      }
+    }
+  }
+  catch {}
+
+  return optionsByMarket
 }
 
 interface ListEventsProps {
@@ -310,6 +442,7 @@ interface ListAdminEventsParams {
   creator?: string
   seriesSlug?: string
   activeOnly?: boolean
+  view?: 'all' | 'upcoming' | 'active' | 'ending-today' | 'ending-soon' | 'closed' | 'resolved'
 }
 
 interface AdminEventRow {
@@ -752,6 +885,7 @@ function eventResource(
   localizedTagNamesById: Map<number, string> = new Map(),
   localizedEventTitlesById: Map<string, string> = new Map(),
   liveChartSeriesSlugs: Set<string> = new Set(),
+  slimefishBackendOptionsByMarket: Map<string, SlimefishBackendMarketOption[]> = new Map(),
 ): Event {
   const tagRecords = (event.eventTags ?? [])
     .map(et => et.tag)
@@ -762,9 +896,28 @@ function eventResource(
     }))
 
   const marketsWithDerivedValues = event.markets.map((market: any) => {
-    const rawOutcomes = (market.condition?.outcomes || []) as Array<typeof outcomes.$inferSelect>
+    const persistedOutcomes = (market.condition?.outcomes || []) as Array<typeof outcomes.$inferSelect>
+    const slimefishBackendOptions = slimefishBackendOptionsByMarket.get(market.condition_id) ?? []
+    const rawOutcomes = slimefishBackendOptions.length > persistedOutcomes.length
+      ? slimefishBackendOptions.map((option, outcomeIndex) => {
+          const persistedOutcome = persistedOutcomes.find(outcome => outcome.token_id === option.id)
+            ?? persistedOutcomes.find(outcome => outcome.outcome_text.trim().toLowerCase() === option.name.trim().toLowerCase())
+          return {
+            condition_id: market.condition_id,
+            outcome_text: option.name,
+            outcome_index: outcomeIndex,
+            token_id: option.id,
+            is_winning_outcome: persistedOutcome?.is_winning_outcome ?? false,
+            payout_value: persistedOutcome?.payout_value ?? null,
+            created_at: new Date(option.createdAt),
+            updated_at: new Date(option.updatedAt),
+          }
+        })
+      : persistedOutcomes
     const normalizedOutcomes = rawOutcomes.map((outcome) => {
-      const outcomePrice = outcome.token_id ? priceMap.get(outcome.token_id) : undefined
+      const slimefishBackendProbability = slimefishBackendOptions.find(option => option.id === outcome.token_id)?.probability
+      const outcomePrice = (outcome.token_id ? priceMap.get(outcome.token_id) : undefined)
+        ?? (slimefishBackendProbability == null ? undefined : { buy: slimefishBackendProbability, sell: slimefishBackendProbability })
 
       return {
         ...outcome,
@@ -922,23 +1075,28 @@ async function buildEventResource(
   sportsSlugResolver: SportsSlugResolver,
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<Event> {
-  const outcomeTokenIds = (eventResult.markets ?? []).flatMap((market: any) =>
-    (market.condition?.outcomes ?? []).map((outcome: any) => outcome.token_id).filter(Boolean),
-  )
+  const slimefishBackendMarketIds = (eventResult.markets ?? [])
+    .map((market: any) => market.condition_id)
+    .filter((marketId): marketId is string => Boolean(marketId))
 
   const tagIds = Array.from(new Set(
     (eventResult.eventTags ?? [])
       .map(eventTag => eventTag.tag?.id)
       .filter((tagId): tagId is number => typeof tagId === 'number'),
   ))
-  const [pricing, localizedTagNamesById, localizedEventTitlesById, liveChartSeriesSlugs] = await Promise.all([
-    fetchPlayMoneyPricing(outcomeTokenIds),
+  const pricingPromise = fetchSlimefishBackendPricing(slimefishBackendMarketIds)
+  const slimefishBackendOptionsPromise = pricingPromise.then(pricing => (
+    fetchSlimefishBackendMarketOptions(slimefishBackendMarketIds, pricing.snapshots)
+  ))
+  const [pricing, slimefishBackendOptionsByMarket, localizedTagNamesById, localizedEventTitlesById, liveChartSeriesSlugs] = await Promise.all([
+    pricingPromise,
+    slimefishBackendOptionsPromise,
     getLocalizedTagNamesById(tagIds, locale),
     getLocalizedEventTitlesById([eventResult.id], locale),
-    getEnabledLiveChartSeriesSlugs(),
+    eventResult.series_slug ? getEnabledLiveChartSeriesSlugs() : Promise.resolve(new Set<string>()),
   ])
   const { priceMap, lastTradeMap } = pricing
-  return eventResource(
+  const resource = eventResource(
     eventResult,
     userId,
     sportsSlugResolver,
@@ -947,7 +1105,21 @@ async function buildEventResource(
     localizedTagNamesById,
     localizedEventTitlesById,
     liveChartSeriesSlugs,
+    slimefishBackendOptionsByMarket,
   )
+  const snapshotByMarketId = new Map(pricing.snapshots.map(snapshot => [snapshot.marketId, snapshot]))
+  const marketsWithLiveVolume = resource.markets.map((market) => {
+    const snapshot = snapshotByMarketId.get(market.condition_id)
+    return snapshot
+      ? { ...market, volume: snapshot.volume, volume_24h: snapshot.volume24h }
+      : market
+  })
+
+  return {
+    ...resource,
+    markets: marketsWithLiveVolume,
+    volume: marketsWithLiveVolume.reduce((sum, market) => sum + (Number(market.volume) || 0), 0),
+  }
 }
 
 interface EventListQueryContext {
@@ -1354,8 +1526,9 @@ function getEventMainTag(tags: any[] | undefined): string {
     return 'World'
   }
 
-  const mainTag = tags.find(tag => tag.is_main_category)
-  return mainTag?.name || tags[0].name
+  const mainTags = tags.filter(tag => tag.is_main_category)
+  const preferredMainTag = mainTags.find(tag => String(tag.slug ?? tag.name ?? '').toLowerCase() !== 'world') ?? mainTags[0]
+  return preferredMainTag?.name || tags.find(tag => String(tag.slug ?? tag.name ?? '').toLowerCase() !== 'world')?.name || 'World'
 }
 
 export const EventRepository = {
@@ -1785,12 +1958,10 @@ export const EventRepository = {
         })
       }
 
-      const tokensForPricing = skipLivePricing
+      const marketIdsForPricing = skipLivePricing
         ? []
         : eventsData.flatMap(event =>
-            (event.markets ?? []).flatMap(market =>
-              (market.condition?.outcomes ?? []).map(outcome => outcome.token_id).filter(Boolean),
-            ),
+            (event.markets ?? []).map(market => market.condition_id).filter(Boolean),
           )
       const tagIds = Array.from(new Set(
         eventsData.flatMap(event =>
@@ -1805,7 +1976,7 @@ export const EventRepository = {
         sportsVolumeGroupKeyByEventId.values(),
       ))
       const [pricing, localizedTagNamesById, localizedEventTitlesById, groupedSportsVolumesByGroupKey, liveChartSeriesSlugs] = await Promise.all([
-        fetchPlayMoneyPricing(skipLivePricing ? [] : tokensForPricing),
+        fetchSlimefishBackendPricing(marketIdsForPricing),
         getLocalizedTagNamesById(tagIds, locale),
         getLocalizedEventTitlesById(eventIds, locale),
         getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
@@ -1948,6 +2119,7 @@ export const EventRepository = {
     creator,
     seriesSlug,
     activeOnly = false,
+    view = 'all',
   }: ListAdminEventsParams = {}): Promise<{
     data: AdminEventRow[]
     error: string | null
@@ -1969,6 +2141,36 @@ export const EventRepository = {
         )
       : undefined
     const activeStatusCondition = activeOnly ? eq(events.status, 'active') : undefined
+    const viewCondition = (() => {
+      switch (view) {
+        case 'upcoming':
+          return or(
+            eq(events.status, 'draft'),
+            sql`${events.start_date} > now()`,
+            and(eq(events.status, 'active'), sql`${events.created_at} > now() - interval '24 hours'`),
+          )
+        case 'active':
+          return eq(events.status, 'active')
+        case 'ending-today':
+          return and(
+            eq(events.status, 'active'),
+            sql`${events.end_date} >= (date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi')`,
+            sql`${events.end_date} < ((date_trunc('day', now() AT TIME ZONE 'Africa/Nairobi') + interval '1 day') AT TIME ZONE 'Africa/Nairobi')`,
+          )
+        case 'ending-soon':
+          return and(
+            eq(events.status, 'active'),
+            sql`${events.end_date} > now()`,
+            sql`${events.end_date} <= now() + interval '6 hours'`,
+          )
+        case 'closed':
+          return eq(events.status, 'closed')
+        case 'resolved':
+          return eq(events.status, 'resolved')
+        default:
+          return undefined
+      }
+    })()
 
     let categorySlugs: string[] | null = null
     if (trimmedMainCategorySlug) {
@@ -2006,7 +2208,7 @@ export const EventRepository = {
         )
       : undefined
 
-    const baseWhereCondition = and(searchCondition, mainCategoryCondition, activeStatusCondition)
+    const baseWhereCondition = and(searchCondition, mainCategoryCondition, activeStatusCondition, viewCondition)
     const creatorCondition = trimmedCreator ? eq(events.creator, trimmedCreator) : undefined
     const seriesCondition = trimmedSeriesSlug ? eq(events.series_slug, trimmedSeriesSlug) : undefined
     const whereCondition = and(baseWhereCondition, creatorCondition, seriesCondition)
@@ -2329,6 +2531,21 @@ export const EventRepository = {
         .map(row => row.series_slug?.trim() ?? '')
         .filter(value => value.length > 0),
     }
+  },
+
+  async deleteAdminEvent(eventId: string): Promise<QueryResult<boolean>> {
+    return runQuery(async () => {
+      const [deleted] = await db
+        .delete(events)
+        .where(eq(events.id, eventId))
+        .returning({ id: events.id })
+
+      if (!deleted) {
+        throw new Error('Event not found')
+      }
+
+      return { data: true, error: null }
+    })
   },
 
   async setEventHiddenState(eventId: string, isHidden: boolean): Promise<QueryResult<{
@@ -2868,7 +3085,8 @@ export const EventRepository = {
     locale: SupportedLocale = DEFAULT_LOCALE,
   ): Promise<QueryResult<Event>> {
     return runQuery(async () => {
-      const eventResult = await db.query.events.findFirst({
+      const [eventResult, sportsSlugResolver] = await Promise.all([
+        db.query.events.findFirst({
         where: and(
           eq(events.slug, slug),
           eq(events.is_hidden, false),
@@ -2892,7 +3110,9 @@ export const EventRepository = {
             },
           }),
         },
-      }) as DrizzleEventResult
+        }) as Promise<DrizzleEventResult | undefined>,
+        getSportsSlugResolverFromDb(),
+      ])
 
       if (!eventResult) {
         throw new Error('Event not found')
@@ -2900,7 +3120,6 @@ export const EventRepository = {
 
       const hydratedEventResult = await hydrateSportsAuxiliaryEventContext(eventResult as DrizzleEventResult)
 
-      const sportsSlugResolver = await getSportsSlugResolverFromDb()
       const transformedEvent = await buildEventResource(
         hydratedEventResult,
         userId,
@@ -2979,10 +3198,8 @@ export const EventRepository = {
 
       const hydratedGroupedEventsData = hydrateGroupedSportsAuxiliaryEventContexts(groupedEventsData)
 
-      const tokensForPricing = hydratedGroupedEventsData.flatMap(event =>
-        (event.markets ?? []).flatMap(market =>
-          (market.condition?.outcomes ?? []).map(outcome => outcome.token_id).filter(Boolean),
-        ),
+      const marketIdsForPricing = hydratedGroupedEventsData.flatMap(event =>
+        (event.markets ?? []).map(market => market.condition_id).filter(Boolean),
       )
       const tagIds = Array.from(new Set(
         hydratedGroupedEventsData.flatMap(event =>
@@ -2993,7 +3210,7 @@ export const EventRepository = {
       ))
       const eventIds = hydratedGroupedEventsData.map(event => event.id)
       const [pricing, localizedTagNamesById, localizedEventTitlesById, groupedVolumesByGroupKey, liveChartSeriesSlugs] = await Promise.all([
-        fetchPlayMoneyPricing(tokensForPricing),
+        fetchSlimefishBackendPricing(marketIdsForPricing),
         getLocalizedTagNamesById(tagIds, locale),
         getLocalizedEventTitlesById(eventIds, locale),
         getSportsAggregatedVolumesByGroupKey([baseGroupKey]),
@@ -3318,7 +3535,7 @@ export const EventRepository = {
         .filter((tokenId): tokenId is string => Boolean(tokenId))
       const eventIds = relatedCandidates.map(event => event.id)
       const [pricing, localizedEventTitlesById] = await Promise.all([
-        fetchPlayMoneyPricing(tokenIds),
+        fetchSlimefishBackendPricing(tokenIds),
         getLocalizedEventTitlesById(eventIds, locale),
       ])
       const { priceMap, lastTradeMap: lastTradesByToken } = pricing

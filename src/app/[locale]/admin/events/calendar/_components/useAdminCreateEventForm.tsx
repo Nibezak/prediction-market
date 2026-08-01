@@ -256,15 +256,15 @@ export function useAdminCreateEventForm({
   const [requiredRewardUsdc, setRequiredRewardUsdc] = useState(FALLBACK_REQUIRED_USDC)
   const [targetChainId, setTargetChainId] = useState<number>(DEFAULT_CREATE_EVENT_CHAIN_ID)
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState(0)
-  const [fundingCheckState, setFundingCheckState] = useState<FundingCheckState>('idle')
+  const [fundingCheckState, setFundingCheckState] = useState<FundingCheckState>('ok')
   const [fundingCheckError, setFundingCheckError] = useState('')
   const [eoaPolBalance, setEoaPolBalance] = useState(0)
   const [requiredGasPol, setRequiredGasPol] = useState(0)
-  const [nativeGasCheckState, setNativeGasCheckState] = useState<NativeGasCheckState>('idle')
+  const [nativeGasCheckState, setNativeGasCheckState] = useState<NativeGasCheckState>('ok')
   const [nativeGasCheckError, setNativeGasCheckError] = useState('')
-  const [allowedCreatorCheckState, setAllowedCreatorCheckState] = useState<AllowedCreatorCheckState>('idle')
+  const [allowedCreatorCheckState, setAllowedCreatorCheckState] = useState<AllowedCreatorCheckState>('ok')
   const [allowedCreatorCheckError, setAllowedCreatorCheckError] = useState('')
-  const [proposerWhitelistCheckState, setProposerWhitelistCheckState] = useState<ProposerWhitelistCheckState>('idle')
+  const [proposerWhitelistCheckState, setProposerWhitelistCheckState] = useState<ProposerWhitelistCheckState>('ok')
   const [proposerWhitelistCheckError, setProposerWhitelistCheckError] = useState('')
   const [openRouterCheckState, setOpenRouterCheckState] = useState<OpenRouterCheckState>('idle')
   const [openRouterCheckError, setOpenRouterCheckError] = useState('')
@@ -405,7 +405,7 @@ export function useAdminCreateEventForm({
     home: teamLogoFiles.home ? URL.createObjectURL(teamLogoFiles.home) : (storedAssets.teamLogos.home?.publicUrl || null),
     away: teamLogoFiles.away ? URL.createObjectURL(teamLogoFiles.away) : (storedAssets.teamLogos.away?.publicUrl || null),
   }), [storedAssets.teamLogos.away?.publicUrl, storedAssets.teamLogos.home?.publicUrl, teamLogoFiles])
-  const hasEventImage = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const hasEventImage = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
     || Boolean(eventImageFile || storedAssets.eventImage?.publicUrl)
   const hasTeamLogoByHostStatus = useMemo(() => ({
     home: Boolean(teamLogoFiles.home || storedAssets.teamLogos.home?.publicUrl),
@@ -892,7 +892,7 @@ export function useAdminCreateEventForm({
   const recurringRequiresServerWalletSetup = creationMode === 'recurring' && !hasConfiguredServerSigners
 
   const stepLabels = useMemo(
-    () => process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+    () => process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
       ? ['Event', 'Market Structure', 'Resolution', 'Review', 'Create']
       : ['Event', 'Market Structure', 'Resolution', 'Pre-sign', 'Sign & Create'],
     [],
@@ -972,12 +972,12 @@ export function useAdminCreateEventForm({
     () => contentCheckIssues.filter(issue => !bypassedIssueKeys.includes(getAiIssueKey(issue))),
     [bypassedIssueKeys, contentCheckIssues],
   )
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-  const fundingHasIssue = !isPlayMoneyAmm && (fundingCheckState === 'insufficient' || fundingCheckState === 'no_wallet' || fundingCheckState === 'error')
-  const nativeGasHasIssue = !isPlayMoneyAmm && (nativeGasCheckState === 'insufficient'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const fundingHasIssue = !isSlimefishBackendAmm && (fundingCheckState === 'insufficient' || fundingCheckState === 'no_wallet' || fundingCheckState === 'error')
+  const nativeGasHasIssue = !isSlimefishBackendAmm && (nativeGasCheckState === 'insufficient'
     || nativeGasCheckState === 'no_wallet'
     || nativeGasCheckState === 'error')
-  const allowedCreatorHasIssue = !isPlayMoneyAmm && (allowedCreatorCheckState === 'missing'
+  const allowedCreatorHasIssue = !isSlimefishBackendAmm && (allowedCreatorCheckState === 'missing'
     || allowedCreatorCheckState === 'no_wallet'
     || allowedCreatorCheckState === 'error')
   const proposerWhitelistHasIssue = proposerWhitelistCheckState === 'missing'
@@ -2606,8 +2606,8 @@ export function useAdminCreateEventForm({
   const buildPreparePayload = useCallback((): PreparePayloadBody => {
     const { resolvedForm } = getResolvedDateForms()
 
-    const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-    const creatorAddress = eoaAddress || (isPlayMoneyAmm ? '0x0000000000000000000000000000000000000000' : null)
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    const creatorAddress = eoaAddress || (isSlimefishBackendAmm ? '0x0000000000000000000000000000000000000000' : null)
 
     if (!creatorAddress) {
       throw new Error('Connect wallet first.')
@@ -2919,7 +2919,7 @@ export function useAdminCreateEventForm({
     setFundingCheckState('checking')
     setFundingCheckError('')
 
-    // MOCK START: Bypass for Play Money flow
+    // MOCK START: Bypass for Slimefish ledger flow
     setRequiredRewardUsdc(5)
     setTargetChainId(80002)
     setEoaUsdcBalance(9999)
@@ -3410,8 +3410,8 @@ export function useAdminCreateEventForm({
   }, [buildAiPayload])
 
   const prepareSignaturePlan = useCallback(async () => {
-    const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-    if (!isPlayMoneyAmm && !eoaAddress) {
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    if (!isSlimefishBackendAmm && !eoaAddress) {
       throw new Error('Connect wallet first.')
     }
 
@@ -3424,7 +3424,7 @@ export function useAdminCreateEventForm({
     let currentPayloadChainId: number | null = null
 
     try {
-      if (isPlayMoneyAmm) {
+      if (isSlimefishBackendAmm) {
         const payload = buildPreparePayload()
         const response = await fetch('/api/amm/sync/event-creations', {
           method: 'POST',
@@ -3442,7 +3442,7 @@ export function useAdminCreateEventForm({
         return null
       }
 
-      const connection = isPlayMoneyAmm ? null : getConnectedWalletConnection()
+      const connection = isSlimefishBackendAmm ? null : getConnectedWalletConnection()
       const payload = buildPreparePayload()
       const payloadNetwork = resolveViemNetworkByChainId(payload.chainId)
       const activeWalletClient = connection?.walletClientMatchesAddress && connection.walletClient
@@ -3454,7 +3454,7 @@ export function useAdminCreateEventForm({
               ...(payloadNetwork ? { chain: payloadNetwork } : {}),
             })
           : null
-      if (!isPlayMoneyAmm && !activeWalletClient) {
+      if (!isSlimefishBackendAmm && !activeWalletClient) {
         throw new Error('Wallet connection is not ready. Please try again.')
       }
       const payloadJson = JSON.stringify(payload)
@@ -3462,10 +3462,10 @@ export function useAdminCreateEventForm({
       currentPayloadHash = payloadHash
       currentPayloadChainId = payload.chainId
 
-      let authSignature = '0xplaymoneyamm'
+      let authSignature = '0xslimefish-backendamm'
       let authPayload: any = null
       
-      if (!isPlayMoneyAmm) {
+      if (!isSlimefishBackendAmm && activeWalletClient && eoaAddress) {
         const authResponse = await fetch(`${createMarketUrl}/prepare-auth`, {
           method: 'POST',
           headers: {
@@ -3547,7 +3547,7 @@ export function useAdminCreateEventForm({
         signature: authSignature,
       }))
       let resolvedEventImage = await resolveStoredAssetFile(eventImageFile, storedAssets.eventImage, 'Event image')
-      if (!resolvedEventImage && isPlayMoneyAmm) {
+      if (!resolvedEventImage && isSlimefishBackendAmm) {
         const defaultImageResponse = await fetch('/images/branding/slimefish.svg')
         if (!defaultImageResponse.ok) {
           throw new Error('Default event image could not be loaded.')

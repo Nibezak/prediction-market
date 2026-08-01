@@ -41,6 +41,7 @@ interface ModelOption {
 }
 
 interface OpenRouterGeneralSettings {
+  isEnabled: boolean
   defaultModel?: string
   isApiKeyConfigured: boolean
   isModelSelectEnabled: boolean
@@ -97,6 +98,7 @@ function AdminGeneralSettingsFormInner({
   const resolvedInitialHomeFeaturedSettings = initialHomeFeaturedSettings ?? DEFAULT_HOME_FEATURED_SETTINGS
   const resolvedInitialHomeFeaturedEvents = initialHomeFeaturedEvents ?? []
   const initialSiteName = initialThemeSiteSettings.siteName
+  const initialMobileAppName = initialThemeSiteSettings.mobileAppName
   const initialSiteDescription = initialThemeSiteSettings.siteDescription
   const initialLogoMode = initialThemeSiteSettings.logoMode
   const initialLogoSvg = initialThemeSiteSettings.logoSvg
@@ -124,6 +126,7 @@ function AdminGeneralSettingsFormInner({
   const initialLiFiApiKey = initialThemeSiteSettings.lifiApiKey
   const initialLiFiApiKeyConfigured = initialThemeSiteSettings.lifiApiKeyConfigured
   const initialOpenRouterModel = openRouterSettings.defaultModel ?? ''
+  const initialOpenRouterEnabled = openRouterSettings.isEnabled
   const initialOpenRouterApiKeyConfigured = openRouterSettings.isApiKeyConfigured
   const initialHomeFeaturedEnabled = resolvedInitialHomeFeaturedSettings.enabled
   const initialHomeFeaturedUseAi = resolvedInitialHomeFeaturedSettings.useAi
@@ -143,6 +146,7 @@ function AdminGeneralSettingsFormInner({
   const nextCustomJavascriptCodeIdRef = useRef(0)
 
   const [siteName, setSiteName] = useState(initialSiteName)
+  const [mobileAppName, setMobileAppName] = useState(initialMobileAppName)
   const [siteDescription, setSiteDescription] = useState(initialSiteDescription)
   const [logoMode, setLogoMode] = useState(initialLogoMode)
   const [logoSvg, setLogoSvg] = useState(initialLogoSvg)
@@ -174,6 +178,7 @@ function AdminGeneralSettingsFormInner({
   const [lifiIntegrator, setLifiIntegrator] = useState(initialLiFiIntegrator)
   const [lifiApiKey, setLifiApiKey] = useState(initialLiFiApiKey)
   const [openRouterApiKey, setOpenRouterApiKey] = useState('')
+  const [openRouterEnabled, setOpenRouterEnabled] = useState(initialOpenRouterEnabled)
   const [openRouterModel, setOpenRouterModel] = useState(initialOpenRouterModel)
   const [openRouterSelectValue, setOpenRouterSelectValue] = useState(
     initialOpenRouterModel || AUTOMATIC_MODEL_VALUE,
@@ -190,6 +195,9 @@ function AdminGeneralSettingsFormInner({
   const [homeFeaturedMinVolume24h, setHomeFeaturedMinVolume24h] = useState(initialHomeFeaturedMinVolume24h)
   const [homeFeaturedIncludeSportsToday, setHomeFeaturedIncludeSportsToday] = useState(initialHomeFeaturedIncludeSportsToday)
   const [homeFeaturedIncludeNewEvents, setHomeFeaturedIncludeNewEvents] = useState(initialHomeFeaturedIncludeNewEvents)
+  const [homeFeaturedHotPicksTags, setHomeFeaturedHotPicksTags] = useState<string[]>(
+    () => resolvedInitialHomeFeaturedSettings.hotPicksTags ?? [],
+  )
   const [homeFeaturedSideCard, setHomeFeaturedSideCard] = useState(initialHomeFeaturedSideCard)
   const [homeFeaturedEvents, setHomeFeaturedEvents] = useState<HomeFeaturedEventAdminItem[]>(resolvedInitialHomeFeaturedEvents)
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
@@ -437,6 +445,7 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="pwa_icon_192_path" value={pwaIcon192Path} />
       <input type="hidden" name="pwa_icon_512_path" value={pwaIcon512Path} />
       <input type="hidden" name="openrouter_model" value={openRouterModel} />
+      <input type="hidden" name="openrouter_enabled" value={String(openRouterEnabled)} />
       <input type="hidden" name="tos_pdf_path" value={tosPdfPath} />
       <input type="hidden" name="custom_javascript_codes_json" value={serializedCustomJavascriptCodes} />
       <input type="hidden" name="global_announcement_disabled_on_json" value={serializedGlobalAnnouncementDisabledOn} />
@@ -464,6 +473,7 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="home_featured_side_card_use_image" value={String(homeFeaturedSideCard.useImage)} />
       <input type="hidden" name="home_featured_side_card_image_path" value={homeFeaturedSideCard.imagePath} />
       <input type="hidden" name="home_featured_side_card_slides_json" value={serializedHomeFeaturedSideCardSlides} />
+      <input type="hidden" name="home_featured_hot_picks_tags_json" value={JSON.stringify(homeFeaturedHotPicksTags)} />
       <input type="hidden" name="home_featured_events_json" value={serializedHomeFeaturedEvents} />
 
       <div className="grid min-w-0 gap-6">
@@ -473,6 +483,8 @@ function AdminGeneralSettingsFormInner({
           onToggleSection={toggleSection}
           siteName={siteName}
           setSiteName={setSiteName}
+          mobileAppName={mobileAppName}
+          setMobileAppName={setMobileAppName}
           siteDescription={siteDescription}
           setSiteDescription={setSiteDescription}
           logoMode={logoMode}
@@ -559,6 +571,8 @@ function AdminGeneralSettingsFormInner({
           onIncludeNewEventsChange={setHomeFeaturedIncludeNewEvents}
           sideCard={homeFeaturedSideCard}
           onSideCardChange={setHomeFeaturedSideCard}
+          hotPicksTags={homeFeaturedHotPicksTags}
+          onHotPicksTagsChange={setHomeFeaturedHotPicksTags}
           featuredEvents={homeFeaturedEvents}
           onFeaturedEventsChange={setHomeFeaturedEvents}
         />
@@ -584,6 +598,8 @@ function AdminGeneralSettingsFormInner({
           onToggleSection={toggleSection}
           googleAnalyticsId={googleAnalyticsId}
           onGoogleAnalyticsIdChange={setGoogleAnalyticsId}
+          openRouterEnabled={openRouterEnabled}
+          onOpenRouterEnabledChange={setOpenRouterEnabled}
           openRouterApiKey={openRouterApiKey}
           onOpenRouterApiKeyChange={setOpenRouterApiKey}
           openRouterSelectValue={openRouterSelectValue}

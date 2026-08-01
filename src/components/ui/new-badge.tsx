@@ -13,15 +13,12 @@ export function NewBadge({ variant = 'plain', className }: NewBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 text-2xs leading-none font-semibold',
-        variant === 'soft'
-          ? 'rounded-full bg-yellow-500/15 px-2 py-1 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-200'
-          : 'text-yellow-500 dark:text-yellow-300',
+        'inline-flex items-center gap-1.5 text-[10px] leading-none font-bold rounded-md bg-yes text-background px-2 py-1 shadow-sm uppercase tracking-wider',
         className,
       )}
     >
-      <SparkleIcon className="size-2 text-current" strokeWidth={2.5} />
-      <span className="uppercase">{t('New')}</span>
+      <SparkleIcon className="size-2.5 text-background fill-background" strokeWidth={2.5} />
+      <span>{t('New')}</span>
     </span>
   )
 }

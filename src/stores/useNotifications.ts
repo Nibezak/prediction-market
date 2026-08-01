@@ -30,6 +30,7 @@ interface NotificationsState {
   setNotifications: () => Promise<void>
   addNotification: (notification: Notification) => void
   addLocalOrderFillNotification: (payload: LocalOrderFillNotificationInput) => void
+  markAllRead: () => Promise<void>
   removeNotification: (notificationId: string) => Promise<void>
   isLoading: boolean
   error: string | null
@@ -276,6 +277,29 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       notifications: mergeNotifications(get().notifications, [localNotification]),
     })
   },
+  markAllRead: async () => {
+    const readAt = new Date().toISOString()
+    const currentNotifications = get().notifications
+    const nextNotifications = currentNotifications.map(notification => ({
+      ...notification,
+      read_at: notification.read_at ?? readAt,
+    }))
+    writeLocalOrderFillNotifications(nextNotifications.filter(isLocalOrderFillNotification))
+    set({ notifications: nextNotifications, error: null })
+
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to mark notifications read')
+      }
+    }
+    catch {
+      set({ error: 'Failed to mark notifications read' })
+    }
+  },
   removeNotification: async (notificationId) => {
     const currentNotifications = get().notifications
     const targetNotification = currentNotifications.find(notification => notification.id === notificationId)
@@ -315,7 +339,7 @@ export function useNotificationList() {
 }
 
 export function useUnreadNotificationCount() {
-  return useNotifications(state => state.notifications.length)
+  return useNotifications(state => state.notifications.filter(notification => !notification.read_at).length)
 }
 
 export function useNotificationsLoading() {

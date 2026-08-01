@@ -4,7 +4,6 @@ import { Suspense } from 'react'
 import AdminAffiliateContentClient from '@/app/[locale]/admin/affiliate/_components/AdminAffiliateContentClient'
 import AdminAffiliateOverview from '@/app/[locale]/admin/affiliate/_components/AdminAffiliateOverview'
 import { getAffiliateFeeSettings, getAffiliateFeeSettingsUpdatedAt } from '@/lib/affiliate-fee-settings'
-import { fetchKuestFeeSettings } from '@/lib/clob-fees'
 import { baseUnitsToNumber, fetchFeeReceiverTotals, sumFeeTotals, sumFeeVolumes } from '@/lib/data-api/fees'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 import { SettingsRepository } from '@/lib/db/queries/settings'
@@ -59,11 +58,9 @@ async function AdminAffiliateContent() {
   const [
     { data: allSettings },
     { data: overviewData },
-    kuestFeeSettings,
   ] = await Promise.all([
     SettingsRepository.getSettings(),
     AffiliateRepository.listAffiliateOverview(),
-    fetchKuestFeeSettings(),
   ])
   const affiliateFeeSettings = getAffiliateFeeSettings(allSettings)
   const initialFeeRecipientWallet = getFeeRecipientWalletFormValue(allSettings ?? undefined)
@@ -148,10 +145,8 @@ async function AdminAffiliateContent() {
     <>
       <AdminAffiliateContentClient
         builderTakerFeeBps={affiliateFeeSettings.builderTakerFeeBps}
-        builderMakerFeeBps={affiliateFeeSettings.builderMakerFeeBps}
         affiliateShareBps={affiliateFeeSettings.affiliateShareBps}
         initialFeeRecipientWallet={initialFeeRecipientWallet}
-        kuestFeeSettings={kuestFeeSettings}
         updatedAtLabel={updatedAtLabel}
         aggregate={aggregate}
       />

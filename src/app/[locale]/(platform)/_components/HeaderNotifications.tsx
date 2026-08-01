@@ -134,7 +134,7 @@ export default function HeaderNotifications() {
   const notifications = useNotificationList()
   const currentTimestamp = useCurrentTimestamp({ intervalMs: 60_000 })
   const unreadCount = useUnreadNotificationCount()
-  const removeNotification = useNotifications(state => state.removeNotification)
+  const markAllRead = useNotifications(state => state.markAllRead)
   const isLoading = useNotificationsLoading()
   const error = useNotificationsError()
   const hasNotifications = notifications.length > 0
@@ -193,9 +193,21 @@ export default function HeaderNotifications() {
     previousTouchYRef.current = null
   }
 
+  function getInternalNotificationTarget(notification: Notification) {
+    const rawTarget = notification.link_target?.trim()
+    if (rawTarget?.startsWith('/')) {
+      return rawTarget
+    }
+    const rawUrl = notification.link_url?.trim()
+    if (rawUrl?.startsWith('/')) {
+      return rawUrl
+    }
+    return null
+  }
+
   function handleNotificationClick(notification: Notification) {
     const isLocalOrderFill = isLocalOrderFillNotification(notification)
-    const internalTarget = notification.link_target?.trim()
+    const internalTarget = getInternalNotificationTarget(notification)
     if (!isLocalOrderFill && !internalTarget) {
       return
     }
@@ -206,12 +218,17 @@ export default function HeaderNotifications() {
     else if (notification.link_url) {
       window.open(notification.link_url, '_blank', 'noopener,noreferrer')
     }
-
-    void removeNotification(notification.id)
   }
 
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(open) => {
+        if (open && unreadCount > 0) {
+          void markAllRead()
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button type="button" size="headerIconCompact" variant="ghost" className="relative">
           <BellIcon className="size-[1.35rem]" />
@@ -227,7 +244,7 @@ export default function HeaderNotifications() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
-        className="max-h-100 w-85 overflow-hidden lg:w-95"
+        className="z-[100] max-h-100 w-85 overflow-hidden lg:w-95"
         align="end"
         collisionPadding={32}
         data-sports-wheel-ignore="true"
@@ -275,7 +292,7 @@ export default function HeaderNotifications() {
                 const timeLabel = getNotificationTimeLabel(notification, currentTimestamp)
                 const hasLink = Boolean(notification.link_url)
                 const isLocalOrderFill = isLocalOrderFillNotification(notification)
-                const isClickableNotification = isLocalOrderFill || Boolean(notification.link_target?.trim())
+                const isClickableNotification = isLocalOrderFill || Boolean(getInternalNotificationTarget(notification))
                 const isLocalMerge = isLocalMergeNotification(notification)
                 const linkIsExternal = notification.link_type === 'external' || isLocalOrderFill
                 const extraInfo = notification.extra_info?.trim()

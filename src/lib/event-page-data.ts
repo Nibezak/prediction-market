@@ -9,7 +9,6 @@ import { cacheTag } from 'next/cache'
 import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
-import { hydrateEventsWithAmmVolumes } from '@/lib/amm-volume'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import 'server-only'
 
@@ -21,7 +20,7 @@ export interface EventPageContentData {
 }
 
 export interface EventPageShellData {
-  route: Awaited<ReturnType<typeof getEventRouteBySlug>>
+  route: Event | null
   title: string | null
   site: ThemeSiteIdentity
 }
@@ -43,11 +42,6 @@ export async function resolveCanonicalEventSlugFromSportsPath(
   return data.slug
 }
 
-async function getEventTitleBySlug(eventSlug: string, locale: SupportedLocale) {
-  const { data } = await EventRepository.getEventTitleBySlug(eventSlug, locale)
-  return data?.title ?? null
-}
-
 export async function getEventRouteBySlug(eventSlug: string) {
   const { data, error } = await EventRepository.getEventRouteBySlug(eventSlug)
   if (error || !data) {
@@ -64,17 +58,17 @@ export async function loadEventPagePublicContentData(
   'use cache'
   cacheTag(cacheTags.event(eventSlug))
 
-  const marketContextSettings = await loadMarketContextSettings()
+  const [marketContextSettings, eventResult] = await Promise.all([
+    loadMarketContextSettings(),
+    EventRepository.getEventBySlug(eventSlug, '', locale),
+  ])
 
   const marketContextEnabled = marketContextSettings.enabled && Boolean(marketContextSettings.apiKey)
 
-  const eventResult = await EventRepository.getEventBySlug(eventSlug, '', locale)
-
-  const { data: rawEvent, error } = eventResult
-  if (error || !rawEvent) {
+  const { data: event, error } = eventResult
+  if (error || !event) {
     return null
   }
-  const event = (await hydrateEventsWithAmmVolumes([rawEvent]))[0]
 
   let seriesEvents: EventSeriesEntry[] = []
   let liveChartConfig: EventLiveChartConfig | null = null
@@ -127,15 +121,14 @@ export async function loadEventPageShellData(
   eventSlug: string,
   locale: SupportedLocale,
 ): Promise<EventPageShellData> {
-  const [route, title, runtimeTheme] = await Promise.all([
-    getEventRouteBySlug(eventSlug),
-    getEventTitleBySlug(eventSlug, locale),
+  const [content, runtimeTheme] = await Promise.all([
+    loadEventPagePublicContentData(eventSlug, locale),
     loadRuntimeThemeState(),
   ])
 
   return {
-    route,
-    title,
+    route: content?.event ?? null,
+    title: content?.event.title ?? null,
     site: runtimeTheme.site,
   }
 }

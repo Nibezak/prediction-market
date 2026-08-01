@@ -19,7 +19,6 @@ import {
 
 const BASE_PATHS = [
   '/',
-  '/activity',
   '/leaderboard',
   '/mentions',
   '/portfolio',

@@ -7,117 +7,57 @@ import {
   AFFILIATE_SHARE_BPS_KEY,
   BUILDER_MAKER_FEE_BPS_KEY,
   BUILDER_TAKER_FEE_BPS_KEY,
-  getAffiliateFeeSettingsUpdatedAt,
 } from '@/lib/affiliate-fee-settings'
-import { syncBuilderFeesForAdmin } from '@/lib/affiliate-fee-sync'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
-import { ZERO_ADDRESS } from '@/lib/contracts'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { UserRepository } from '@/lib/db/queries/user'
-import { normalizeFeeRecipientWalletAddress } from '@/lib/theme-settings'
-
-const GENERAL_SETTINGS_GROUP = 'general'
-const FEE_RECIPIENT_WALLET_KEY = 'fee_recipient_wallet'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 export interface ForkSettingsActionState {
   error: string | null
 }
 
-interface PendingSettingChange {
-  group: string
-  key: string
-  nextValue: string
-  previousValue: string | null
-  previousUpdatedAt: string | null
+function parsePercent(value: unknown) {
+  return typeof value === 'string' && value.trim() ? Number(value) : Number.NaN
 }
 
-function parseRequiredPercentInput(value: unknown) {
-  if (typeof value !== 'string') {
-    return Number.NaN
-  }
-
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return Number.NaN
-  }
-
-  return Number(trimmed)
-}
-
-function requiredPercent(max: number) {
-  return z.preprocess(
-    parseRequiredPercentInput,
-    z.number({ error: 'Invalid input.' }).min(0).max(max),
-  )
-}
-
-const UpdateForkSettingsSchema = z.object({
-  builder_taker_fee_percent: requiredPercent(9),
-  builder_maker_fee_percent: requiredPercent(9),
-  affiliate_share_percent: requiredPercent(100),
+const UpdateFeeSettingsSchema = z.object({
+  amm_trade_fee_percent: z.preprocess(parsePercent, z.number().min(0).max(9)),
+  affiliate_share_percent: z.preprocess(parsePercent, z.number().min(0).max(100)),
 })
 
-function shouldUpdateAffiliateBpsSetting(currentValue: string | undefined, nextValue: number) {
-  const parsedCurrentValue = currentValue ? Number.parseInt(currentValue, 10) : Number.NaN
-  return !Number.isFinite(parsedCurrentValue) || parsedCurrentValue !== nextValue
+function getSlimefishBackendSettingsUrl() {
+  const baseUrl = process.env.NEXT_PUBLIC_SLIMEFISH_BACKEND_API_URL || 'http://localhost:8000/api'
+  return `${baseUrl.replace(/\/$/, '')}/v1/settings`
 }
 
-function normalizeStoredFeeRecipientWallet(value: string | null | undefined) {
-  const normalized = normalizeFeeRecipientWalletAddress(value, 'Fee recipient wallet')
-  if (normalized.error) {
-    return typeof value === 'string' ? value.trim() : ''
+async function syncSlimefishBackendTradeFee(userId: string, tradeFeeBps: number) {
+  const serviceSecret = process.env.SLIMEFISH_BACKEND_SERVICE_API_KEY?.trim()
+    || process.env.TELLWISE_SECRET?.trim()
+    || ''
+  if (!serviceSecret) {
+    throw new Error('Slimefish ledger service credentials are not configured.')
   }
 
-  return normalized.value ?? ''
-}
+  const url = getSlimefishBackendSettingsUrl()
+  const body = JSON.stringify({
+    settings: [{ group: 'fees', key: 'amm_trade_fee_bps', value: tradeFeeBps.toString() }],
+  })
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: {
+      'Content-Type': 'application/json',
+      'x-tellwise-secret': process.env.TELLWISE_SECRET?.trim() || serviceSecret,
+      'x-tellwise-user-id': userId,
+      'x-tellwise-role': 'ADMIN',
+    } }),
+    body,
+    signal: AbortSignal.timeout(10_000),
+  })
 
-function resolveStagingUpdatedAt(settings?: Record<string, Record<string, { value: string, updated_at: string }>>) {
-  const syncUpdatedAt = getAffiliateFeeSettingsUpdatedAt(settings)
-  if (!syncUpdatedAt) {
-    return new Date()
-  }
-
-  const parsed = new Date(syncUpdatedAt)
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
-}
-
-function toExistingUpdatedAt(value: string | null, fallback: Date) {
-  if (!value) {
-    return fallback
-  }
-
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed
-}
-
-async function rollbackPendingChanges(changes: PendingSettingChange[], fallbackUpdatedAt: Date) {
-  const existingSettings = changes
-    .filter(change => change.previousValue !== null)
-    .map(change => ({
-      group: change.group,
-      key: change.key,
-      value: change.previousValue ?? '',
-      updated_at: toExistingUpdatedAt(change.previousUpdatedAt, fallbackUpdatedAt),
-    }))
-  const missingSettings = changes
-    .filter(change => change.previousValue === null)
-    .map(change => ({
-      group: change.group,
-      key: change.key,
-    }))
-
-  if (existingSettings.length > 0) {
-    const rollbackExisting = await SettingsRepository.upsertSettingsWithUpdatedAt(existingSettings)
-    if (rollbackExisting.error) {
-      throw new Error(DEFAULT_ERROR_MESSAGE)
-    }
-  }
-
-  if (missingSettings.length > 0) {
-    const rollbackMissing = await SettingsRepository.deleteSettings(missingSettings)
-    if (rollbackMissing.error) {
-      throw new Error(DEFAULT_ERROR_MESSAGE)
-    }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null
+    throw new Error(payload?.error || 'Could not update the trade engine fee.')
   }
 }
 
@@ -130,183 +70,33 @@ export async function updateForkSettingsAction(
     return { error: 'Unauthenticated.' }
   }
 
-  const parsed = UpdateForkSettingsSchema.safeParse({
-    builder_taker_fee_percent: formData.get('builder_taker_fee_percent'),
-    builder_maker_fee_percent: formData.get('builder_maker_fee_percent'),
+  const parsed = UpdateFeeSettingsSchema.safeParse({
+    amm_trade_fee_percent: formData.get('amm_trade_fee_percent'),
     affiliate_share_percent: formData.get('affiliate_share_percent'),
   })
-
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' }
   }
 
-  const depositWallet = normalizeFeeRecipientWalletAddress(
-    user.deposit_wallet_address ?? null,
-    'Deposit Wallet',
-  )
-  if (
-    depositWallet.error
-    || !depositWallet.value
-    || depositWallet.value.toLowerCase() === ZERO_ADDRESS.toLowerCase()
-  ) {
-    return { error: 'Set up your Deposit Wallet first.' }
-  }
-
-  const submittedFeeRecipientWallet = normalizeFeeRecipientWalletAddress(
-    typeof formData.get('fee_recipient_wallet') === 'string'
-      ? formData.get('fee_recipient_wallet') as string
-      : null,
-    'Fee recipient wallet',
-  )
-  if (submittedFeeRecipientWallet.error) {
-    return { error: submittedFeeRecipientWallet.error }
-  }
-
-  if ((submittedFeeRecipientWallet.value ?? '').toLowerCase() !== depositWallet.value.toLowerCase()) {
-    return { error: 'Fee wallet must match your Deposit Wallet.' }
-  }
-
-  const builderTakerFeeBps = Math.round(parsed.data.builder_taker_fee_percent * 100)
-  const builderMakerFeeBps = Math.round(parsed.data.builder_maker_fee_percent * 100)
+  const tradeFeeBps = Math.round(parsed.data.amm_trade_fee_percent * 100)
   const affiliateShareBps = Math.round(parsed.data.affiliate_share_percent * 100)
-  const currentSettings = await SettingsRepository.getSettings()
-  if (currentSettings.error) {
-    return { error: DEFAULT_ERROR_MESSAGE }
-  }
 
-  const currentAffiliateSettings = currentSettings.data?.affiliate
-  const currentFeeRecipientWalletRaw = currentSettings.data?.general?.fee_recipient_wallet?.value ?? null
-  const currentFeeRecipientWallet = normalizeStoredFeeRecipientWallet(currentFeeRecipientWalletRaw)
-  const pendingChanges: PendingSettingChange[] = []
-
-  if (shouldUpdateAffiliateBpsSetting(
-    currentAffiliateSettings?.[BUILDER_TAKER_FEE_BPS_KEY]?.value,
-    builderTakerFeeBps,
-  )) {
-    pendingChanges.push({
-      group: AFFILIATE_SETTINGS_GROUP,
-      key: BUILDER_TAKER_FEE_BPS_KEY,
-      nextValue: builderTakerFeeBps.toString(),
-      previousValue: currentAffiliateSettings?.[BUILDER_TAKER_FEE_BPS_KEY]?.value ?? null,
-      previousUpdatedAt: currentAffiliateSettings?.[BUILDER_TAKER_FEE_BPS_KEY]?.updated_at ?? null,
-    })
-  }
-
-  if (shouldUpdateAffiliateBpsSetting(
-    currentAffiliateSettings?.[BUILDER_MAKER_FEE_BPS_KEY]?.value,
-    builderMakerFeeBps,
-  )) {
-    pendingChanges.push({
-      group: AFFILIATE_SETTINGS_GROUP,
-      key: BUILDER_MAKER_FEE_BPS_KEY,
-      nextValue: builderMakerFeeBps.toString(),
-      previousValue: currentAffiliateSettings?.[BUILDER_MAKER_FEE_BPS_KEY]?.value ?? null,
-      previousUpdatedAt: currentAffiliateSettings?.[BUILDER_MAKER_FEE_BPS_KEY]?.updated_at ?? null,
-    })
-  }
-
-  if (shouldUpdateAffiliateBpsSetting(
-    currentAffiliateSettings?.[AFFILIATE_SHARE_BPS_KEY]?.value,
-    affiliateShareBps,
-  )) {
-    pendingChanges.push({
-      group: AFFILIATE_SETTINGS_GROUP,
-      key: AFFILIATE_SHARE_BPS_KEY,
-      nextValue: affiliateShareBps.toString(),
-      previousValue: currentAffiliateSettings?.[AFFILIATE_SHARE_BPS_KEY]?.value ?? null,
-      previousUpdatedAt: currentAffiliateSettings?.[AFFILIATE_SHARE_BPS_KEY]?.updated_at ?? null,
-    })
-  }
-
-  if (currentFeeRecipientWallet.toLowerCase() !== depositWallet.value.toLowerCase()) {
-    pendingChanges.push({
-      group: GENERAL_SETTINGS_GROUP,
-      key: FEE_RECIPIENT_WALLET_KEY,
-      nextValue: depositWallet.value,
-      previousValue: currentFeeRecipientWalletRaw,
-      previousUpdatedAt: currentSettings.data?.general?.fee_recipient_wallet?.updated_at ?? null,
-    })
-  }
-
-  if (pendingChanges.length === 0) {
-    return { error: null }
-  }
-
-  const requiresSync = pendingChanges.some(change =>
-    (change.group === GENERAL_SETTINGS_GROUP && change.key === FEE_RECIPIENT_WALLET_KEY)
-    || (change.group === AFFILIATE_SETTINGS_GROUP && (
-      change.key === BUILDER_TAKER_FEE_BPS_KEY
-      || change.key === BUILDER_MAKER_FEE_BPS_KEY
-    )),
-  )
-
-  if (!requiresSync) {
-    const { error } = await SettingsRepository.updateSettings(pendingChanges.map(change => ({
-      group: change.group,
-      key: change.key,
-      value: change.nextValue,
-    })))
-
+  try {
+    await syncSlimefishBackendTradeFee(user.id, tradeFeeBps)
+    const { error } = await SettingsRepository.updateSettings([
+      { group: AFFILIATE_SETTINGS_GROUP, key: BUILDER_TAKER_FEE_BPS_KEY, value: tradeFeeBps.toString() },
+      { group: AFFILIATE_SETTINGS_GROUP, key: BUILDER_MAKER_FEE_BPS_KEY, value: '0' },
+      { group: AFFILIATE_SETTINGS_GROUP, key: AFFILIATE_SHARE_BPS_KEY, value: affiliateShareBps.toString() },
+    ])
     if (error) {
       return { error: DEFAULT_ERROR_MESSAGE }
     }
-
-    revalidatePath('/admin/affiliate')
-    return { error: null }
-  }
-
-  const stagingUpdatedAt = resolveStagingUpdatedAt(currentSettings.data ?? undefined)
-  const stagedChanges = pendingChanges.map(change => ({
-    group: change.group,
-    key: change.key,
-    value: change.nextValue,
-    updated_at: toExistingUpdatedAt(change.previousUpdatedAt, stagingUpdatedAt),
-  }))
-
-  const stagedUpdate = await SettingsRepository.upsertSettingsWithUpdatedAt(stagedChanges)
-  if (stagedUpdate.error) {
-    return { error: DEFAULT_ERROR_MESSAGE }
-  }
-
-  try {
-    await syncBuilderFeesForAdmin({
-      id: user.id,
-      address: user.address,
-    }, {
-      feeRecipientWallet: depositWallet.value,
-      builderTakerFeeBps,
-      builderMakerFeeBps,
-    })
   }
   catch (error) {
-    try {
-      await rollbackPendingChanges(pendingChanges, stagingUpdatedAt)
-    }
-    catch (rollbackError) {
-      console.error('Failed to rollback affiliate settings after sync error', rollbackError)
-      return { error: DEFAULT_ERROR_MESSAGE }
-    }
-
-    return {
-      error: error instanceof Error && error.message
-        ? error.message
-        : DEFAULT_ERROR_MESSAGE,
-    }
-  }
-
-  const finalizedAt = new Date()
-  const finalizeResult = await SettingsRepository.touchSettings(
-    pendingChanges.map(change => ({
-      group: change.group,
-      key: change.key,
-    })),
-    finalizedAt,
-  )
-  if (finalizeResult.error) {
-    return { error: DEFAULT_ERROR_MESSAGE }
+    console.error('Failed to update AMM fee settings', error)
+    return { error: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE }
   }
 
   revalidatePath('/admin/affiliate')
-
   return { error: null }
 }

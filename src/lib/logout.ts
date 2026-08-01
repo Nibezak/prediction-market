@@ -1,4 +1,6 @@
+import { signOut as signOutFirebase } from 'firebase/auth'
 import { authClient } from '@/lib/auth-client'
+import { firebaseAuth } from '@/lib/firebase/client'
 import { localizePathname } from '@/lib/locale-path'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
@@ -15,6 +17,9 @@ export async function signOutAndRedirect({
   let signOutSucceeded = false
 
   try {
+    // Clear Firebase first so the auth-state reconciler cannot recreate the
+    // application session while logout is still in progress.
+    await signOutFirebase(firebaseAuth)
     await authClient.signOut()
     signOutSucceeded = true
   }

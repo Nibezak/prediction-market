@@ -2,6 +2,8 @@ import type { Event } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 
+export type AdminEventsView = 'all' | 'upcoming' | 'active' | 'ending-today' | 'ending-soon' | 'closed' | 'resolved'
+
 export interface AdminEventRow {
   id: string
   slug: string
@@ -35,6 +37,7 @@ interface UseAdminEventsParams {
   creator?: string | null
   seriesSlug?: string | null
   activeOnly?: boolean
+  view?: AdminEventsView
 }
 
 interface AdminEventsResponse {
@@ -55,6 +58,7 @@ async function fetchAdminEvents(params: UseAdminEventsParams): Promise<AdminEven
     creator = null,
     seriesSlug = null,
     activeOnly = false,
+    view = 'all',
   } = params
 
   const offset = pageIndex * limit
@@ -63,6 +67,7 @@ async function fetchAdminEvents(params: UseAdminEventsParams): Promise<AdminEven
     offset: offset.toString(),
     sortBy,
     sortOrder,
+    view,
   })
 
   if (search && search.trim()) {
@@ -80,6 +85,7 @@ async function fetchAdminEvents(params: UseAdminEventsParams): Promise<AdminEven
   if (activeOnly) {
     searchParams.set('activeOnly', '1')
   }
+  searchParams.set('view', view)
 
   const response = await fetch(`/admin/api/events?${searchParams.toString()}`)
   if (!response.ok) {
@@ -102,12 +108,13 @@ function useAdminEvents(params: UseAdminEventsParams = {}) {
     creator = null,
     seriesSlug = null,
     activeOnly = false,
+    view = 'all',
   } = params
 
   const queryKey = useMemo(() => [
     'admin-events',
-    { limit, search, sortBy, sortOrder, pageIndex, mainCategorySlug, creator, seriesSlug, activeOnly },
-  ], [limit, search, sortBy, sortOrder, pageIndex, mainCategorySlug, creator, seriesSlug, activeOnly])
+    { limit, search, sortBy, sortOrder, pageIndex, mainCategorySlug, creator, seriesSlug, activeOnly, view },
+  ], [limit, search, sortBy, sortOrder, pageIndex, mainCategorySlug, creator, seriesSlug, activeOnly, view])
 
   const query = useQuery({
     queryKey,
@@ -121,6 +128,7 @@ function useAdminEvents(params: UseAdminEventsParams = {}) {
       creator,
       seriesSlug,
       activeOnly,
+      view,
     }),
     staleTime: 30_000,
     gcTime: 300_000,
@@ -146,6 +154,7 @@ export function useAdminEventsTable() {
   const [creator, setCreator] = useState<string>('all')
   const [seriesSlug, setSeriesSlug] = useState<string>('all')
   const [activeOnly, setActiveOnly] = useState(false)
+  const [view, setView] = useState<AdminEventsView>('all')
 
   const { data, isLoading, error, retry } = useAdminEvents({
     limit: pageSize,
@@ -157,6 +166,7 @@ export function useAdminEventsTable() {
     creator: creator === 'all' ? null : creator,
     seriesSlug: seriesSlug === 'all' ? null : seriesSlug,
     activeOnly,
+    view,
   })
 
   const handleSearchChange = useCallback((nextSearch: string) => {
@@ -183,6 +193,12 @@ export function useAdminEventsTable() {
 
   const handleActiveOnlyChange = useCallback((nextActiveOnly: boolean) => {
     setActiveOnly(nextActiveOnly)
+    setPageIndex(0)
+  }, [])
+
+  const handleViewChange = useCallback((nextView: AdminEventsView) => {
+    setView(nextView)
+    setActiveOnly(false)
     setPageIndex(0)
   }, [])
 
@@ -220,6 +236,7 @@ export function useAdminEventsTable() {
     creator,
     seriesSlug,
     activeOnly,
+    view,
     creatorOptions: data?.creatorOptions || [],
     seriesOptions: data?.seriesOptions || [],
     handleSearchChange,
@@ -228,6 +245,7 @@ export function useAdminEventsTable() {
     handleCreatorChange,
     handleSeriesSlugChange,
     handleActiveOnlyChange,
+    handleViewChange,
     handlePageChange,
     handlePageSizeChange,
   }

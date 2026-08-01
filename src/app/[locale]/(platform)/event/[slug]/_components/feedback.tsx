@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import EventTradeToast from '@/app/[locale]/(platform)/event/[slug]/_components/EventTradeToast'
 import { ORDER_SIDE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsValueLabel, formatDollarValueLabel } from '@/lib/formatters'
-import { triggerConfetti } from '@/lib/utils'
+import { scheduleConfettiAfterReload, triggerConfetti } from '@/lib/utils'
 
 interface HandleValidationErrorArgs {
   openWalletModal: () => Promise<void> | void
@@ -158,11 +158,15 @@ export function handleOrderSuccessFeedback({
     )
   }
 
-  triggerConfetti(outcomeIndex === OUTCOME_INDEX.YES ? 'yes' : 'no', lastMouseEvent)
+  scheduleConfettiAfterReload(outcomeIndex === OUTCOME_INDEX.YES ? 'yes' : 'no')
 
   void queryClient.invalidateQueries({
     queryKey: ['user-conditional-shares'],
   })
+
+  if (typeof window !== 'undefined') {
+    window.location.reload()
+  }
 }
 
 export function handleOrderErrorFeedback(message: string, description?: string) {

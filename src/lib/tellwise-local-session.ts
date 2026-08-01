@@ -91,7 +91,7 @@ export function createTellwiseLocalUser(env: NodeJS.ProcessEnv = process.env): U
     settings: {
       trading: {
         market_order_type: CLOB_ORDER_TYPE.FAK,
-        show_slippage_warning: false,
+        show_slippage_warning: true,
       },
     },
     affiliate_code: null,

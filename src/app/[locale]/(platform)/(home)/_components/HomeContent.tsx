@@ -75,12 +75,26 @@ function buildFallbackFeaturedEvents(events: Event[], locale: SupportedLocale): 
   })
 }
 
+const DEFAULT_FALLBACK_HOT_TOPICS: HomeFeaturedHotTopic[] = [
+  { label: 'World', slug: 'world', href: '/world', volume24h: 0 },
+  { label: 'Sports', slug: 'sports', href: '/sports', volume24h: 0 },
+  { label: 'Crypto', slug: 'crypto', href: '/crypto', volume24h: 0 },
+  { label: 'Politics', slug: 'politics', href: '/politics', volume24h: 0 },
+]
+
 function buildFallbackHotTopics(events: Event[]): HomeFeaturedHotTopic[] {
-  const topics = new Map<string, HomeFeaturedHotTopic & { score: number }>()
+  const topicsMap = new Map<string, {
+    label: string
+    slug: string
+    href: string
+    tradersCount: number
+    volume24h: number
+  }>()
 
   for (const event of events) {
-    const mainTag = event.tags.find(tag => tag.isMainCategory)
-    const slug = (mainTag?.slug || event.main_tag || '')
+    const tagToUse = event.tags.find(tag => tag.isMainCategory) || event.tags[0]
+    const rawSlug = tagToUse?.slug || event.main_tag || ''
+    const slug = rawSlug
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -89,27 +103,40 @@ function buildFallbackHotTopics(events: Event[]): HomeFeaturedHotTopic[] {
       continue
     }
 
-    const eventVolume = event.markets.reduce((total, market) => {
+    const eventTraders = event.markets.reduce((sum, market) => {
+      return sum + Number((market as any).unique_traders ?? (market as any).traders_count ?? 0)
+    }, 0)
+
+    const eventVolume = event.markets.reduce((sum, market) => {
       const recentVolume = Number(market.volume_24h ?? 0)
       const totalVolume = Number(market.volume ?? 0)
-      return total + (recentVolume > 0 ? recentVolume : totalVolume > 0 ? totalVolume : 0)
+      return sum + (recentVolume > 0 ? recentVolume : totalVolume > 0 ? totalVolume : 0)
     }, 0)
-    const score = eventVolume > 0 ? eventVolume : 1
-    const existing = topics.get(slug)
 
-    topics.set(slug, {
-      label: existing?.label || mainTag?.name || event.main_tag || slug,
+    const existing = topicsMap.get(slug)
+    topicsMap.set(slug, {
+      label: existing?.label || tagToUse?.name || event.main_tag || slug,
       slug,
       href: `/${slug}`,
-      volume24h: (existing?.volume24h ?? 0) + score,
-      score: (existing?.score ?? 0) + score,
+      tradersCount: (existing?.tradersCount ?? 0) + eventTraders,
+      volume24h: (existing?.volume24h ?? 0) + (eventVolume > 0 ? eventVolume : (event.volume ?? 0)),
     })
   }
 
-  return Array.from(topics.values())
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 5)
-    .map(({ score: _score, ...topic }) => topic)
+
+
+  return Array.from(topicsMap.values())
+    .sort((left, right) => {
+      if (left.tradersCount !== right.tradersCount) {
+        return right.tradersCount - left.tradersCount
+      }
+      if (left.volume24h !== right.volume24h) {
+        return right.volume24h - left.volume24h
+      }
+      return left.slug.localeCompare(right.slug)
+    })
+    .slice(0, 3)
+    .map(({ tradersCount: _t, ...topic }) => topic)
 }
 
 function mergeHotTopics(
@@ -129,7 +156,7 @@ function mergeHotTopics(
     }
   }
 
-  return merged.slice(0, 5)
+  return merged.slice(0, 3)
 }
 
 export default async function HomeContent({
@@ -172,10 +199,10 @@ export default async function HomeContent({
   const featuredEventsPromise = shouldLoadFeaturedEvents
     ? (async () => {
         try {
-          const featuredEvents = await listHomeFeaturedEvents(resolvedLocale)
-          const featuredHotTopics = featuredEvents.length > 0
-            ? await listHomeFeaturedHotTopics(resolvedLocale)
-            : []
+          const [featuredEvents, featuredHotTopics] = await Promise.all([
+            listHomeFeaturedEvents(resolvedLocale),
+            listHomeFeaturedHotTopics(resolvedLocale),
+          ])
           const featuredSideCard = await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics)
 
           return {

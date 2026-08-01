@@ -4,15 +4,14 @@ import type { Route } from 'next'
 import type { ComponentProps, ReactNode } from 'react'
 import type { SupportedLocale } from '@/i18n/locales'
 import {
-  ChartLineIcon,
   CheckIcon,
-  Clock3Icon,
-  CompassIcon,
+  BoxIcon,
   DownloadIcon,
   EllipsisIcon,
   FileTextIcon,
+  HouseIcon,
   InfoIcon,
-  LayoutGridIcon,
+  SearchIcon,
   UnplugIcon,
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
@@ -21,23 +20,20 @@ import { toast } from 'sonner'
 import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import AppLink from '@/components/AppLink'
+import HeaderDropdownUserMenuAuth from '@/components/HeaderDropdownUserMenuAuth'
 import LocaleFlag from '@/components/LocaleFlag'
 import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { useAppKit } from '@/hooks/useAppKit'
-import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
-import { usePortfolioValue } from '@/hooks/usePortfolioValue'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { LOCALE_LABELS, LOOP_LABELS, normalizeEnabledLocales, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { authClient } from '@/lib/auth-client'
-import { formatCompactCurrency } from '@/lib/formatters'
 import { stripLocalePrefix, withLocalePrefix } from '@/lib/locale-path'
 import { cn } from '@/lib/utils'
-import { usePortfolioValueVisibility } from '@/stores/usePortfolioValueVisibility'
 import { useUser } from '@/stores/useUser'
 
 const HeaderSearch = lazy(() => import('@/app/[locale]/(platform)/_components/HeaderSearch'))
@@ -181,6 +177,12 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
 
   function handleHowItWorksAction() {
     setIsGuestMenuOpen(false)
+    window.setTimeout(() => {
+      setIsHowItWorksOpen(true)
+    }, 120)
+  }
+
+  function handleAuthenticatedHowItWorksAction() {
     window.setTimeout(() => {
       setIsHowItWorksOpen(true)
     }, 120)
@@ -362,12 +364,15 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
           `)}
         >
           <div className="grid h-16.5 grid-cols-4">
-            <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={LayoutGridIcon} />
-            <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={CompassIcon} />
-            <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={Clock3Icon} />
+            <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={HouseIcon} />
+            <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={SearchIcon} />
+            <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={BoxIcon} />
             {isAuthenticated
               ? (
-                  <MobilePortfolioNavLink active={pathname.startsWith('/portfolio')} />
+                  <HeaderDropdownUserMenuAuth
+                    displayMode="mobile-drawer"
+                    onHowItWorks={handleAuthenticatedHowItWorksAction}
+                  />
                 )
               : (
                   <MobileNavButton
@@ -387,7 +392,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
 interface MobileNavLinkProps {
   active: boolean
   href: ComponentProps<typeof AppLink>['href']
-  icon: typeof LayoutGridIcon
+  icon: typeof HouseIcon
   label: ReactNode
 }
 
@@ -411,40 +416,9 @@ function MobileNavLink({ active, href, icon: Icon, label }: MobileNavLinkProps) 
   )
 }
 
-function MobilePortfolioNavLink({ active }: { active: boolean }) {
-  const t = useExtracted()
-  const { balance, isLoadingBalance } = useBalance()
-  const { isLoading, value: positionsValue } = usePortfolioValue()
-  const areValuesHidden = usePortfolioValueVisibility(state => state.isHidden)
-  const isLoadingValue = isLoadingBalance || isLoading
-  const totalPortfolioValue = (positionsValue ?? 0) + (balance?.raw ?? 0)
-  const portfolioValueLabel = Number.isFinite(totalPortfolioValue)
-    ? formatCompactCurrency(totalPortfolioValue)
-    : '$0.00'
-
-  return (
-    <AppLink
-      intentPrefetch
-      href="/portfolio"
-      aria-current={active ? 'page' : undefined}
-      aria-label={t('Portfolio')}
-      className={cn(
-        `
-          flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
-          transition-colors
-        `,
-        active ? 'text-foreground' : 'text-muted-foreground',
-      )}
-    >
-      <ChartLineIcon className="size-[17px]" />
-      <span className="max-w-full truncate">{t('Portfolio')}</span>
-    </AppLink>
-  )
-}
-
 interface MobileNavButtonProps {
   active: boolean
-  icon: typeof LayoutGridIcon
+  icon: typeof HouseIcon
   label: string
   onClick: () => void
 }

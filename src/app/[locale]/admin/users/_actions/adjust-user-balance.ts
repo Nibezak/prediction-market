@@ -3,6 +3,7 @@
 import { UserRepository } from '@/lib/db/queries/user'
 import { canMoveUserFunds, getUserPlatformRole } from '@/lib/staff-role'
 import { recordAuditEvent } from '@/lib/audit'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 export async function adjustUserBalance(userId: string, direction: 'deposit' | 'withdraw', amount: number) {
   const currentUser = await UserRepository.getCurrentUser({ minimal: true })
@@ -10,15 +11,19 @@ export async function adjustUserBalance(userId: string, direction: 'deposit' | '
   if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) return { error: 'Enter a valid amount' }
 
   const baseUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
-  const response = await fetch(`${baseUrl}/admin/users/${encodeURIComponent(userId)}/balance-adjustment`, {
+  const url = `${baseUrl}/admin/users/${encodeURIComponent(userId)}/balance-adjustment`
+  const body = JSON.stringify({ direction, amount })
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
+    headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: {
       'Content-Type': 'application/json',
       'x-tellwise-secret': process.env.TELLWISE_SECRET || '',
       'x-tellwise-user-id': currentUser.id,
+      'x-tellwise-user-email': currentUser.email || '',
       'x-tellwise-role': getUserPlatformRole(currentUser),
-    },
-    body: JSON.stringify({ direction, amount }),
+      'x-tellwise-is-admin': ['SUPER_ADMIN', 'ADMIN'].includes(getUserPlatformRole(currentUser)) ? 'true' : 'false',
+    } }),
+    body,
   })
   const payload = await response.json().catch(() => null)
   await recordAuditEvent({

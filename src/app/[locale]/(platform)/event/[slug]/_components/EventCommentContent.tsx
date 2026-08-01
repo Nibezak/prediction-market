@@ -55,6 +55,22 @@ function splitContent(content: string) {
   return parts
 }
 
+function decodeHtmlEntities(str: string): string {
+  if (!str) return ''
+  const unescapedAmp = str.replace(/&amp;/gi, '&')
+  return unescapedAmp
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x22;/gi, '"')
+    .replace(/&#0*34;/g, '"')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+}
+
 export default function EventCommentContent({
   content,
   className,
@@ -62,9 +78,10 @@ export default function EventCommentContent({
   content: string
   className?: string
 }) {
+  const decodedContent = decodeHtmlEntities(content)
   return (
     <p className={cn('text-sm/5.25 font-normal wrap-break-word', className)}>
-      {splitContent(content)}
+      {splitContent(decodedContent)}
     </p>
   )
 }

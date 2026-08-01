@@ -1,15 +1,14 @@
 'use client'
 
 import type { EventMarketRow } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMarketRows'
-import { useQuery } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import EventMarketChance from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChance'
 import EventIconImage from '@/components/EventIconImage'
 import { Button } from '@/components/ui/button'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsLabel, formatSharesLabel } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
@@ -36,61 +35,12 @@ interface EventMarketCardProps {
   onCashOut?: (market: EventMarketRow['market'], tag: MarketPositionTag) => void
 }
 
-function useMarketCardVolume(market: EventMarketRow['market'], yesOutcome: EventMarketRow['yesOutcome'], noOutcome: EventMarketRow['noOutcome']) {
-  const { clobUrl } = usePublicRuntimeConfig()
-  const volumeRequestPayload = useMemo(() => {
-    const tokenIds = [yesOutcome?.token_id, noOutcome?.token_id].filter(Boolean) as string[]
-    if (!market.condition_id || tokenIds.length < 2) {
-      return { conditions: [], signature: '' }
-    }
-
-    const signature = `${market.condition_id}:${tokenIds.join(':')}`
-    return {
-      conditions: [{ condition_id: market.condition_id, token_ids: tokenIds.slice(0, 2) as [string, string] }],
-      signature,
-    }
-  }, [market.condition_id, noOutcome?.token_id, yesOutcome?.token_id])
-
-  const { data: volumeFromApi } = useQuery({
-    queryKey: ['trade-volumes', clobUrl, market.condition_id, volumeRequestPayload.signature],
-    enabled: volumeRequestPayload.conditions.length > 0 && Boolean(clobUrl),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const response = await fetch(`${clobUrl}/data/volumes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          include_24h: false,
-          conditions: volumeRequestPayload.conditions,
-        }),
-      })
-
-      const payload = await response.json() as Array<{
-        condition_id: string
-        status: number
-        volume?: string
-      }>
-
-      return payload
-        .filter(entry => entry?.status === 200)
-        .reduce((total, entry) => {
-          const numeric = Number(entry.volume ?? 0)
-          return Number.isFinite(numeric) ? total + numeric : total
-        }, 0)
-    },
-  })
-
-  const resolvedVolume = useMemo(() => {
-    if (typeof volumeFromApi === 'number' && Number.isFinite(volumeFromApi)) {
-      return volumeFromApi
-    }
-    return market.volume
-  }, [market.volume, volumeFromApi])
-
-  return resolvedVolume
+function useMarketCardVolume(market: EventMarketRow['market']) {
+  const snapshots = useAmmLiveMarkets(
+    market.condition_id ? [market.condition_id] : [],
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true',
+  )
+  return snapshots[market.condition_id]?.volume ?? market.volume
 }
 
 function EventMarketCardComponent({
@@ -116,7 +66,7 @@ function EventMarketCardComponent({
   const hasOpenOrders = openOrdersCount > 0
   const shouldShowTags = resolvedPositionTags.length > 0 || hasOpenOrders
   const shouldShowIcon = showMarketIcon && Boolean(market.icon_url)
-  const resolvedVolume = useMarketCardVolume(market, yesOutcome, noOutcome)
+  const resolvedVolume = useMarketCardVolume(market)
 
   return (
     <div

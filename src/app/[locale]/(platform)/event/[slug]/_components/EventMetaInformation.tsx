@@ -1,12 +1,11 @@
 'use client'
 
 import type { Event } from '@/types'
-import { useQuery } from '@tanstack/react-query'
 import { CheckIcon, Clock3Icon, PlusIcon, SparkleIcon, TrophyIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useMemo } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { formatDate } from '@/lib/formatters'
 import { isMarketNew } from '@/lib/utils'
 
@@ -16,69 +15,20 @@ interface EventMetaInformationProps {
 }
 
 function useEventVolume(event: Event) {
-  const { clobUrl } = usePublicRuntimeConfig()
-  const volumeRequestPayload = useMemo(() => {
-    const conditions = event.markets
-      .map((market) => {
-        const tokenIds = (market.outcomes ?? [])
-          .map(outcome => outcome.token_id)
-          .filter(Boolean)
-          .slice(0, 2)
-        if (!market.condition_id || tokenIds.length < 2) {
-          return null
-        }
-        return {
-          condition_id: market.condition_id,
-          token_ids: tokenIds as [string, string],
-        }
-      })
-      .filter((item): item is { condition_id: string, token_ids: [string, string] } => item !== null)
-
-    const signature = conditions
-      .map(condition => `${condition.condition_id}:${condition.token_ids.join(':')}`)
-      .join('|')
-
-    return { conditions, signature }
+  const marketIds = useMemo(() => {
+    return event.markets.map(market => market.condition_id).filter(Boolean)
   }, [event.markets])
-
-  const { data: volumeFromApi } = useQuery({
-    queryKey: ['trade-volumes', clobUrl, event.id, volumeRequestPayload.signature],
-    enabled: volumeRequestPayload.conditions.length > 0 && Boolean(clobUrl),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const response = await fetch(`${clobUrl}/data/volumes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          include_24h: false,
-          conditions: volumeRequestPayload.conditions,
-        }),
-      })
-
-      const payload = await response.json() as Array<{
-        condition_id: string
-        status: number
-        volume?: string
-      }>
-
-      return payload
-        .filter(entry => entry?.status === 200)
-        .reduce((total, entry) => {
-          const numeric = Number(entry.volume ?? 0)
-          return Number.isFinite(numeric) ? total + numeric : total
-        }, 0)
-    },
-  })
+  const snapshots = useAmmLiveMarkets(
+    marketIds,
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true',
+  )
 
   return useMemo(() => {
-    if (typeof volumeFromApi === 'number' && Number.isFinite(volumeFromApi)) {
-      return volumeFromApi
-    }
-    return event.volume
-  }, [event.volume, volumeFromApi])
+    return event.markets.reduce((total, market) => {
+      const volume = snapshots[market.condition_id]?.volume ?? Number(market.volume ?? 0)
+      return Number.isFinite(volume) ? total + volume : total
+    }, 0)
+  }, [event.markets, snapshots])
 }
 
 export default function EventMetaInformation({ event, currentTimestamp }: EventMetaInformationProps) {
@@ -110,6 +60,10 @@ export default function EventMetaInformation({ event, currentTimestamp }: EventM
     ? Math.max(0, Math.ceil((expiryTimestamp - currentTimestamp) / (24 * 60 * 60 * 1000)))
     : null
   const remainingLabel = remainingDays !== null ? t('In {days} days', { days: String(remainingDays) }) : ''
+  const isEndingSoon = expiryTimestamp !== null
+    && currentTimestamp !== null
+    && expiryTimestamp > currentTimestamp
+    && expiryTimestamp - currentTimestamp <= 6 * 60 * 60 * 1000
   const shouldShowDividerAfterNew = shouldShowNew && (shouldShowMetaBlock || expiryTimestamp !== null)
 
   return (
@@ -199,6 +153,12 @@ export default function EventMetaInformation({ event, currentTimestamp }: EventM
             </div>
           </TooltipContent>
         </Tooltip>
+      )}
+      {isEndingSoon && (
+        <span className="inline-flex items-center gap-1.5 rounded-sm bg-warning/15 px-2 py-1 text-xs font-semibold text-warning">
+          <Clock3Icon className="size-3.5" />
+          {t('Ending soon')}
+        </span>
       )}
     </div>
   )

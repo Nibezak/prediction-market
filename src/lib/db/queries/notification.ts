@@ -1,5 +1,5 @@
 import type { QueryResult } from '@/types'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { cacheTag, updateTag } from 'next/cache'
 import { cacheTags } from '@/lib/cache-tags'
 import { notifications } from '@/lib/db/schema/notifications/tables'
@@ -36,6 +36,25 @@ export const NotificationRepository = {
       updateTag(cacheTags.notifications(user_id))
 
       return { data: null, error: null }
+    })
+  },
+
+  async markAllReadByUserId(user_id: string): Promise<QueryResult<{ updated: number }>> {
+    return runQuery(async () => {
+      const rows = await db
+        .update(notifications)
+        .set({ read_at: new Date() })
+        .where(
+          and(
+            eq(notifications.user_id, user_id),
+            sql`${notifications.read_at} IS NULL`,
+          ),
+        )
+        .returning({ id: notifications.id })
+
+      updateTag(cacheTags.notifications(user_id))
+
+      return { data: { updated: rows.length }, error: null }
     })
   },
 }

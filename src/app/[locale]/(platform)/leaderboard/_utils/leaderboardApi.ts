@@ -12,8 +12,23 @@ export const BIGGEST_WINS_IN_FLIGHT = new Map<string, Promise<BiggestWinEntry[]>
 export const LIST_ROW_COLUMNS = 'grid-cols-[minmax(0,1fr)_7.5rem] md:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem]'
 
 export function normalizeLeaderboardResponse(payload: unknown): LeaderboardEntry[] {
+  function onlyTradedEntries(entries: LeaderboardEntry[]) {
+    return entries.filter((entry) => {
+      const volume = resolveNumber(entry as unknown as Record<string, unknown>, [
+        'vol',
+        'volume',
+        'totalVolume',
+        'total_volume',
+        'tradeVolume',
+        'trade_volume',
+      ])
+
+      return Number.isFinite(volume) && Number(volume) > 0
+    })
+  }
+
   if (Array.isArray(payload)) {
-    return payload as LeaderboardEntry[]
+    return onlyTradedEntries(payload as LeaderboardEntry[])
   }
 
   if (!payload || typeof payload !== 'object') {
@@ -22,12 +37,12 @@ export function normalizeLeaderboardResponse(payload: unknown): LeaderboardEntry
 
   const data = (payload as { data?: unknown }).data
   if (Array.isArray(data)) {
-    return data as LeaderboardEntry[]
+    return onlyTradedEntries(data as LeaderboardEntry[])
   }
 
   const nested = (payload as { leaderboard?: unknown }).leaderboard
   if (Array.isArray(nested)) {
-    return nested as LeaderboardEntry[]
+    return onlyTradedEntries(nested as LeaderboardEntry[])
   }
 
   return []

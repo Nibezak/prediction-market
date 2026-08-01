@@ -438,10 +438,11 @@ function Risk({ rows }: { rows: AdminDashboardData['riskSignals'] }) {
             Cash
           </TableHead>
           <TableHead>Last update</TableHead>
+          <TableHead />
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.length === 0 && <EmptyRow columns={5} label="No blocked, flagged, suspended, or negative-balance accounts." />}
+        {rows.length === 0 && <EmptyRow columns={6} label="No blocked, flagged, suspended, or negative-balance accounts." />}
         {rows.map(row => (
           <TableRow key={String(row.userId)}>
             <TableCell>
@@ -456,6 +457,13 @@ function Risk({ rows }: { rows: AdminDashboardData['riskSignals'] }) {
               {formatCurrency(row.cash)}
             </TableCell>
             <TableCell>{formatDate(row.updatedAt)}</TableCell>
+            <TableCell className="text-right">
+              <Button variant="outline" size="sm" asChild>
+                <AppLink href={`/admin/risk?userId=${encodeURIComponent(String(row.userId))}` as Route}>
+                  Inspect
+                </AppLink>
+              </Button>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -511,11 +519,11 @@ export default function AdminTabs({ data }: { data: AdminDashboardData }) {
 
   return (
     <div className="overflow-hidden border bg-background">
-      {data.services.playMoneyDatabase === 'unavailable' && (
+      {data.services.slimefishBackendDatabase === 'unavailable' && (
         <Alert variant="destructive" className="m-4">
           <Database />
           <AlertTitle>Ledger data unavailable</AlertTitle>
-          <AlertDescription>{data.services.playMoneyError}</AlertDescription>
+          <AlertDescription>{data.services.slimefishBackendError}</AlertDescription>
         </Alert>
       )}
       <div className="relative overflow-x-auto">

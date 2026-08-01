@@ -7,7 +7,7 @@ import EventStructuredData from '@/components/seo/EventStructuredData'
 import { redirect } from '@/i18n/navigation'
 import { buildTranslatedEventFaqItems } from '@/lib/event-faq-server'
 import { buildEventPageMetadata } from '@/lib/event-open-graph'
-import { getEventRouteBySlug, loadEventPagePublicContentData } from '@/lib/event-page-data'
+import { loadEventPagePublicContentData } from '@/lib/event-page-data'
 import { resolveEventBasePath, resolveEventPagePath } from '@/lib/events-routing'
 import { getPublicShellStaticParams, shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
@@ -41,25 +41,20 @@ async function CachedEventPageContent({
 }) {
   'use cache'
 
-  const eventRoute = await getEventRouteBySlug(slug)
-  if (!eventRoute) {
-    notFound()
-  }
-
-  const sportsPath = resolveEventBasePath(eventRoute)
-  if (sportsPath) {
-    redirect({
-      href: sportsPath,
-      locale,
-    })
-  }
-
   const [eventPageData, runtimeTheme] = await Promise.all([
     loadEventPagePublicContentData(slug, locale),
     loadRuntimeThemeState(),
   ])
   if (!eventPageData) {
     notFound()
+  }
+
+  const sportsPath = resolveEventBasePath(eventPageData.event)
+  if (sportsPath) {
+    redirect({
+      href: sportsPath,
+      locale,
+    })
   }
 
   const faqItems = await buildTranslatedEventFaqItems({

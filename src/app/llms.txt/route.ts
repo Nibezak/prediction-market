@@ -20,11 +20,6 @@ const PUBLIC_APP_ROUTES = [
     description: 'Recently added prediction markets.',
   },
   {
-    title: 'Activity',
-    url: '/activity',
-    description: 'Live public activity across trades and market interactions.',
-  },
-  {
     title: 'Sports',
     url: '/sports',
     description: 'Sports prediction markets, live games, futures, props, and league pages.',

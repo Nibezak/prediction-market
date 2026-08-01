@@ -21,8 +21,8 @@ async function fetchUserActivity({
   sortFilter: ActivitySort
   signal?: AbortSignal
 }): Promise<ActivityOrder[]> {
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-  if (isPlayMoneyAmm) {
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  if (isSlimefishBackendAmm) {
     if (pageParam > 0) return []
     const response = await fetch('/api/amm/users/me/transactions', { signal })
     const payload = await response.json().catch(() => null)

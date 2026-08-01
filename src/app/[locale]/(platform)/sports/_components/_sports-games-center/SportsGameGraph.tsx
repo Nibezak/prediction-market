@@ -82,6 +82,7 @@ export default function SportsGameGraph({
   selectedMarketType,
   selectedConditionId,
   chartHeightOffset = 0,
+  minimumChartHeight = 260,
   defaultTimeRange = '1W',
   variant = 'default',
   showControls = true,
@@ -90,6 +91,7 @@ export default function SportsGameGraph({
   selectedMarketType: SportsGamesMarketType
   selectedConditionId: string | null
   chartHeightOffset?: number
+  minimumChartHeight?: number
   defaultTimeRange?: (typeof TIME_RANGES)[number]
   variant?: SportsGameGraphVariant
   showControls?: boolean
@@ -121,6 +123,7 @@ export default function SportsGameGraph({
   } = useSportsGameGraphChartDimensions({
     containerWidth: chartContainerWidth,
     chartHeightOffset,
+    minimumChartHeight,
     windowWidth,
     variant,
   })

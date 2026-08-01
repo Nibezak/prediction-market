@@ -8,8 +8,8 @@ import EventActivity from '@/app/[locale]/(platform)/event/[slug]/_components/Ev
 import EventComments from '@/app/[locale]/(platform)/event/[slug]/_components/EventComments'
 import EventFaq from '@/app/[locale]/(platform)/event/[slug]/_components/EventFaq'
 import { useMarketChannelStatus } from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
+import EventRules from '@/app/[locale]/(platform)/event/[slug]/_components/EventRules'
 import EventTabSelector from '@/app/[locale]/(platform)/event/[slug]/_components/EventTabSelector'
-import EventTopHolders from '@/app/[locale]/(platform)/event/[slug]/_components/EventTopHolders'
 import { useCommentMetrics } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics'
 import { useLiveCommentsChannel } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveCommentsChannel'
 
@@ -62,10 +62,12 @@ export default function EventTabs({
       {activeTab === 'comments' && (
         <>
           <EventComments event={event} user={user} />
-          <EventFaq items={faqItems} />
+          <div className="mt-8 space-y-4">
+            <EventRules event={event} mode="accordion" />
+            <EventFaq items={faqItems} />
+          </div>
         </>
       )}
-      {activeTab === 'holders' && <EventTopHolders event={event} />}
       {activeTab === 'activity' && <EventActivity event={event} />}
     </div>
   )

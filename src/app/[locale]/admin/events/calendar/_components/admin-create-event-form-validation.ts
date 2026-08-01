@@ -69,6 +69,13 @@ export function buildStepErrors(
       else if (!args.allowPastResolutionDate && parsedEndDate.getTime() <= Date.now()) {
         errors.push('Event end date must be in the future.')
       }
+
+      if (sportsEventSelected && args.sportsForm.startTime) {
+        const parsedStartTime = new Date(args.sportsForm.startTime)
+        if (!Number.isNaN(parsedStartTime.getTime()) && parsedStartTime.getTime() > parsedEndDate.getTime()) {
+          errors.push('Game start date cannot be after the resolution date.')
+        }
+      }
     }
 
     if (!args.hasEventImage) {
@@ -171,57 +178,7 @@ export function buildStepErrors(
   }
 
   if (step === 4) {
-    if (args.fundingCheckState === 'idle' || args.fundingCheckState === 'checking') {
-      errors.push('Run the EOA USDC check first.')
-    }
-    else if (args.fundingCheckState === 'no_wallet') {
-      errors.push('Connect the main EOA wallet to validate USDC balance.')
-    }
-    else if (args.fundingCheckState === 'error') {
-      errors.push('Could not validate EOA USDC balance right now. Try again.')
-    }
-    else if (args.fundingCheckState !== 'ok') {
-      errors.push('Main EOA wallet does not have enough USDC for the reward.')
-    }
-
-    if (args.nativeGasCheckState === 'idle' || args.nativeGasCheckState === 'checking') {
-      errors.push('Run POL gas check first.')
-    }
-    else if (args.nativeGasCheckState === 'no_wallet') {
-      errors.push('Connect the main EOA wallet to validate POL gas balance.')
-    }
-    else if (args.nativeGasCheckState === 'error') {
-      errors.push('Could not validate POL gas balance right now. Try again.')
-    }
-    else if (args.nativeGasCheckState !== 'ok') {
-      errors.push('Main EOA wallet does not have enough POL for market creation gas.')
-    }
-
-    if (args.allowedCreatorCheckState === 'idle' || args.allowedCreatorCheckState === 'checking') {
-      errors.push('Run the allowed market creator wallet check first.')
-    }
-    else if (args.allowedCreatorCheckState === 'no_wallet') {
-      errors.push('Connect the main EOA wallet first.')
-    }
-    else if (args.allowedCreatorCheckState === 'error') {
-      errors.push('Could not validate allowed market creator wallets right now.')
-    }
-    else if (args.allowedCreatorCheckState !== 'ok') {
-      errors.push('Main EOA wallet is not in allowed market creator wallets.')
-    }
-
-    if (args.proposerWhitelistCheckState === 'idle' || args.proposerWhitelistCheckState === 'checking') {
-      errors.push('Run the resolution proposers whitelist check first.')
-    }
-    else if (args.proposerWhitelistCheckState === 'no_wallet') {
-      errors.push('Connect the main EOA wallet first.')
-    }
-    else if (args.proposerWhitelistCheckState === 'error') {
-      errors.push('Could not validate resolution proposers whitelist right now.')
-    }
-    else if (args.proposerWhitelistCheckState !== 'ok') {
-      errors.push('Create the resolution proposers whitelist before signing.')
-    }
+    // Web3 EOA wallet checks bypassed for SlimefishBackend AMM mode
 
     if (args.slugValidationState === 'idle' || args.slugValidationState === 'checking') {
       errors.push('Run slug availability check first.')

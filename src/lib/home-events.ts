@@ -27,7 +27,7 @@ interface HomeVisibleEventMarketCandidate {
 interface HomeVisibleEventCandidate {
   id: number | string
   slug: string
-  status: 'draft' | 'active' | 'resolved' | 'archived'
+  status: 'draft' | 'active' | 'closed' | 'resolved' | 'archived'
   series_slug?: string | null
   end_date?: string | null
   created_at: string

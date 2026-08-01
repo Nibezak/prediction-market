@@ -35,6 +35,7 @@ import { usePathname, useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 import type { PlatformRole } from '@/lib/staff-role'
 import { ADMIN_WORKSPACES_BY_ROLE } from '@/lib/staff-role'
+import type { StaffPermission } from '@/lib/staff-permissions'
 
 interface AdminSubMenuItem {
   id: string
@@ -58,7 +59,7 @@ interface AdminMenuGroup {
   itemIds: string[]
 }
 
-export default function AdminSidebar({ role }: { role: PlatformRole }) {
+export default function AdminSidebar({ role, permissions, riskCount = 0 }: { role: PlatformRole, permissions: StaffPermission[], riskCount?: number }) {
   const t = useExtracted()
 
   const allAdminMenuItems: AdminMenuItem[] = [
@@ -87,8 +88,11 @@ export default function AdminSidebar({ role }: { role: PlatformRole }) {
       icon: CalendarIcon,
       subItems: [
         { id: 'all-events', label: t('All Events'), href: '/admin/events' as Route },
-        ...(['ADMIN', 'EDITOR'].includes(role)
-          ? [{ id: 'create-event', label: t('Create Event'), href: '/admin/events/calendar/new' as Route, icon: PlusIcon }]
+        ...(['SUPER_ADMIN', 'ADMIN', 'EDITOR'].includes(role) || permissions.includes('markets.create')
+          ? [
+              { id: 'draft-events', label: t('Drafts'), href: '/admin/events/calendar' as Route, icon: FileClockIcon },
+              { id: 'create-event', label: t('Create Event'), href: '/admin/events/calendar/new' as Route, icon: PlusIcon },
+            ]
           : []),
       ],
     },
@@ -96,6 +100,7 @@ export default function AdminSidebar({ role }: { role: PlatformRole }) {
   ]
 
   const menuIdsByRole: Record<PlatformRole, string[]> = {
+    SUPER_ADMIN: allAdminMenuItems.map(item => item.id),
     ADMIN: allAdminMenuItems.map(item => item.id),
     EDITOR: ['dashboard', ...ADMIN_WORKSPACES_BY_ROLE.EDITOR, 'categories', 'market-context', 'events', 'users'],
     MODERATOR: ['dashboard', ...ADMIN_WORKSPACES_BY_ROLE.MODERATOR, 'events', 'users'],
@@ -104,7 +109,15 @@ export default function AdminSidebar({ role }: { role: PlatformRole }) {
     FINANCE: ['dashboard', ...ADMIN_WORKSPACES_BY_ROLE.FINANCE, 'events', 'users'],
     USER: [],
   }
-  const adminMenuItems = allAdminMenuItems.filter(item => menuIdsByRole[role].includes(item.id))
+  const permissionPrefixes: Partial<Record<string, string[]>> = {
+    operations: ['operations.'], 'market-review': ['markets.'], resolutions: ['markets.resolve', 'governance.resolution.'],
+    risk: ['risk.'], support: ['support.'], finance: ['finance.'], approvals: ['governance.approval.'], audit: ['audit.'],
+    communications: ['community.notification.'], system: ['operations.health.'], 'access-control': ['users.permissions.', 'users.roles.'],
+    settings: ['settings.'], theme: ['settings.theme.'], locales: ['settings.locale.'], categories: ['markets.categories.'],
+    'market-context': ['markets.edit', 'settings.ai.'], affiliate: ['settings.fees.'], events: ['markets.'], users: ['users.'],
+  }
+  const permittedByCapability = (id: string) => role === 'SUPER_ADMIN' || role === 'ADMIN' || id === 'dashboard' || (permissionPrefixes[id] || []).some(prefix => permissions.some(permission => permission === prefix || permission.startsWith(prefix)))
+  const adminMenuItems = allAdminMenuItems.filter(item => menuIdsByRole[role].includes(item.id) || permittedByCapability(item.id))
 
   const menuGroups: AdminMenuGroup[] = [
     {
@@ -160,6 +173,22 @@ export default function AdminSidebar({ role }: { role: PlatformRole }) {
   const activeGroup = menuGroups.find(group => group.itemIds.includes(active))?.id ?? ''
   const [openGroup, setOpenGroup] = useState(activeGroup)
 
+  const [riskBadgeCleared, setRiskBadgeCleared] = useState(false)
+  useEffect(() => {
+    if (pathname.startsWith('/admin/risk')) {
+      setRiskBadgeCleared(true)
+      try { localStorage.setItem('admin_risk_last_seen', Date.now().toString()) } catch {}
+    } else {
+      try {
+        const lastSeen = localStorage.getItem('admin_risk_last_seen')
+        if (lastSeen && Number(lastSeen) > 0) {
+          setRiskBadgeCleared(true)
+        }
+      } catch {}
+    }
+  }, [pathname])
+  const effectiveRiskCount = riskBadgeCleared ? 0 : riskCount
+
   useEffect(() => {
     setOpenGroup(activeGroup)
   }, [activeGroup])
@@ -197,7 +226,14 @@ export default function AdminSidebar({ role }: { role: PlatformRole }) {
             >
               <AppLink href={item.href} onClick={event => navigateAdmin(event, item.href)}>
                 <item.icon className="size-6 text-muted-foreground" />
-                <span>{item.label}</span>
+                <span className="flex items-center gap-1.5">
+                  {item.label}
+                  {item.id === 'risk' && effectiveRiskCount > 0 && (
+                    <span className="min-w-5 rounded-full bg-destructive px-1.5 text-center text-xs font-semibold text-destructive-foreground">
+                      {effectiveRiskCount > 99 ? '99+' : effectiveRiskCount}
+                    </span>
+                  )}
+                </span>
               </AppLink>
             </Button>
           )
@@ -260,6 +296,11 @@ export default function AdminSidebar({ role }: { role: PlatformRole }) {
                         <AppLink href={subItem.href} onClick={event => navigateAdmin(event, subItem.href)}>
                           {ItemIcon && <ItemIcon className="size-4" />}
                           <span>{subItem.label}</span>
+                          {subItem.id === 'risk' && effectiveRiskCount > 0 && (
+                            <span className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 text-center text-xs font-semibold text-destructive-foreground">
+                              {effectiveRiskCount > 99 ? '99+' : effectiveRiskCount}
+                            </span>
+                          )}
                         </AppLink>
                       </Button>
                     )

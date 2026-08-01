@@ -103,8 +103,8 @@ async function fetchUserPositions({
   searchQuery?: string
   signal?: AbortSignal
 }): Promise<PublicPosition[]> {
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-  if (isPlayMoneyAmm) {
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  if (isSlimefishBackendAmm) {
     if (pageParam > 0) {
       return []
     }

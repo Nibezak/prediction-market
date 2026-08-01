@@ -12,7 +12,9 @@ import { users } from '@/lib/db/schema/auth/tables'
 import { getDepositWalletAddress, isDepositWalletDeployed } from '@/lib/deposit-wallet'
 import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/deposit-wallet-observability'
 import { db } from '@/lib/drizzle'
+import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
 import { buildClobHmacSignature } from '@/lib/hmac'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 import {
   getL2AuthContextCookieName,
   L2_AUTH_CONTEXT_TTL_SECONDS,
@@ -58,6 +60,12 @@ const OnboardingEmailSchema = z.object({
     .string()
     .trim()
     .pipe(z.email({ pattern: z.regexes.html5Email, error: 'Invalid email address.' })),
+})
+
+const OnboardingPhoneSchema = z.object({
+  phoneNumber: z.string().transform(value => normalizeKenyanPhone(value)).pipe(
+    z.string({ error: 'Enter a valid Kenyan phone number.' }),
+  ),
 })
 
 const TradingAuthSignatureSchema = z.object({
@@ -450,18 +458,20 @@ export async function updateOnboardingUsernameAction(input: {
       termsAcceptedAt: new Date().toISOString(),
     })
 
-    // Sync to Play Money
+    // Sync to Slimefish ledger
     const ammUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
     const tellwiseSecret = process.env.TELLWISE_SECRET || ''
-    await fetch(`${ammUrl}/users/sync`, {
+    const syncUrl = `${ammUrl}/users/sync`
+    const syncBody = JSON.stringify({ id: user.id, username: parsed.data.username })
+    await fetch(syncUrl, {
       method: 'POST',
-      headers: {
+      headers: signSlimefishBackendRequest({ url: syncUrl, method: 'POST', body: syncBody, headers: {
         'Content-Type': 'application/json',
         'x-tellwise-secret': tellwiseSecret,
         'x-tellwise-user-id': user.id,
-      },
-      body: JSON.stringify({ id: user.id, username: parsed.data.username }),
-    }).catch((err) => console.error('Failed to sync username to Play Money:', err))
+      } }),
+      body: syncBody,
+    }).catch((err) => console.error('Failed to sync username to Slimefish ledger:', err))
 
     return {
       error: null,
@@ -553,6 +563,86 @@ export async function updateOnboardingEmailAction(input: {
   }
 }
 
+export async function updateOnboardingPhoneAction(input: {
+  phoneNumber: string
+}) {
+  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+  if (!user) {
+    return { error: 'Unauthenticated.', data: null }
+  }
+
+  const parsed = OnboardingPhoneSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
+  }
+
+  try {
+    const [row] = await db
+      .select({ settings: users.settings })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+
+    const settings = (row?.settings ?? {}) as Record<string, any>
+    const onboarding = {
+      ...(settings.onboarding ?? {}),
+      phoneNumber: parsed.data.phoneNumber,
+      phoneCompletedAt: new Date().toISOString(),
+    }
+    const profile = {
+      ...(settings.profile ?? {}),
+      phoneNumber: parsed.data.phoneNumber,
+    }
+    const nextSettings = {
+      ...settings,
+      onboarding,
+      profile,
+    }
+
+    await db
+      .update(users)
+      .set({ settings: nextSettings })
+      .where(eq(users.id, user.id))
+
+    return {
+      error: null,
+      data: {
+        phoneNumber: parsed.data.phoneNumber,
+        settings: nextSettings,
+      },
+    }
+  }
+  catch (error) {
+    console.error('Failed to update onboarding phone', error)
+    return { error: DEFAULT_ERROR_MESSAGE, data: null }
+  }
+}
+
+export async function updateOnboardingDepositPromptAction(input: {
+  action: 'shown' | 'skipped'
+}) {
+  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+  if (!user) {
+    return { error: 'Unauthenticated.', data: null }
+  }
+
+  try {
+    const now = new Date().toISOString()
+    const settings = await updateOnboardingSettings(user.id, input.action === 'shown'
+      ? { depositPromptShownAt: now }
+      : { depositPromptSkippedAt: now })
+
+    return {
+      error: null,
+      data: { settings },
+    }
+  }
+  catch (error) {
+    console.error('Failed to update onboarding deposit prompt', error)
+    return { error: DEFAULT_ERROR_MESSAGE, data: null }
+  }
+}
+
 export async function createDepositWalletAction(): Promise<EnableDepositWalletTradingActionResult> {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
@@ -564,7 +654,7 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
     let status = user.deposit_wallet_status ?? 'not_started'
     let txHash: string | null = user.deposit_wallet_tx_hash ?? null
 
-    if (process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true') {
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
       status = 'deployed'
       txHash = null
     } else {

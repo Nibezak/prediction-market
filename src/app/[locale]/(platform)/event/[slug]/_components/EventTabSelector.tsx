@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import ConnectionStatusIndicator from '@/app/[locale]/(platform)/event/[slug]/_components/ConnectionStatusIndicator'
 import { cn } from '@/lib/utils'
 
-export type EventTabKey = 'comments' | 'holders' | 'activity'
+export type EventTabKey = 'comments' | 'activity'
 
 interface EventTabSelectorProps {
   activeTab: EventTabKey
@@ -27,7 +27,6 @@ function useEventTabLabels(commentsCount: number | null) {
         ? t('Comments')
         : t('Comments ({count})', { count: formattedCommentsCount }),
     },
-    { key: 'holders', label: t('Top Holders') },
     { key: 'activity', label: t('Activity') },
   ]), [formattedCommentsCount, t])
 

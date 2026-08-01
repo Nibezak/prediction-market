@@ -81,7 +81,7 @@ export async function generateMetadata(): Promise<Metadata> {
     manifest: '/manifest.webmanifest',
     appleWebApp: {
       capable: true,
-      title: site.name,
+      title: site.mobileAppName,
       statusBarStyle: 'default',
     },
     icons: {

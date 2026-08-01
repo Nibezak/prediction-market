@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import type { DepositWalletStatus, MarketOrderType, User } from '@/types'
+import type { DepositWalletStatus, User } from '@/types'
 import { asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
@@ -15,6 +15,27 @@ import { db } from '@/lib/drizzle'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { getTellwiseLocalSessionFromHeaders } from '@/lib/tellwise-local-session'
 import { normalizeAddress } from '@/lib/wallet'
+import { isAdminEmail } from '@/lib/admin'
+import { isProtectedSuperAdmin } from '@/lib/staff-role'
+import { MIRROR_COOKIE_NAME, readCookie, verifyMirrorCookie } from '@/lib/user-mirroring'
+import { hasStaffPermission } from '@/lib/staff-permissions'
+
+async function applyMirrorSession(user: any, requestHeaders: Headers) {
+  if (!user?.id || (!isAdminEmail(user.email) && !hasStaffPermission(user, 'users.mirror'))) return user
+  const mirror = verifyMirrorCookie(readCookie(requestHeaders.get('cookie'), MIRROR_COOKIE_NAME), user.id)
+  if (!mirror) return user
+  const rows = await db.select().from(users).where(eq(users.id, mirror.targetUserId)).limit(1)
+  const target: any = rows[0]
+  if (!target) return user
+  const settings = target.settings && typeof target.settings === 'object' ? target.settings : {}
+  return {
+    ...target,
+    image: target.image ? getPublicAssetUrl(target.image) : '',
+    role: (settings as any).staff_role || 'USER',
+    is_admin: false,
+    mirrored_by_user_id: user.id,
+  }
+}
 
 function sanitizeUserSearchTerm(search: string) {
   return search
@@ -139,14 +160,9 @@ export const UserRepository = {
 
   async updateUserTradingSettings(
     currentUser: User,
-    preferences: { market_order_type?: MarketOrderType, show_slippage_warning?: boolean },
+    preferences: { show_slippage_warning?: boolean },
   ) {
     const tradingPatchEntries: SQL[] = []
-
-    if (preferences.market_order_type !== undefined) {
-      const marketOrderType = preferences.market_order_type
-      tradingPatchEntries.push(sql`'market_order_type', to_jsonb(${marketOrderType}::text)`)
-    }
 
     if (preferences.show_slippage_warning !== undefined) {
       const showSlippageWarning = preferences.show_slippage_warning
@@ -199,9 +215,59 @@ export const UserRepository = {
     })
   },
 
+  async updateUserDisplaySettings(
+    currentUser: User,
+    preferences: { show_home_featured_mobile?: boolean },
+  ) {
+    if (preferences.show_home_featured_mobile === undefined) {
+      return { data: { id: currentUser.id }, error: null }
+    }
+
+    return await runQuery(async () => {
+      const showHomeFeaturedMobile = preferences.show_home_featured_mobile
+      const normalizedSettings = sql`
+        CASE
+          WHEN jsonb_typeof(coalesce(${users.settings}, '{}'::jsonb)) = 'object'
+            THEN coalesce(${users.settings}, '{}'::jsonb)
+          ELSE '{}'::jsonb
+        END
+      `
+
+      const result = await db
+        .update(users)
+        .set({
+          settings: sql`
+            jsonb_set(
+              ${normalizedSettings},
+              '{display}',
+              (
+                CASE
+                  WHEN jsonb_typeof(${normalizedSettings}->'display') = 'object'
+                    THEN ${normalizedSettings}->'display'
+                  ELSE '{}'::jsonb
+                END
+                || jsonb_build_object('show_home_featured_mobile', to_jsonb(${showHomeFeaturedMobile}::boolean))
+              ),
+              true
+            )
+          `,
+        })
+        .where(eq(users.id, currentUser.id))
+        .returning({ id: users.id })
+
+      const data = result[0] || null
+      return data ? { data, error: null } : { data: null, error: DEFAULT_ERROR_MESSAGE }
+    })
+  },
+
   async deleteUserAccountById(userId: string) {
     return await runQuery(async () => {
       await db.transaction(async (tx) => {
+        const targetRows = await tx.select({ email: users.email, settings: users.settings }).from(users).where(eq(users.id, userId)).limit(1)
+        if (isProtectedSuperAdmin(targetRows[0] as any)) {
+          throw new Error('The super admin account cannot be deleted.')
+        }
+
         await tx
           .update(orders)
           .set({ affiliate_user_id: null })
@@ -239,7 +305,7 @@ export const UserRepository = {
       const localSession = getTellwiseLocalSessionFromHeaders(requestHeaders)
       if (localSession?.user) {
         const dbLocalSession = await getOrCreateTellwiseLocalDbSession().catch(() => localSession)
-        const user = dbLocalSession.user as any
+        const user = await applyMirrorSession(dbLocalSession.user as any, requestHeaders)
 
         if (minimal) {
           return user
@@ -271,7 +337,7 @@ export const UserRepository = {
         return null
       }
 
-      const user: any = session.user
+      const user: any = await applyMirrorSession(session.user, requestHeaders)
 
       if (minimal) {
         return user
@@ -416,6 +482,8 @@ export const UserRepository = {
         .select({
           id: users.id,
           username: users.username,
+          email: users.email,
+          settings: users.settings,
           address: users.address,
           deposit_wallet_address: users.deposit_wallet_address,
           created_at: users.created_at,
@@ -446,6 +514,8 @@ export const UserRepository = {
         .select({
           id: users.id,
           username: users.username,
+          email: users.email,
+          settings: users.settings,
           address: users.address,
           deposit_wallet_address: users.deposit_wallet_address,
           image: users.image,

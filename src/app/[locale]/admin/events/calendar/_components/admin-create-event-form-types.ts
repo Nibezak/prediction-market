@@ -130,6 +130,9 @@ interface PreparePayloadOption {
   title: string
   shortName: string
   slug: string
+  outcomeYes?: string
+  outcomeNo?: string
+  imageUrl?: string
 }
 
 export interface PreparePayloadBody {
@@ -147,6 +150,7 @@ export interface PreparePayloadBody {
   binaryOutcomeNo?: string
   initialLiquidity: number
   options?: PreparePayloadOption[]
+  eventImageUrl?: string
   resolutionSource: string
   resolutionRules: string
   sports?: unknown
@@ -245,4 +249,5 @@ export interface AdminCreateEventFormProps {
   hasConfiguredServerSigners?: boolean
   serverDraftPayload?: Record<string, unknown> | null
   serverAssetPayload?: import('@/lib/event-creation').EventCreationAssetPayload | null
+  creatorIdentity?: { id: string, username: string | null, email: string | null, role: string } | null
 }

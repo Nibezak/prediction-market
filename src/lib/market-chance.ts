@@ -2,6 +2,19 @@ import type { Market } from '@/types'
 
 const MAX_DISPLAY_SPREAD = 0.1
 
+/**
+ * Market odds are intentionally never rendered as absolute certainty. The
+ * underlying price remains untouched for settlement and quote calculations.
+ */
+export function formatMarketChancePercent(value: number | null | undefined) {
+  const chance = Number(value)
+  if (!Number.isFinite(chance)) {
+    return '50%'
+  }
+
+  return `${Math.min(99, Math.max(1, Math.round(chance)))}%`
+}
+
 export function normalizeMarketPrice(value: number | string | null | undefined) {
   if (value == null) {
     return null
@@ -80,8 +93,25 @@ export function buildChanceByMarket(
     return normalizeMarketPrice(override ?? market.price ?? market.probability) ?? 0
   }
 
-  return markets.reduce<Record<string, number>>((acc, market) => {
+  const chanceByMarket = markets.reduce<Record<string, number>>((acc, market) => {
     acc[market.condition_id] = getPrice(market) * 100
     return acc
   }, {})
+
+  if (markets.length <= 1) {
+    return chanceByMarket
+  }
+
+  const totalChance = markets.reduce(
+    (total, market) => total + Math.max(0, chanceByMarket[market.condition_id] ?? 0),
+    0,
+  )
+  const fallbackChance = 100 / markets.length
+
+  return Object.fromEntries(markets.map(market => [
+    market.condition_id,
+    totalChance > 0
+      ? (Math.max(0, chanceByMarket[market.condition_id] ?? 0) / totalChance) * 100
+      : fallbackChance,
+  ]))
 }

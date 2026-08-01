@@ -83,7 +83,7 @@ interface ThemePreset {
 const THEME_PRESET_IDS = ['default', 'midnight', 'lime', 'amber'] as const
 export type ThemePresetId = typeof THEME_PRESET_IDS[number]
 const THEME_PRESET_ID_SET = new Set<string>(THEME_PRESET_IDS)
-export const DEFAULT_THEME_PRESET_ID: ThemePresetId = 'default'
+export const DEFAULT_THEME_PRESET_ID: ThemePresetId = 'lime'
 
 const THEME_PRESETS: Record<ThemePresetId, ThemePreset> = {
   default: {

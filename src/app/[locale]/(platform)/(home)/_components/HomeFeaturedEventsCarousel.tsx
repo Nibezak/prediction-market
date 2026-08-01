@@ -44,9 +44,11 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
 import { resolveEventPagePath } from '@/lib/events-routing'
-import { formatDollarValueLabel, formatVolume } from '@/lib/formatters'
+import { formatVolume } from '@/lib/formatters'
 import { resolveSportsTeamFallbackClassName } from '@/lib/sports-team-colors'
 import { cn } from '@/lib/utils'
+import { formatMarketChancePercent } from '@/lib/market-chance'
+import { useUser } from '@/stores/useUser'
 
 interface HomeFeaturedEventsCarouselProps {
   items: HomeFeaturedEventCard[]
@@ -55,6 +57,8 @@ interface HomeFeaturedEventsCarouselProps {
 }
 
 const HOME_FEATURED_CHART_HEIGHT = 292
+const HOME_FEATURED_MOBILE_CHART_HEIGHT = 158
+const HOME_FEATURED_FULL_CHART_HEIGHT = 332
 const HOME_FEATURED_CHART_HEIGHT_OFFSET = 20
 const HOME_FEATURED_LIVE_CHART_WIDTH_OFFSET = 24
 type FeaturedSportsButtonTone = 'home' | 'away' | 'draw' | 'neutral'
@@ -132,7 +136,7 @@ function useElementWidth<T extends HTMLElement>(enabled = true) {
 }
 
 function formatChancePercent(chance: number) {
-  return `${Math.round(chance)}%`
+  return formatMarketChancePercent(chance)
 }
 
 function formatVolumeLabel(volume: number) {
@@ -298,7 +302,7 @@ function FeaturedBreadcrumb({ items }: { items: Array<{ label: string, href: str
   }
 
   return (
-    <nav className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
+    <nav className="flex min-w-0 items-center gap-1 text-xs font-medium text-muted-foreground md:gap-1.5 md:text-sm">
       {items.map((breadcrumbItem, index) => (
         <span key={`${breadcrumbItem.href}:${breadcrumbItem.label}`} className="flex min-w-0 items-center gap-1.5">
           {index > 0 && <span className="shrink-0 text-muted-foreground/60">·</span>}
@@ -348,13 +352,13 @@ function FeaturedHeaderActions({
   const eventHref = resolveEventPagePath(event)
 
   return (
-    <div className={cn('flex shrink-0 items-center gap-2', className)}>
-      <Button type="button" variant="ghost" size="icon" asChild aria-label={t('Open market')}>
+    <div className={cn('flex shrink-0 items-center gap-1 md:gap-2', className)}>
+      <Button type="button" variant="ghost" size="icon" className="size-8 md:size-10" asChild aria-label={t('Open market')}>
         <AppLink intentPrefetch href={eventHref}>
           <ExternalLinkIcon className="size-4" />
         </AppLink>
       </Button>
-      <div className="flex size-10 items-center justify-center">
+      <div className="flex size-8 items-center justify-center md:size-10">
         <EventBookmark event={event} refreshStatusOnMount={false} />
       </div>
     </div>
@@ -374,13 +378,13 @@ function FeaturedHeader({
   const displayTitle = resolveFeaturedDisplayTitle(item)
 
   return (
-    <div className="flex min-w-0 items-start justify-between gap-3">
-      <div className="group/header flex min-w-0 flex-1 items-start gap-3">
+    <div className="flex min-w-0 items-start justify-between gap-2 md:gap-3">
+      <div className="group/header flex min-w-0 flex-1 items-start gap-2 md:gap-3">
         {item.kind !== 'sports' && (
           <AppLink
             intentPrefetch
             href={eventHref}
-            className="size-11 shrink-0 overflow-hidden rounded-lg bg-muted md:size-12"
+            className="size-9 shrink-0 overflow-hidden rounded-lg bg-muted md:size-12"
           >
             <EventIconImage
               src={event.icon_url || item.primaryMarkets[0]?.icon_url || '/images/pwa/default-icon-192.png'}
@@ -396,7 +400,7 @@ function FeaturedHeader({
             intentPrefetch
             href={eventHref}
             className="
-              line-clamp-2 text-lg font-semibold tracking-tight underline-offset-4
+              line-clamp-2 text-base font-semibold tracking-tight underline-offset-4
               group-hover/header:underline
               md:text-xl
             "
@@ -473,7 +477,7 @@ function StandardActions({ item, linkedHref }: { item: HomeFeaturedEventCard, li
             variant={isNegative ? 'no' : 'yes'}
             className={cn(
               `
-                inline-flex h-16 min-w-0 items-center justify-center rounded-lg px-4 text-center text-base font-semibold
+                inline-flex h-11 min-w-0 items-center justify-center rounded-lg px-3 text-center text-sm font-semibold
                 transition duration-150
                 active:scale-[98%]
                 md:h-14 md:px-4 md:text-base
@@ -1055,7 +1059,7 @@ function ContextTickerItem({
       key={`${contextItem.id}:${index}`}
       intentPrefetch
       href={linkedHref}
-      className="flex h-14 min-w-0 items-center gap-2"
+      className="flex h-10 min-w-0 items-center gap-2 md:h-14"
     >
       {(!isNews || !contextItem.faviconUrl) && <ContextAvatar contextItem={contextItem} />}
       <span className="grid min-w-0 gap-0.5">
@@ -1077,7 +1081,7 @@ function ContextTickerItem({
             </>
           )}
         </span>
-        <span className="line-clamp-2 text-xs/snug text-foreground">
+        <span className="line-clamp-1 text-xs/snug text-foreground md:line-clamp-2">
           {contextItem.title}
         </span>
       </span>
@@ -1102,7 +1106,7 @@ function ContextTicker({ item, linkedHref }: { item: HomeFeaturedEventCard, link
     : undefined
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-border/50 pt-3">
+    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-border/50 pt-2 md:pt-3">
       <div
         className={cn(
           item.contextItems.length > 1
@@ -1178,7 +1182,7 @@ function FeaturedFooter({ item }: { item: HomeFeaturedEventCard }) {
   return (
     <div
       className={`
-        absolute inset-x-4 bottom-3 z-20 flex h-10 shrink-0 items-center justify-between gap-3 bg-card text-xs
+        absolute inset-x-3 bottom-1.5 z-20 flex h-8 shrink-0 items-center justify-between gap-2 bg-card text-[11px]
         leading-none font-normal text-muted-foreground
         md:inset-x-5 md:bottom-4 md:text-sm
       `}
@@ -1229,53 +1233,158 @@ function FeaturedRightRail({
   const activeSlides = sideCard.slides.filter(slide => slide.enabled)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [failedSlideIds, setFailedSlideIds] = useState<Set<string>>(() => new Set())
   const safeIndex = activeSlides.length > 0 ? activeIndex % activeSlides.length : 0
   const activeSlide = activeSlides[safeIndex]
 
   useEffect(() => {
-    if (activeSlides.length <= 1 || isPaused) return
-    const timeout = window.setTimeout(() => setActiveIndex(index => (index + 1) % activeSlides.length), 7000)
-    return () => window.clearTimeout(timeout)
+    if (activeSlides.length <= 1 || isPaused) {
+      return
+    }
+    const interval = window.setInterval(() => {
+      setProgress((current) => {
+        const next = current + (100 / 70)
+        if (next >= 100) {
+          setActiveIndex(index => (index + 1) % activeSlides.length)
+          return 0
+        }
+        return next
+      })
+    }, 100)
+    return () => window.clearInterval(interval)
   }, [activeSlides.length, isPaused, safeIndex])
 
   function renderSlide(slide: HomeFeaturedSideCardSettings['slides'][number]) {
     const href = slide.ctaHref.trim()
-    const content = slide.type === 'video'
-      ? <iframe src={slide.videoEmbedUrl} title={slide.title || 'Featured video'} loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen className="size-full border-0 bg-black" />
-      : slide.type === 'image'
+    function markMediaFailed() {
+      setFailedSlideIds(current => new Set(current).add(slide.id))
+    }
+    const textContent = (
+      <>
+        <DynamicIcon
+          name={slide.icon as IconName}
+          aria-hidden
+          className="pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8"
+        />
+        <div className="relative z-1 flex min-h-0 flex-1 flex-col p-5 pt-7">
+          <span className="mb-3 h-1 w-10 rounded-full bg-primary/70" />
+          <span className="line-clamp-2 text-xl/tight font-semibold">{slide.title}</span>
+          <span className="mt-3 line-clamp-4 text-sm/relaxed text-muted-foreground">{slide.text}</span>
+          {slide.ctaLabel && href && (
+            <span className="
+              mt-auto ml-auto inline-flex items-center gap-1.5 rounded-full border bg-background/70 px-3 py-2 text-sm
+              font-medium
+            "
+            >
+              <span className="truncate">{slide.ctaLabel}</span>
+              <ChevronRightIcon className="size-4" />
+            </span>
+          )}
+        </div>
+      </>
+    )
+    const hasFailed = failedSlideIds.has(slide.id)
+      || (slide.type === 'image' && !slide.imageUrl.trim())
+      || (slide.type === 'video' && !slide.videoEmbedUrl.trim())
+    const content = slide.type === 'video' && !hasFailed
+      ? (/\.(?:mp4|webm)(?:\?.*)?$/i.test(slide.videoEmbedUrl)
+          ? (
+              <video
+                src={slide.videoEmbedUrl}
+                title={slide.title || 'Featured video'}
+                controls
+                muted
+                playsInline
+                preload="metadata"
+                onError={markMediaFailed}
+                className="size-full bg-black object-cover"
+              />
+            )
+          : (
+              <iframe
+                src={slide.videoEmbedUrl}
+                title={slide.title || 'Featured video'}
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className="size-full border-0 bg-black"
+              />
+            ))
+      : slide.type === 'image' && !hasFailed
         ? (
             <>
-              <Image src={slide.imageUrl} alt={slide.ctaLabel || slide.title} fill sizes="(min-width: 1024px) 32vw, 280px" className="object-cover transition-transform duration-300 group-hover/side-card:scale-[1.02]" />
-              {slide.ctaLabel && <span className="absolute inset-0 z-1 flex items-end bg-linear-to-t from-black/75 via-black/15 to-transparent p-5 pb-9 text-sm font-semibold text-white opacity-0 transition-opacity group-hover/side-card:opacity-100">{slide.ctaLabel}</span>}
+              <Image
+                src={slide.imageUrl}
+                alt=""
+                fill
+                unoptimized
+                sizes="(min-width: 1024px) 32vw, 280px"
+                onError={markMediaFailed}
+                className="object-cover transition-transform duration-300 group-hover/side-card:scale-[1.02]"
+              />
+              <span className="
+                absolute inset-0 z-1 flex flex-col justify-end bg-linear-to-t from-black/80 via-black/10 to-transparent
+                p-5 pb-9 text-white
+              "
+              >
+                {slide.title && <span className="line-clamp-2 text-xl/tight font-semibold">{slide.title}</span>}
+                {slide.text && <span className="mt-2 line-clamp-2 text-sm/relaxed text-white/80">{slide.text}</span>}
+                {slide.ctaLabel && <span className="mt-3 text-sm font-semibold">{slide.ctaLabel}</span>}
+              </span>
             </>
           )
-        : (
-            <>
-              <DynamicIcon name={slide.icon as IconName} aria-hidden className="pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8" />
-              <div className="relative z-1 flex min-h-0 flex-1 flex-col p-5 pt-8">
-                <span className="mb-3 h-1 w-10 rounded-full bg-primary/70" />
-                <span className="line-clamp-2 text-xl/tight font-semibold">{slide.title}</span>
-                <span className="mt-5 line-clamp-4 text-sm/relaxed text-muted-foreground">{slide.text}</span>
-                {slide.ctaLabel && href && <span className="mt-auto ml-auto inline-flex items-center gap-1.5 rounded-full border bg-background/70 px-3 py-2 text-sm font-medium"><span className="truncate">{slide.ctaLabel}</span><ChevronRightIcon className="size-4" /></span>}
-              </div>
-            </>
-          )
-    const className = 'group/side-card relative flex size-full min-w-0 flex-col overflow-hidden bg-card text-card-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none'
-    if (slide.type === 'video' || !href) return <div className={className}>{content}</div>
+        : textContent
+    const className = `
+      group/side-card relative flex size-full min-w-0 flex-col overflow-hidden bg-card text-card-foreground
+      focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none
+    `
+    if (slide.type === 'video' || !href) {
+      return <div className={className}>{content}</div>
+    }
     return isExternalHref(href)
       ? <a href={href} target="_blank" rel="noreferrer" className={className}>{content}</a>
       : <AppLink intentPrefetch href={href} className={className}>{content}</AppLink>
   }
 
   return (
-    <aside className="hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-4 lg:grid">
+    <aside className="
+      hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(270px,0.64fr)_minmax(0,0.36fr)] gap-4
+      lg:grid
+    "
+    >
       {activeSlide
         ? (
-            <div className="relative min-h-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-md shadow-black/4" onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)} onFocusCapture={() => setIsPaused(true)} onBlurCapture={() => setIsPaused(false)}>
+            <div
+              className="
+                relative min-h-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-md shadow-black/4
+              "
+              onMouseEnter={() => setIsPaused(true)}
+              onMouseLeave={() => setIsPaused(false)}
+              onFocusCapture={() => setIsPaused(true)}
+              onBlurCapture={() => setIsPaused(false)}
+            >
               {renderSlide(activeSlide)}
               {activeSlides.length > 1 && (
                 <div className="absolute inset-x-0 bottom-2 z-3 flex justify-center gap-1.5" role="tablist" aria-label="Side card slides">
-                  {activeSlides.map((slide, index) => <button key={slide.id} type="button" role="tab" aria-selected={index === safeIndex} aria-label={`Show slide ${index + 1}`} onClick={() => setActiveIndex(index)} className={cn('h-1.5 rounded-full bg-white/60 ring-1 ring-black/10', index === safeIndex ? 'w-8 bg-primary' : 'w-1.5')} />)}
+                  {activeSlides.map((slide, index) => (
+                    <button
+                      key={slide.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={index === safeIndex}
+                      aria-label={`Show slide ${index + 1}`}
+                      onClick={() => {
+                        setActiveIndex(index)
+                        setProgress(0)
+                      }}
+                      className={cn('relative h-1.5 overflow-hidden rounded-full bg-white/45 ring-1 ring-black/10', index === safeIndex
+                        ? `w-8`
+                        : `w-1.5`)}
+                    >
+                      {index === safeIndex && <span className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${progress}%` }} />}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -1285,7 +1394,7 @@ function FeaturedRightRail({
       <div className="min-h-0 overflow-hidden p-1">
         <div className="mb-3 flex items-center gap-2">
           <FlameIcon className="size-4 text-no" />
-          <span className="text-lg font-semibold">Hot topics</span>
+          <span className="text-lg font-semibold">Hot Picks</span>
         </div>
         <div className="grid gap-0.5">
           {hotTopics.slice(0, 3).map((topic, index) => (
@@ -1293,7 +1402,11 @@ function FeaturedRightRail({
               key={topic.slug}
               intentPrefetch
               href={topic.href}
-              className="group/topic -mx-2 grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-secondary/50"
+              className="
+                group/topic -mx-2 grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-md px-2
+                py-2.5 transition-colors
+                hover:bg-secondary/50
+              "
             >
               <span className="w-4 text-sm font-medium text-muted-foreground">{index + 1}</span>
               <span className="truncate text-base font-medium underline-offset-2 group-hover/topic:underline">
@@ -1305,11 +1418,6 @@ function FeaturedRightRail({
               <ChevronRightIcon className="size-4 text-muted-foreground" />
             </AppLink>
           ))}
-          {hotTopics.length > 3 && (
-            <Button variant="outline" className="mt-2 w-full" asChild>
-              <AppLink href="/predictions/trending">Show more</AppLink>
-            </Button>
-          )}
         </div>
       </div>
     </aside>
@@ -1370,7 +1478,7 @@ function FeaturedSlide({
     : undefined
   const hasContextItems = item.contextItems.length > 0
   const featuredDetailsClassName = cn(
-    'flex min-h-0 min-w-0 flex-col gap-3',
+    'flex min-h-0 min-w-0 flex-col gap-2 md:gap-3',
     !hasContextItems && item.kind !== 'sports' && 'justify-center',
   )
 
@@ -1379,8 +1487,8 @@ function FeaturedSlide({
       ref={shouldRenderChart ? chartContainerRef : undefined}
       className={cn(
         item.kind === 'sports'
-          ? 'relative min-h-[190px] min-w-0 overflow-hidden md:min-h-[210px] lg:min-h-[230px]'
-          : 'relative min-h-60 min-w-0 overflow-hidden md:min-h-[260px] lg:min-h-[280px]',
+          ? 'relative min-h-[138px] min-w-0 overflow-hidden md:min-h-[210px] lg:min-h-[230px]'
+          : 'relative min-h-[150px] min-w-0 overflow-hidden md:min-h-[260px] lg:min-h-[280px]',
         shouldRenderLiveSeriesChart && 'lg:-mt-1',
       )}
     >
@@ -1393,7 +1501,10 @@ function FeaturedSlide({
                   isMobile={isMobile}
                   config={item.liveChartConfig}
                   chartWidth={liveChartWidth}
-                  chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
+                  chartHeightOffset={isMobile
+                    ? HOME_FEATURED_FULL_CHART_HEIGHT - HOME_FEATURED_MOBILE_CHART_HEIGHT
+                    : HOME_FEATURED_CHART_HEIGHT_OFFSET}
+                  minimumChartHeight={isMobile ? HOME_FEATURED_MOBILE_CHART_HEIGHT : undefined}
                   showSeriesControls={false}
                 />
               )
@@ -1404,7 +1515,10 @@ function FeaturedSlide({
                     selectedMarketType={sportsGraphSelection.selectedMarketType}
                     selectedConditionId={sportsGraphSelection.selectedConditionId}
                     defaultTimeRange="ALL"
-                    chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
+                    chartHeightOffset={isMobile
+                      ? HOME_FEATURED_FULL_CHART_HEIGHT - HOME_FEATURED_MOBILE_CHART_HEIGHT
+                      : HOME_FEATURED_CHART_HEIGHT_OFFSET}
+                    minimumChartHeight={isMobile ? HOME_FEATURED_MOBILE_CHART_HEIGHT : undefined}
                     variant="sportsEventHero"
                     showControls={false}
                   />
@@ -1418,7 +1532,7 @@ function FeaturedSlide({
                     showWatermark={false}
                     legendVariant="card"
                     chartWidth={chartContainerWidth}
-                    chartHeight={HOME_FEATURED_CHART_HEIGHT}
+                    chartHeight={isMobile ? HOME_FEATURED_MOBILE_CHART_HEIGHT : HOME_FEATURED_CHART_HEIGHT}
                     isSingleMarketOverride={isSingleMarket}
                     forceVisible
                   />
@@ -1439,12 +1553,13 @@ function FeaturedSlide({
   if (item.kind === 'sports') {
     return (
       <article className="
-        relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[64px]
+        relative flex h-full min-w-full flex-col gap-2 overflow-hidden p-3 pb-11
+        md:gap-4
         md:p-5 md:pb-[68px]
       "
       >
         <div className="
-          grid min-h-0 flex-1 grid-cols-1 gap-4
+          grid min-h-0 flex-1 grid-cols-1 gap-2
           md:grid-cols-[minmax(260px,0.8fr)_minmax(320px,1fr)] md:gap-5
           lg:grid-cols-[minmax(320px,0.8fr)_minmax(420px,1fr)] lg:gap-6
         "
@@ -1465,12 +1580,13 @@ function FeaturedSlide({
   if (shouldRenderLiveSeriesChart) {
     return (
       <article className="
-        relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[64px]
+        relative flex h-full min-w-full flex-col gap-2 overflow-hidden p-3 pb-11
+        md:gap-4
         md:p-5 md:pb-[68px]
       "
       >
         <div className="
-          grid min-h-0 flex-1 grid-cols-1 gap-4
+          grid min-h-0 flex-1 grid-cols-1 gap-2
           md:grid-cols-[minmax(240px,0.68fr)_minmax(320px,1fr)] md:gap-5
           lg:grid-cols-[minmax(280px,0.68fr)_minmax(420px,1fr)] lg:gap-6
         "
@@ -1494,13 +1610,14 @@ function FeaturedSlide({
 
   return (
     <article className="
-      relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[64px]
+      relative flex h-full min-w-full flex-col gap-2 overflow-hidden p-3 pb-11
+      md:gap-4
       md:p-5 md:pb-[68px]
     "
     >
       <FeaturedHeader item={item} />
       <div className="
-        grid min-h-0 flex-1 grid-cols-1 gap-4
+        grid min-h-0 flex-1 grid-cols-1 gap-2
         md:grid-cols-[minmax(260px,0.8fr)_minmax(320px,1fr)] md:gap-5
         lg:grid-cols-[minmax(320px,0.8fr)_minmax(420px,1fr)] lg:gap-6
       "
@@ -1522,6 +1639,8 @@ function FeaturedSlide({
 
 export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard }: HomeFeaturedEventsCarouselProps) {
   const t = useExtracted()
+  const user = useUser()
+  const showOnMobile = user?.settings?.display?.show_home_featured_mobile !== false
   const sectionRef = useRef<HTMLElement | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isChartNearViewport, setIsChartNearViewport] = useState(false)
@@ -1562,10 +1681,10 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
   }
 
   return (
-    <section ref={sectionRef} className="hidden gap-3 md:grid">
-      <div className="grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.4fr)]">
+    <section ref={sectionRef} className={cn(showOnMobile ? 'grid' : 'hidden md:grid', 'gap-3')}>
+      <div className="grid gap-x-7 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.44fr)]">
         <div
-          className="h-[clamp(430px,38vw,480px)] overflow-hidden rounded-xl border bg-card shadow-md shadow-black/4"
+          className="h-[420px] overflow-hidden rounded-xl border bg-card shadow-md shadow-black/4 sm:h-[450px] md:h-[clamp(430px,38vw,480px)]"
           onMouseEnter={() => setIsAutoAdvancePaused(true)}
           onMouseLeave={() => setIsAutoAdvancePaused(false)}
           onFocusCapture={() => setIsAutoAdvancePaused(true)}
@@ -1594,7 +1713,7 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
 
         {hasMultipleItems
           ? (
-              <div className="flex items-center justify-between gap-4 px-4 md:px-5 lg:px-6">
+              <div className="flex items-center justify-between gap-3 px-3 md:gap-4 md:px-5 lg:px-6">
                 <div className="flex min-w-0 items-center gap-2">
                   {items.map((item, index) => (
                     <button
@@ -1604,10 +1723,10 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
                       aria-current={index === activeIndex ? 'true' : undefined}
                       onClick={() => goToIndex(index)}
                       className={cn(
-                        'relative h-2 rounded-full transition-all',
+                        'relative h-1.5 rounded-full transition-all md:h-2',
                         index === activeIndex
-                          ? 'w-12 overflow-hidden bg-muted-foreground/30'
-                          : 'w-2 bg-muted-foreground/35 hover:bg-muted-foreground/60',
+                          ? 'w-9 overflow-hidden bg-muted-foreground/30 md:w-12'
+                          : 'w-1.5 bg-muted-foreground/35 hover:bg-muted-foreground/60 md:w-2',
                       )}
                     >
                       {index === activeIndex && (
@@ -1641,7 +1760,7 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
                   <Button
                     type="button"
                     variant="secondary"
-                    className="h-10 rounded-full px-3 text-muted-foreground hover:text-muted-foreground md:px-4"
+                    className="size-8 rounded-full p-0 text-muted-foreground hover:text-muted-foreground md:h-10 md:w-auto md:px-4"
                     onClick={() => goToIndex(activeIndex - 1)}
                   >
                     <ChevronLeftIcon className="size-4" />
@@ -1650,7 +1769,7 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
                   <Button
                     type="button"
                     variant="secondary"
-                    className="h-10 rounded-full px-3 text-muted-foreground hover:text-muted-foreground md:px-4"
+                    className="size-8 rounded-full p-0 text-muted-foreground hover:text-muted-foreground md:h-10 md:w-auto md:px-4"
                     onClick={() => goToIndex(activeIndex + 1)}
                   >
                     <span className="hidden max-w-44 truncate text-xs md:inline">{activeItem.nextTitle}</span>

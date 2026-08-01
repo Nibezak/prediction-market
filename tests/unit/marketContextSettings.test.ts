@@ -27,6 +27,7 @@ describe('market context settings parser', () => {
 
     const parsed = parseMarketContextSettings({
       ai: {
+        openrouter_enabled: setting('true'),
         market_context_enabled: setting('true'),
       },
     })
@@ -34,11 +35,12 @@ describe('market context settings parser', () => {
     expect(parsed.enabled).toBe(true)
   })
 
-  it('defaults market context to enabled when key is missing even if OpenRouter is configured', async () => {
+  it('defaults market context to enabled when its own flag is missing and global AI is enabled', async () => {
     const { parseMarketContextSettings } = await import('@/lib/ai/market-context-config')
 
     const parsed = parseMarketContextSettings({
       ai: {
+        openrouter_enabled: setting('true'),
         openrouter_api_key: setting('enc.v1.openrouter-key'),
       },
     })
@@ -72,5 +74,20 @@ describe('market context settings parser', () => {
     })
 
     expect(parsed.enabled).toBe(false)
+  })
+
+  it('disables market context when the global AI switch is off', async () => {
+    const { parseMarketContextSettings, parseOpenRouterProviderSettings } = await import('@/lib/ai/market-context-config')
+
+    const settings = {
+      ai: {
+        openrouter_enabled: setting('false'),
+        openrouter_api_key: setting('enc.v1.openrouter-key'),
+        market_context_enabled: setting('true'),
+      },
+    }
+
+    expect(parseOpenRouterProviderSettings(settings).configured).toBe(false)
+    expect(parseMarketContextSettings(settings).enabled).toBe(false)
   })
 })

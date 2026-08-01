@@ -1,7 +1,6 @@
 'use client'
 
 import type { Market, Outcome } from '@/types'
-import { useQuery } from '@tanstack/react-query'
 import { InfoIcon, RefreshCwIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -13,6 +12,7 @@ import EventOrderBook, {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { useOrder } from '@/stores/useOrder'
@@ -23,16 +23,14 @@ interface EventSingleMarketOrderBookProps {
   showCompactVolume?: boolean
 }
 
-type OutcomeToggleIndex = typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO
-
 function useOrderBookState(market: Market) {
   const [isExpanded, setIsExpanded] = useState(true)
   const orderMarket = useOrder(state => state.market)
   const orderOutcome = useOrder(state => state.outcome)
 
-  const selectedOutcomeIndex: OutcomeToggleIndex = useMemo(() => {
+  const selectedOutcomeIndex = useMemo(() => {
     if (orderMarket?.condition_id === market.condition_id && orderOutcome) {
-      return orderOutcome.outcome_index === OUTCOME_INDEX.NO ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES
+      return orderOutcome.outcome_index
     }
     return OUTCOME_INDEX.YES
   }, [orderMarket?.condition_id, orderOutcome, market.condition_id])
@@ -65,7 +63,7 @@ export default function EventSingleMarketOrderBook({
   showCompactVolume = false,
 }: EventSingleMarketOrderBookProps) {
   const t = useExtracted()
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const normalizeOutcomeLabel = useOutcomeLabel()
   const isMobile = useIsMobile()
   const marketChannelStatus = useMarketChannelStatus()
@@ -78,18 +76,8 @@ export default function EventSingleMarketOrderBook({
     isLoading: isOrderBookLoading,
     refetch: refetchOrderBook,
     isRefetching: isOrderBookRefetching,
-  } = useOrderBookSummaries(tokenIds, { enabled: isExpanded && !isPlayMoneyAmm })
-  const ammMarketQuery = useQuery({
-    queryKey: ['amm-market-depth', market.condition_id],
-    queryFn: async () => {
-      const response = await fetch(`/api/amm/markets/${market.condition_id}?extended=true`)
-      if (!response.ok) throw new Error('Failed to load AMM pool.')
-      const result = await response.json()
-      return result.data ?? result
-    },
-    enabled: isPlayMoneyAmm && Boolean(market.condition_id),
-    staleTime: 10_000,
-  })
+  } = useOrderBookSummaries(tokenIds, { enabled: isExpanded && !isSlimefishBackendAmm })
+  const liveMarkets = useAmmLiveMarkets([market.condition_id], isSlimefishBackendAmm)
 
   const selectedOutcome: Outcome | undefined = market.outcomes[selectedOutcomeIndex] ?? market.outcomes[0]
   const yesOutcomeText = market.outcomes[OUTCOME_INDEX.YES]?.outcome_text
@@ -99,7 +87,7 @@ export default function EventSingleMarketOrderBook({
   const isLoadingSummaries = isExpanded && isOrderBookLoading && !orderBookSummaries
   const compactVolumeLabel = showCompactVolume ? rawCompactVolumeLabel : null
 
-  function handleOutcomeSelection(outcomeIndex: OutcomeToggleIndex) {
+  function handleOutcomeSelection(outcomeIndex: number) {
     const outcome = market.outcomes[outcomeIndex]
     if (!outcome) {
       return
@@ -112,10 +100,10 @@ export default function EventSingleMarketOrderBook({
     return null
   }
 
-  if (isPlayMoneyAmm) {
-    const pool = ammMarketQuery.data
+  if (isSlimefishBackendAmm) {
+    const pool = liveMarkets[market.condition_id]
     const options = Array.isArray(pool?.options) ? pool.options : []
-    const liquidity = Number(pool?.liquidityCount ?? 0)
+    const liquidity = Number(pool?.liquidity ?? 0)
 
     return (
       <section className="overflow-hidden rounded-xl border">
@@ -126,16 +114,27 @@ export default function EventSingleMarketOrderBook({
           </div>
           <span className="text-sm font-semibold">${liquidity.toFixed(2)} liquidity</span>
         </div>
-        <div className="grid grid-cols-2 gap-3 p-4">
-          {market.outcomes.slice(0, 2).map((outcome) => {
-            const option = options.find((item: { id?: string }) => item.id === outcome.token_id)
-            const probability = Number(option?.probability ?? (Number(outcome.buy_price ?? 0.5) * 100))
+        <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-3">
+          {market.outcomes.map((outcome) => {
+            const option = options.find((item: { id?: string }) =>
+              item.id === outcome.token_id || item.id?.endsWith(`-${outcome.outcome_index}`),
+            )
+            const buyPrice = typeof (outcome as any).buy_price === 'number' && Number.isFinite((outcome as any).buy_price)
+              ? Number((outcome as any).buy_price)
+              : typeof (outcome as any).price === 'number' && Number.isFinite((outcome as any).price)
+                ? Number((outcome as any).price)
+                : null
+            const optionProbability = option?.probability != null
+              ? Number(option.probability) * (Number(option.probability) <= 1 ? 100 : 1)
+              : null
+            let rawProb = optionProbability ?? (buyPrice != null ? buyPrice * 100 : 50)
+            const probability = Number.isFinite(rawProb) ? Math.max(0, Math.min(100, rawProb)) : 50
             const selected = selectedOutcomeIndex === outcome.outcome_index
             return (
               <button
                 type="button"
                 key={outcome.token_id || outcome.outcome_index}
-                onClick={() => handleOutcomeSelection(outcome.outcome_index as OutcomeToggleIndex)}
+                onClick={() => handleOutcomeSelection(outcome.outcome_index)}
                 className={cn(
                   'border p-3 text-left transition-colors hover:bg-muted/50',
                   selected && 'border-primary bg-primary/5',

@@ -8,6 +8,7 @@ import { db } from '@/lib/drizzle'
 import { canAccessAdminWorkspace, canMoveUserFunds, canReviewRisk, getUserPlatformRole } from '@/lib/staff-role'
 import { recordAuditEvent } from '@/lib/audit'
 import { clearAutomatedRiskHoldIfEligible, setAutomatedRiskHold } from '@/lib/risk/account-restrictions'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 export async function requeueJobAction(formData: FormData) {
   const currentUser = await UserRepository.getCurrentUser({ minimal: true })
@@ -66,9 +67,12 @@ export async function reviewWithdrawalAction(formData: FormData) {
   const [request] = await db.select().from(withdrawal_requests).where(eq(withdrawal_requests.id, requestId)).limit(1)
   if (!request || !['held', 'approved'].includes(request.status)) throw new Error('This withdrawal is no longer awaiting review.')
   if (decision === 'reject') {
-    const response = await fetch(`${process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'}/internal/users/${encodeURIComponent(request.user_id)}/withdrawal-release`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-tellwise-secret': process.env.TELLWISE_SECRET || '', 'x-tellwise-internal-operation': 'withdrawal-release' },
-      body: JSON.stringify({ amount: Number(request.amount), requestId }),
+    const url = `${process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'}/internal/users/${encodeURIComponent(request.user_id)}/withdrawal-release`
+    const body = JSON.stringify({ amount: Number(request.amount), requestId })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: { 'Content-Type': 'application/json', 'x-tellwise-secret': process.env.TELLWISE_SECRET || '', 'x-tellwise-internal-operation': 'withdrawal-release' } }),
+      body,
     })
     if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'Could not release reserved funds.')
   }

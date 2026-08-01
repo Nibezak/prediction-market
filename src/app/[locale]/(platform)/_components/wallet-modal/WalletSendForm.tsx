@@ -1,26 +1,30 @@
 'use client'
 
 import type { ChangeEventHandler, FormEventHandler } from 'react'
-import { useAppKitAccount } from '@reown/appkit/react'
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   ChevronRightIcon,
   FuelIcon,
   InfoIcon,
+  TriangleAlertIcon,
   WalletIcon,
 } from 'lucide-react'
-import Image from 'next/image'
-import { useState } from 'react'
-import { WITHDRAW_CHAIN_OPTIONS, WITHDRAW_TOKEN_OPTIONS } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
+import { useEffect, useState } from 'react'
+import KenyanFlagIcon from '@/components/KenyanFlagIcon'
+import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatDisplayAmount, MAX_AMOUNT_INPUT, sanitizeNumericInput } from '@/lib/amount-input'
 import { formatAmountInputValue } from '@/lib/formatters'
+import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
+import { calculateMinisendFeeKes, formatKesMoney, MAX_MPESA_DEPOSIT_KES, MIN_MPESA_WITHDRAWAL_KES } from '@/lib/mpesa-money'
 import { cn } from '@/lib/utils'
+import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import WalletTransactionTimeline from './WalletTransactionTimeline'
 
 function WalletSendForm({
   sendTo,
@@ -28,19 +32,24 @@ function WalletSendForm({
   sendAmount,
   onChangeSendAmount,
   isSending,
+  isSubmitted = false,
+  error = '',
+  onRetrySend,
   onSubmitSend,
   onBack,
-  connectedWalletAddress,
-  onUseConnectedWallet,
   availableBalance,
   onMax,
   isBalanceLoading = false,
+  defaultPhoneNumber,
 }: {
   sendTo: string
   onChangeSendTo: ChangeEventHandler<HTMLInputElement>
   sendAmount: string
   onChangeSendAmount: (value: string) => void
   isSending: boolean
+  isSubmitted?: boolean
+  error?: string
+  onRetrySend?: () => void
   onSubmitSend: FormEventHandler<HTMLFormElement>
   onBack?: () => void
   connectedWalletAddress?: string | null
@@ -48,47 +57,47 @@ function WalletSendForm({
   availableBalance?: number | null
   onMax?: () => void
   isBalanceLoading?: boolean
+  defaultPhoneNumber?: string
 }) {
+  const site = useSiteIdentity()
   const trimmedRecipient = sendTo.trim()
-  const isRecipientAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedRecipient)
+  const normalizedPhone = normalizeKenyanPhone(trimmedRecipient)
   const parsedAmount = Number(sendAmount)
-  const [receiveToken, setReceiveToken] = useState<string>('USDC')
-  const [receiveChain, setReceiveChain] = useState<string>('Polygon')
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false)
+  const [showAmountWarning, setShowAmountWarning] = useState(false)
   const inputValue = formatDisplayAmount(sendAmount)
-  const appKitAccount = useAppKitAccount()
-  const isEmbeddedWallet = Boolean(appKitAccount.embeddedWalletInfo)
+  const feeAmount = calculateMinisendFeeKes(parsedAmount)
+  const receiveAmount = Number.isFinite(parsedAmount) ? Math.max(0, parsedAmount - feeAmount) : 0
+  const amountValidationMessage = Number.isFinite(parsedAmount) && parsedAmount > 0 && parsedAmount < MIN_MPESA_WITHDRAWAL_KES
+    ? `Minimum withdrawal is KES ${MIN_MPESA_WITHDRAWAL_KES.toLocaleString('en-US')}.`
+    : Number.isFinite(parsedAmount) && parsedAmount > MAX_MPESA_DEPOSIT_KES
+      ? `Maximum withdrawal is KES ${MAX_MPESA_DEPOSIT_KES.toLocaleString('en-US')}.`
+      : ''
   const isSubmitDisabled = (
     isSending
+    || isSubmitted
     || !trimmedRecipient
-    || !isRecipientAddress
+    || !normalizedPhone
     || !Number.isFinite(parsedAmount)
-    || parsedAmount <= 0
+    || parsedAmount < MIN_MPESA_WITHDRAWAL_KES
+    || parsedAmount > MAX_MPESA_DEPOSIT_KES
   )
-  const showConnectedWalletButton = !sendTo.trim() && !isEmbeddedWallet
   const amountDisplay = Number.isFinite(parsedAmount)
-    ? parsedAmount.toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : '0.00'
-  const receiveAmountDisplay = Number.isFinite(parsedAmount)
-    ? parsedAmount.toLocaleString('en-US', {
-        minimumFractionDigits: 5,
-        maximumFractionDigits: 5,
-      })
-    : '0.00000'
+    ? formatKesMoney(parsedAmount)
+    : formatKesMoney(0)
   const formattedBalance = Number.isFinite(availableBalance)
-    ? Number(availableBalance).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : '0.00'
+    ? formatKesMoney(availableBalance)
+    : formatKesMoney(0)
   const balanceDisplay = isBalanceLoading
     ? <Skeleton className="h-4 w-16" />
     : formattedBalance
-  const selectedToken = WITHDRAW_TOKEN_OPTIONS.find(option => option.value === receiveToken)
-  const selectedChain = WITHDRAW_CHAIN_OPTIONS.find(option => option.value === receiveChain)
+
+  useEffect(() => {
+    setShowAmountWarning(false)
+    if (!amountValidationMessage) return
+    const timer = window.setTimeout(() => setShowAmountWarning(true), 900)
+    return () => window.clearTimeout(timer)
+  }, [amountValidationMessage])
 
   function handleAmountChange(rawValue: string) {
     const cleaned = sanitizeNumericInput(rawValue)
@@ -112,6 +121,43 @@ function WalletSendForm({
     onChangeSendAmount(formatAmountInputValue(clampedValue))
   }
 
+  if (isSending || isSubmitted || error) {
+    const hasFailed = Boolean(error)
+    const timeline = [
+      {
+        title: 'Initiating withdrawal',
+        description: 'Funds reserved.',
+        status: hasFailed ? 'failed' : 'complete',
+      },
+      {
+        title: 'Create payout order',
+        description: isSubmitted ? 'Order created.' : hasFailed ? 'Order failed.' : 'Creating order.',
+        status: isSubmitted ? 'complete' : hasFailed ? 'failed' : 'active',
+      },
+      {
+        title: 'Treasury funding',
+        description: isSubmitted ? 'Waiting for funding.' : 'Pending.',
+        status: isSubmitted ? 'active' : 'pending',
+      },
+      {
+        title: 'M-Pesa confirmation',
+        description: 'Pending.',
+        status: 'pending',
+      },
+    ] as const
+
+    return (
+      <WalletTransactionTimeline
+        title={hasFailed ? 'Withdrawal could not start' : 'Awaiting payout'}
+        description={hasFailed ? error : `Withdrawal to ${normalizedPhone ?? 'your phone'}`}
+        amount={hasFailed ? undefined : formatKesMoney(receiveAmount)}
+        steps={timeline}
+        failed={hasFailed}
+        onRetry={onRetrySend}
+      />
+    )
+  }
+
   return (
     <div className="space-y-5">
       {onBack && (
@@ -126,30 +172,42 @@ function WalletSendForm({
       )}
 
       <form className="mt-2 grid gap-4" onSubmit={onSubmitSend}>
+        <div className="mb-1 flex flex-col items-center gap-3 text-center">
+          <div className="flex items-center gap-3">
+            <div className="flex size-12 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <SiteLogoIcon
+                logoSvg={site.logoSvg}
+                logoImageUrl={site.logoImageUrl}
+                alt={`${site.name} logo`}
+                size={34}
+                className="size-8"
+                imageClassName="size-8 object-contain"
+              />
+            </div>
+            <ArrowRightIcon className="size-5 text-muted-foreground" />
+            <div className="flex size-12 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <WalletIcon className="size-7" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">M-Pesa withdrawal</p>
+            <p className="text-xs text-muted-foreground">Send Kenyan shillings to your phone number.</p>
+          </div>
+        </div>
+
         <div className="grid gap-2">
-          <Label htmlFor="wallet-send-to">Recipient address</Label>
-          <div className="relative">
+          <Label htmlFor="wallet-send-to">M-Pesa phone number</Label>
+          <div className="flex h-12 items-center rounded-md border border-input bg-background px-3 shadow-xs">
+            <KenyanFlagIcon className="mr-2 shrink-0" />
             <Input
               id="wallet-send-to"
               value={sendTo}
               onChange={onChangeSendTo}
-              placeholder="0x..."
-              className={cn('h-12 text-sm placeholder:text-sm', { 'pr-28': showConnectedWalletButton })}
+              placeholder={defaultPhoneNumber || '+254, 07, 254, or 7...'}
+              inputMode="tel"
+              className="h-10 border-0 px-0 text-sm shadow-none placeholder:text-sm focus-visible:ring-0"
               required
             />
-            {showConnectedWalletButton && (
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={onUseConnectedWallet}
-                disabled={!connectedWalletAddress}
-                className="absolute inset-y-2 right-2 text-xs"
-              >
-                <WalletIcon className="size-3.5 shrink-0" />
-                <span>use connected</span>
-              </Button>
-            )}
           </div>
         </div>
         <div className="space-y-1">
@@ -171,7 +229,7 @@ function WalletSendForm({
               required
             />
             <div className="absolute inset-y-2 right-2 flex items-center gap-2">
-              <span className="text-sm font-semibold text-muted-foreground">USDC</span>
+              <span className="text-sm font-semibold text-muted-foreground">KES</span>
               <Button
                 type="button"
                 variant="outline"
@@ -185,92 +243,27 @@ function WalletSendForm({
             </div>
           </div>
           <div className="mx-2 flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              $
-              {amountDisplay}
-            </span>
+            <span>{amountDisplay}</span>
             <span className="flex items-center gap-1">
               <span>Balance:</span>
               <span>{balanceDisplay}</span>
-              <span>USDC</span>
             </span>
           </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Receive token</Label>
-            <Select value={receiveToken} onValueChange={setReceiveToken}>
-              <SelectTrigger className="h-12 w-full justify-between">
-                <div className="flex items-center gap-2">
-                  {selectedToken && (
-                    <Image
-                      src={selectedToken.icon}
-                      alt={selectedToken.label}
-                      width={20}
-                      height={20}
-                    />
-                  )}
-                  <span className="text-sm font-medium">{selectedToken?.label ?? 'Select token'}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent position="popper" side="bottom" align="start" sideOffset={6}>
-                {WITHDRAW_TOKEN_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value} disabled={!option.enabled}>
-                    <div className="flex items-center gap-2">
-                      <Image src={option.icon} alt={option.label} width={18} height={18} />
-                      <span className="text-sm">{option.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Receive chain</Label>
-            <Select value={receiveChain} onValueChange={setReceiveChain}>
-              <SelectTrigger className="h-12 w-full justify-between">
-                <div className="flex items-center gap-2">
-                  {selectedChain && (
-                    <Image
-                      src={selectedChain.icon}
-                      alt={selectedChain.label}
-                      width={20}
-                      height={20}
-                    />
-                  )}
-                  <span className="text-sm font-medium">{selectedChain?.label ?? 'Select chain'}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent position="popper" side="bottom" align="start" sideOffset={6}>
-                {WITHDRAW_CHAIN_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value} disabled={!option.enabled}>
-                    <div className="flex items-center gap-2">
-                      <Image src={option.icon} alt={option.label} width={18} height={18} />
-                      <span className="text-sm">{option.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {showAmountWarning && (
+            <div className="mx-2 flex animate-order-shake items-center gap-2 text-xs font-semibold text-orange-500">
+              <TriangleAlertIcon className="size-3.5 shrink-0" />
+              {amountValidationMessage}
+            </div>
+          )}
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-foreground">You will receive</span>
-            <div className="flex items-center gap-3 text-right">
-              <span className="text-foreground">
-                {receiveAmountDisplay}
-                {' '}
-                {receiveToken}
-              </span>
-              <span className="text-muted-foreground">
-                $
-                {amountDisplay}
-              </span>
+              <span className="text-foreground">M-Pesa payout</span>
+              <div className="flex items-center gap-3 text-right">
+              <span className="text-muted-foreground">{formatKesMoney(receiveAmount)}</span>
+              </div>
             </div>
-          </div>
           <button
             type="button"
             className="flex w-full items-center justify-between text-sm text-muted-foreground"
@@ -299,11 +292,11 @@ function WalletSendForm({
                       <div className="space-y-1 text-xs text-foreground">
                         <div className="flex items-center justify-between gap-4">
                           <span>Total cost</span>
-                          <span className="text-right">$0.00</span>
+                          <span className="text-right">{formatKesMoney(feeAmount)}</span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                          <span>Source chain gas</span>
-                          <span className="text-right">$0.00</span>
+                          <span>Payment gateway fee</span>
+                          <span className="text-right">{formatKesMoney(feeAmount)}</span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span>Destination chain gas</span>
@@ -314,7 +307,7 @@ function WalletSendForm({
                   </Tooltip>
                   <div className="flex items-center gap-1">
                     <FuelIcon className="size-4" />
-                    <span>$0.00</span>
+                    <span>{formatKesMoney(feeAmount)}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -336,7 +329,7 @@ function WalletSendForm({
                           <span className="text-right">0.00%</span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                          <span>Fun.xyz fee</span>
+                          <span>Payment gateway fee</span>
                           <span className="text-right">0.00%</span>
                         </div>
                       </div>
@@ -353,10 +346,10 @@ function WalletSendForm({
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Slippage occurs due to price changes during trade execution. Minimum received: $0.00
+                      Slippage occurs due to price changes during trade execution. Minimum received: {formatKesMoney(receiveAmount)}
                     </TooltipContent>
                   </Tooltip>
-                  <span>Auto • 0.00%</span>
+                  <span>Auto - 0.00%</span>
                 </div>
               </div>
             </TooltipProvider>
@@ -364,7 +357,7 @@ function WalletSendForm({
         </div>
 
         <Button type="submit" className="h-12 w-full gap-2 text-base" disabled={isSubmitDisabled}>
-          {isSending ? 'Submitting…' : 'Withdraw'}
+          {isSending ? 'Submitting...' : 'Withdraw'}
         </Button>
       </form>
     </div>

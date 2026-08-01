@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   MAX_CUSTOM_JAVASCRIPT_CODE_NAME_LENGTH,
@@ -40,6 +41,8 @@ interface IntegrationsSectionProps {
   onToggleSection: (value: string) => void
   googleAnalyticsId: string
   onGoogleAnalyticsIdChange: (value: string) => void
+  openRouterEnabled: boolean
+  onOpenRouterEnabledChange: (value: boolean) => void
   openRouterApiKey: string
   onOpenRouterApiKeyChange: (value: string) => void
   openRouterSelectValue: string
@@ -77,6 +80,8 @@ function IntegrationsSection({
   onToggleSection,
   googleAnalyticsId,
   onGoogleAnalyticsIdChange,
+  openRouterEnabled,
+  onOpenRouterEnabledChange,
   openRouterApiKey,
   onOpenRouterApiKeyChange,
   openRouterSelectValue,
@@ -129,6 +134,21 @@ function IntegrationsSection({
         </div>
 
         <div className="grid gap-6 border-t border-border/50 pt-6">
+          <div className="flex items-center justify-between gap-4 rounded-md border border-border/70 p-4">
+            <div className="grid gap-1">
+              <Label htmlFor="openrouter_enabled">{t('Enable AI')}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t('Use AI for market creation, translations, market context, and featured markets.')}
+              </p>
+            </div>
+            <Switch
+              id="openrouter_enabled"
+              checked={openRouterEnabled}
+              onCheckedChange={onOpenRouterEnabledChange}
+              disabled={isPending}
+            />
+          </div>
+
           <div className="grid gap-2">
             <h4 className="text-sm font-medium">{t('OpenRouter integration')}</h4>
             <Label htmlFor="openrouter_key">{t('API key')}</Label>

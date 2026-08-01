@@ -4,7 +4,6 @@ import type { ChartSettings } from '@/app/[locale]/(platform)/event/[slug]/_comp
 import type { TimeRange } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
 import type { Market, Outcome } from '@/types'
 import type { PredictionChartCursorSnapshot, PredictionChartProps } from '@/types/PredictionChartTypes'
-import { useQuery } from '@tanstack/react-query'
 import { Clock3Icon, SparkleIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
@@ -28,8 +27,8 @@ import {
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/chartSettingsStorage'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { OUTCOME_INDEX } from '@/lib/constants'
@@ -255,8 +254,20 @@ export default function MarketOutcomeGraph({
     targets: marketTargets,
     eventCreatedAt,
   })
+  const liveSnapshots = useAmmLiveMarkets(
+    market.condition_id ? [market.condition_id] : [],
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true',
+  )
   const marketQuotesByMarket = useEventMarketQuotes(marketTargets)
   const liveYesChance = useMemo(() => {
+    const target = marketTargets[0]
+    const liveProbability = target
+      ? liveSnapshots[market.condition_id]?.options.find(option => option.id === target.tokenId)?.probability
+      : undefined
+    if (typeof liveProbability === 'number' && Number.isFinite(liveProbability)) {
+      return liveProbability * 100
+    }
+
     const quote = marketQuotesByMarket[market.condition_id]
     const lastTrade = latestRawPrices[market.condition_id]
     const displayPrice = resolveDisplayPrice({
@@ -269,7 +280,7 @@ export default function MarketOutcomeGraph({
     return typeof displayPrice === 'number' && Number.isFinite(displayPrice)
       ? displayPrice * 100
       : null
-  }, [latestRawPrices, market.condition_id, marketQuotesByMarket])
+  }, [latestRawPrices, liveSnapshots, market.condition_id, marketQuotesByMarket, marketTargets])
   const normalizedHistoryForChart = useMemo(() => {
     if (typeof liveYesChance !== 'number' || !Number.isFinite(liveYesChance)) {
       return normalizedHistory
@@ -493,62 +504,11 @@ function buildChartData(
 
 function MarketOutcomeMetaInformation({ market, currentTimestamp }: { market: Market, currentTimestamp: number | null }) {
   const t = useExtracted()
-  const { clobUrl } = usePublicRuntimeConfig()
-  const volumeRequestPayload = useMemo(() => {
-    const tokenIds = (market.outcomes ?? [])
-      .map(outcome => outcome.token_id)
-      .filter(Boolean)
-      .slice(0, 2)
-
-    if (!market.condition_id || tokenIds.length < 2) {
-      return { conditions: [], signature: '' }
-    }
-
-    const signature = `${market.condition_id}:${tokenIds.join(':')}`
-    return {
-      conditions: [{ condition_id: market.condition_id, token_ids: tokenIds as [string, string] }],
-      signature,
-    }
-  }, [market.condition_id, market.outcomes])
-
-  const { data: volumeFromApi } = useQuery({
-    queryKey: ['market-volumes', clobUrl, market.condition_id, volumeRequestPayload.signature],
-    enabled: volumeRequestPayload.conditions.length > 0 && Boolean(clobUrl),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const response = await fetch(`${clobUrl}/data/volumes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          include_24h: false,
-          conditions: volumeRequestPayload.conditions,
-        }),
-      })
-
-      const payload = await response.json() as Array<{
-        condition_id: string
-        status: number
-        volume?: string
-      }>
-
-      return payload
-        .filter(entry => entry?.status === 200)
-        .reduce((total, entry) => {
-          const numeric = Number(entry.volume ?? 0)
-          return Number.isFinite(numeric) ? total + numeric : total
-        }, 0)
-    },
-  })
-
-  const resolvedVolume = useMemo(() => {
-    if (typeof volumeFromApi === 'number' && Number.isFinite(volumeFromApi)) {
-      return volumeFromApi
-    }
-    return market.volume
-  }, [market.volume, volumeFromApi])
+  const snapshots = useAmmLiveMarkets(
+    market.condition_id ? [market.condition_id] : [],
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true',
+  )
+  const resolvedVolume = snapshots[market.condition_id]?.volume ?? market.volume
 
   const shouldShowNew = isMarketNew(market.created_at, undefined, currentTimestamp)
   const formattedVolume = Number.isFinite(resolvedVolume)

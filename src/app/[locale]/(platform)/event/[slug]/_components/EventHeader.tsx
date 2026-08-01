@@ -2,12 +2,16 @@
 
 import type { PlatformNavigationTag } from '@/lib/platform-navigation'
 import type { Event } from '@/types'
+import { CodeXmlIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
+import EventChartEmbedDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartEmbedDialog'
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
+import { Button } from '@/components/ui/button'
 import { isPlatformMainCategorySlug } from '@/lib/platform-routing'
 import { cn } from '@/lib/utils'
 
@@ -130,6 +134,8 @@ function EventHeaderTaxonomyItem({
 }
 
 export default function EventHeader({ event }: EventHeaderProps) {
+  const t = useExtracted()
+  const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
   const scrolled = useScrollPastThreshold(20)
   const { childParentMap, tags } = usePlatformNavigationData()
   const taxonomy = useMemo(
@@ -216,8 +222,25 @@ export default function EventHeader({ event }: EventHeaderProps) {
 
       <div className="flex items-center gap-3 text-foreground">
         <EventShare event={event} />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t('Embed')}
+          title={t('Embed')}
+          onClick={() => setEmbedDialogOpen(true)}
+        >
+          <CodeXmlIcon className="size-5" />
+        </Button>
         <EventBookmark event={event} />
       </div>
+
+      <EventChartEmbedDialog
+        open={embedDialogOpen}
+        onOpenChange={setEmbedDialogOpen}
+        markets={event.markets}
+        initialMarketId={event.markets[0]?.condition_id ?? null}
+      />
     </div>
   )
 }

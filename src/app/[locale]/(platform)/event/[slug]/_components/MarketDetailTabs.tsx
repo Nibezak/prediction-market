@@ -84,6 +84,7 @@ export default function MarketDetailTabs({
   sharesByCondition,
 }: MarketDetailTabsProps) {
   const t = useExtracted()
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const { name: siteName } = useSiteIdentity()
   const user = useUser()
   const marketChannelStatus = useMarketChannelStatus()
@@ -155,7 +156,7 @@ export default function MarketDetailTabs({
     ]
 
     if (!shouldHideOrderBook) {
-      tabs.unshift({ id: 'orderBook', label: t('Order Book') })
+      tabs.unshift({ id: 'orderBook', label: isSlimefishBackendAmm ? t('Recent trades') : t('Order Book') })
     }
 
     if (hasOpenOrders) {
@@ -171,7 +172,7 @@ export default function MarketDetailTabs({
     }
     tabs.push({ id: 'resolution', label: t('Resolution') })
     return tabs
-  }, [hasHistory, hasOpenOrders, hasPositions, isResolvedContext, shouldHideOrderBook, t])
+  }, [hasHistory, hasOpenOrders, hasPositions, isSlimefishBackendAmm, isResolvedContext, shouldHideOrderBook, t])
 
   const selectedTab = useMemo<MarketDetailTab>(() => {
     if (controlledTab && visibleTabs.some(tab => tab.id === controlledTab)) {
@@ -221,11 +222,11 @@ export default function MarketDetailTabs({
             })}
           </div>
 
-          {!shouldHideOrderBook && (
+          {!shouldHideOrderBook && !isSlimefishBackendAmm && (
             <ConnectionStatusIndicator className="-mt-2" status={marketChannelStatus} />
           )}
 
-          {!shouldHideOrderBook && (
+          {!shouldHideOrderBook && !isSlimefishBackendAmm && (
             <button
               type="button"
               className={cn(
@@ -254,14 +255,18 @@ export default function MarketDetailTabs({
 
       <div className={cn('px-0', selectedTab === 'orderBook' ? 'pt-4 pb-0' : 'py-4')}>
         {selectedTab === 'orderBook' && !shouldHideOrderBook && (
-          <EventOrderBook
-            market={market}
-            outcome={activeOutcomeForMarket}
-            summaries={orderBookData.summaries}
-            isLoadingSummaries={orderBookData.isLoading}
-            eventSlug={event.slug}
-            openMobileOrderPanelOnLevelSelect={isMobile}
-          />
+          isSlimefishBackendAmm
+            ? <EventMarketHistory market={market} markets={event.markets} publicFeed />
+            : (
+                <EventOrderBook
+                  market={market}
+                  outcome={activeOutcomeForMarket}
+                  summaries={orderBookData.summaries}
+                  isLoadingSummaries={orderBookData.isLoading}
+                  eventSlug={event.slug}
+                  openMobileOrderPanelOnLevelSelect={isMobile}
+                />
+              )
         )}
 
         {selectedTab === 'graph' && activeOutcomeForMarket && (

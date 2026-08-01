@@ -1,4 +1,5 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { betterAuth } from 'better-auth'
 
@@ -6,7 +7,7 @@ import { nextCookies } from 'better-auth/next-js'
 
 import { customSession, twoFactor } from 'better-auth/plugins'
 
-import { isAdminEmail, isAdminWallet } from '@/lib/admin'
+import { isAdminEmail, isAdminWallet, isSuperAdminEmail } from '@/lib/admin'
 
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 
@@ -14,7 +15,7 @@ import { db } from '@/lib/drizzle'
 
 import resolveSiteUrl from '@/lib/site-url'
 
-import { syncUserToPlayMoney } from '@/lib/play-money-sync'
+import { syncUserToSlimefishBackend } from '@/lib/slimefish-backend-sync'
 
 import { getPublicAssetUrl } from '@/lib/storage'
 
@@ -26,6 +27,8 @@ import { sanitizeTradingAuthSettings } from '@/lib/trading-auth/utils'
 
 import { isWalletPlaceholderEmail } from '@/lib/user-email'
 import { getUserPlatformRole } from '@/lib/staff-role'
+import { STAFF_PERMISSIONS } from '@/lib/staff-permissions'
+import { firebaseAuthPlugin } from '@/lib/firebase-auth-plugin'
 
 import * as schema from './db/schema'
 
@@ -44,6 +47,48 @@ const SIWE_DOMAIN = siteUrlObject.host
 const SIWE_EMAIL_DOMAIN = siteUrlObject.hostname || 'kuest.com'
 
 const BUILD_ONLY_BETTER_AUTH_SECRET = 'runtime-env-only-build-placeholder-secret-32-chars-minimum'
+
+async function ensureSuperAdminEmailUser(userId: string, email: string, settings: Record<string, any> | undefined) {
+  if (!userId || !isSuperAdminEmail(email)) {
+    return settings
+  }
+  if (settings?.staff_role === 'SUPER_ADMIN') {
+    return settings
+  }
+  const nextSettings = {
+    ...(settings || {}),
+    staff_role: 'SUPER_ADMIN',
+    staff_permissions: STAFF_PERMISSIONS,
+    super_admin_auto_elevated: true,
+  }
+  await db.update(schema.users).set({
+    settings: sql`COALESCE(${schema.users.settings}, '{}'::jsonb) || ${JSON.stringify(nextSettings)}::jsonb`,
+  }).where(eq(schema.users.id, userId))
+  const existingElevationNotice = await db
+    .select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(and(
+      eq(schema.notifications.user_id, userId),
+      eq(schema.notifications.title, 'Your account has been elevated'),
+      sql`${schema.notifications.metadata}->>'role' = 'SUPER_ADMIN'`,
+    ))
+    .limit(1)
+
+  if (!existingElevationNotice.length) {
+    await db.insert(schema.notifications).values({
+      user_id: userId,
+      category: 'account',
+      title: 'Your account has been elevated',
+      description: 'Congrats, your Slimefish account is now super admin. Enable two-factor authentication before opening admin tools.',
+      metadata: { role: 'SUPER_ADMIN', autoElevated: true },
+      link_type: 'settings',
+      link_target: '/settings/account',
+      link_url: '/settings/account',
+      link_label: 'Enable 2FA',
+    })
+  }
+  return nextSettings
+}
 
 
 
@@ -148,11 +193,8 @@ export const auth = betterAuth({
   baseURL: SITE_URL,
 
   emailAndPassword: {
-
     enabled: true,
-
     minPasswordLength: 8,
-
   },
 
   advanced: {
@@ -175,7 +217,7 @@ export const auth = betterAuth({
 
           try {
 
-            await syncUserToPlayMoney({
+            await syncUserToSlimefishBackend({
 
               id: user.id,
 
@@ -189,7 +231,7 @@ export const auth = betterAuth({
 
           catch (error) {
 
-            ctx?.context.logger.error('Failed to provision Play Money signup balance', error)
+            ctx?.context.logger.error('Failed to provision Slimefish ledger signup balance', error)
 
           }
 
@@ -274,6 +316,7 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    firebaseAuthPlugin(),
 
     customSession(async ({ user, session }) => {
 
@@ -289,11 +332,13 @@ export const auth = betterAuth({
 
         : rawSettings
 
-      const settings = hydratedSettings
+      const elevatedSettings = await ensureSuperAdminEmailUser(userId, user.email, hydratedSettings)
 
-        ? sanitizeTradingAuthSettings(hydratedSettings)
+      const settings = elevatedSettings
 
-        : hydratedSettings
+        ? sanitizeTradingAuthSettings(elevatedSettings)
+
+        : elevatedSettings
 
       const isAdmin = isAdminWallet(user.name) || isAdminWallet(user.email) || isAdminWallet((user as any).username) || isAdminEmail(user.email)
       const role = getUserPlatformRole({

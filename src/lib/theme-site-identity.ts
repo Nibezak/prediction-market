@@ -41,6 +41,7 @@ export interface ThemeSiteSocialLinks {
 
 export interface ThemeSiteIdentity extends ThemeSiteSocialLinks {
   name: string
+  mobileAppName: string
   description: string
   logoMode: ThemeSiteLogoMode
   logoSvg: string
@@ -81,6 +82,7 @@ export function createDefaultThemeSiteIdentity(): ThemeSiteIdentity {
 
   return {
     name: DEFAULT_THEME_SITE_NAME,
+    mobileAppName: DEFAULT_THEME_SITE_NAME,
     description: DEFAULT_THEME_SITE_DESCRIPTION,
     logoMode: 'image',
     logoSvg,
@@ -282,6 +284,21 @@ export function validateThemeSiteName(value: string | null | undefined, sourceLa
   }
 
   return { value: normalized, error: null }
+}
+
+export function validateThemeSiteMobileAppName(value: string | null | undefined, sourceLabel: string, fallbackName: string) {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  const resolved = normalized || fallbackName.trim()
+
+  if (!resolved) {
+    return { value: null, error: `${sourceLabel} is required.` }
+  }
+
+  if (resolved.length > 32) {
+    return { value: null, error: `${sourceLabel} must be at most 32 characters.` }
+  }
+
+  return { value: resolved, error: null }
 }
 
 export function validateThemeSiteDescription(value: string | null | undefined, sourceLabel: string) {

@@ -142,7 +142,7 @@ export async function createWithdrawalReview(input: {
       user_id: input.userId, category: 'security', title: 'Withdrawal is under review',
       description: 'Our moderators are reviewing this withdrawal. Your funds remain protected while the review is completed.',
       extra_info: `$${input.amount.toFixed(2)} withdrawal`, metadata: { withdrawalRequestId: request.id, riskCaseId: caseRow?.id },
-      link_type: 'internal', link_target: 'portfolio', link_url: '/portfolio?tab=history', link_label: 'View activity',
+      link_type: 'internal', link_target: 'portfolio', link_url: '/portfolio?tab=transactions', link_label: 'View transaction',
     })
     if (held) await tx.update(users).set({
       settings: sql`

@@ -78,6 +78,10 @@ function resolvePredictionResultsRewrite({
 }
 
 export default async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/__/')) {
+    return NextResponse.next()
+  }
+
   const pathnameLocale = getLocaleFromPathname(request.nextUrl.pathname)
   const unlocalizedPath = stripLocale(request.nextUrl.pathname, pathnameLocale)
   const bypassGeoblock = unlocalizedPath.startsWith('/admin')

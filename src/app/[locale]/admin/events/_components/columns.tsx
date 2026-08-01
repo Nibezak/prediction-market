@@ -2,13 +2,14 @@
 
 import type { ColumnDef } from '@tanstack/react-table'
 import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
-import { ArrowUpDownIcon, BadgeInfoIcon, CheckCircleIcon, EyeIcon, EyeOffIcon, RadioIcon, RepeatIcon, TrophyIcon } from 'lucide-react'
+import { ArrowUpDownIcon, BadgeInfoIcon, CheckCircleIcon, EyeIcon, EyeOffIcon, LockIcon, RadioIcon, RepeatIcon, Trash2Icon, TrophyIcon, UsersIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Checkbox } from '@/components/ui/checkbox'
 import { formatCompactCurrency, formatDate } from '@/lib/formatters'
 import { isSportsAuxiliaryEventSlug } from '@/lib/sports-event-slugs'
 import { cn } from '@/lib/utils'
@@ -19,10 +20,14 @@ interface EventColumnOptions {
   onOpenLivestreamModal: (event: AdminEventRow) => void
   onOpenSportsFinalModal: (event: AdminEventRow) => void
   onOpenResolutionModal: (event: AdminEventRow) => void
+  onOpenCloseModal: (event: AdminEventRow) => void
+  onOpenDeleteModal?: (event: AdminEventRow) => void
+  onOpenTradersModal?: (event: AdminEventRow) => void
   isUpdatingHidden: (eventId: string) => boolean
   canResolve: boolean
   canEdit: boolean
   canModerate: boolean
+  canClose: boolean
 }
 
 function resolveStatusVariant(status: AdminEventRow['status']): 'default' | 'secondary' | 'outline' | 'destructive' {
@@ -57,14 +62,42 @@ export function useAdminEventsColumns({
   onOpenLivestreamModal,
   onOpenSportsFinalModal,
   onOpenResolutionModal,
+  onOpenCloseModal,
+  onOpenDeleteModal,
+  onOpenTradersModal,
   isUpdatingHidden,
   canResolve,
   canEdit,
   canModerate,
+  canClose,
 }: EventColumnOptions): ColumnDef<AdminEventRow>[] {
   const t = useExtracted()
 
   return [
+    {
+      id: 'select',
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && 'indeterminate')
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+          className="translate-y-[2px]"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+          className="translate-y-[2px]"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       accessorKey: 'title',
       id: 'title',
@@ -279,6 +312,24 @@ export function useAdminEventsColumns({
               </Tooltip>
             )}
 
+            {canClose && event.status === 'active' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-amber-500 hover:text-amber-500"
+                    onClick={() => onOpenCloseModal(event)}
+                    aria-label={t('Close market')}
+                  >
+                    <LockIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('Close market')}</TooltipContent>
+              </Tooltip>
+            )}
+
             {canEdit && !shouldHideSportsAdminControls && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -323,24 +374,62 @@ export function useAdminEventsColumns({
               </Tooltip>
             )}
 
-            {canModerate && <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={`size-8 ${event.is_hidden ? 'text-red-500 hover:text-red-500' : 'text-muted-foreground'}`}
-                  onClick={() => onToggleHidden(event, nextHiddenState)}
-                  disabled={hiddenUpdatePending}
-                  aria-label={event.is_hidden ? t('Show event') : t('Hide event')}
-                >
-                  {event.is_hidden ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {event.is_hidden ? t('Show event') : t('Hide event')}
-              </TooltipContent>
-            </Tooltip>}
+            {onOpenTradersModal && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => onOpenTradersModal(event)}
+                    aria-label={t('View users')}
+                  >
+                    <UsersIcon className="size-4 text-muted-foreground" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('View users')}</TooltipContent>
+              </Tooltip>
+            )}
+
+            {canModerate && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={`size-8 ${event.is_hidden ? 'text-red-500 hover:text-red-500' : 'text-muted-foreground'}`}
+                    onClick={() => onToggleHidden(event, nextHiddenState)}
+                    disabled={hiddenUpdatePending}
+                    aria-label={event.is_hidden ? t('Show event') : t('Hide event')}
+                  >
+                    {event.is_hidden ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {event.is_hidden ? t('Show event') : t('Hide event')}
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {canModerate && onOpenDeleteModal && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => onOpenDeleteModal(event)}
+                    aria-label={t('Delete event')}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('Delete event')}</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         )
       },

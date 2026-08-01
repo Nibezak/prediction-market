@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react'
 import type { FilterSettings } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
-import { useAppKitAccount } from '@reown/appkit/react'
 import { BookmarkIcon, Settings2Icon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
@@ -12,7 +11,6 @@ import FilterSettingsRow from '@/app/[locale]/(platform)/(home)/_components/Filt
 import FilterToolbarSearchInput from '@/app/[locale]/(platform)/(home)/_components/FilterToolbarSearchInput'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { useAppKit } from '@/hooks/useAppKit'
 import { cn } from '@/lib/utils'
 
 interface FilterToolbarProps {
@@ -26,9 +24,7 @@ interface FilterToolbarProps {
 
 interface BookmarkToggleProps {
   isBookmarked: boolean
-  isConnected: boolean
   onToggle: () => void
-  onConnect: () => void
 }
 
 interface SettingsToggleProps {
@@ -44,8 +40,6 @@ function useFilterToolbarState({
   filters: FilterState
   onFiltersChange: (filters: Partial<FilterState>) => void
 }) {
-  const { open } = useAppKit()
-  const { isConnected } = useAppKitAccount()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const filterSettings = useMemo(() => createDefaultFilters({
@@ -79,10 +73,6 @@ function useFilterToolbarState({
   const handleBookmarkToggle = useCallback(() => {
     onFiltersChange({ bookmarked: !filters.bookmarked })
   }, [filters.bookmarked, onFiltersChange])
-
-  const handleConnect = useCallback(() => {
-    void open()
-  }, [open])
 
   const handleSettingsToggle = useCallback(() => {
     setIsSettingsOpen(prev => !prev)
@@ -139,13 +129,11 @@ function useFilterToolbarState({
     filterSettings,
     handleBookmarkToggle,
     handleClearFilters,
-    handleConnect,
     handleFilterChange,
     handleSearchChange,
     handleSettingsToggle,
     hasActiveFilters,
     hasActiveSettingsFilters,
-    isConnected,
     isSettingsOpen,
   }
 }
@@ -162,13 +150,11 @@ export default function FilterToolbar({
     filterSettings,
     handleBookmarkToggle,
     handleClearFilters,
-    handleConnect,
     handleFilterChange,
     handleSearchChange,
     handleSettingsToggle,
     hasActiveFilters,
     hasActiveSettingsFilters,
-    isConnected,
     isSettingsOpen,
   } = useFilterToolbarState({
     filters,
@@ -201,9 +187,7 @@ export default function FilterToolbar({
 
             <BookmarkToggle
               isBookmarked={filters.bookmarked}
-              isConnected={isConnected}
               onToggle={handleBookmarkToggle}
-              onConnect={handleConnect}
             />
           </div>
         </div>
@@ -263,7 +247,7 @@ function useBookmarkToggleLabels(isBookmarked: boolean) {
   }
 }
 
-function BookmarkToggle({ isBookmarked, isConnected, onToggle, onConnect }: BookmarkToggleProps) {
+function BookmarkToggle({ isBookmarked, onToggle }: BookmarkToggleProps) {
   const { ariaLabel, title } = useBookmarkToggleLabels(isBookmarked)
 
   return (
@@ -274,7 +258,7 @@ function BookmarkToggle({ isBookmarked, isConnected, onToggle, onConnect }: Book
       title={title}
       aria-label={ariaLabel}
       aria-pressed={isBookmarked}
-      onClick={isConnected ? onToggle : onConnect}
+      onClick={onToggle}
     >
       <BookmarkIcon className={cn(`size-6 md:size-5`, { 'fill-primary text-primary': isBookmarked })} />
     </Button>

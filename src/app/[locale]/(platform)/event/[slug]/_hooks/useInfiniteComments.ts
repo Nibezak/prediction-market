@@ -40,7 +40,7 @@ export function useInfiniteComments(
   user: User | null,
   holdersOnly = false,
 ) {
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const queryClient = useQueryClient()
   const { communityUrl } = usePublicRuntimeConfig()
   const { signMessageAsync } = useSignMessage()
@@ -51,10 +51,10 @@ export function useInfiniteComments(
   const userAddress = user?.address ?? null
   const userDepositWalletAddress = user?.deposit_wallet_address ?? null
   const commentsQueryKey = ['event-comments', communityUrl, eventSlug, sortBy, holdersOnly, userAddress]
-  const communityApiUrl = isPlayMoneyAmm ? '/api/community' : communityUrl
+  const communityApiUrl = isSlimefishBackendAmm ? '/api/community' : communityUrl
 
   const getCommunityToken = useCallback(async () => {
-    if (isPlayMoneyAmm) {
+    if (isSlimefishBackendAmm) {
       if (!user) throw new Error('Sign in to comment')
       return ''
     }
@@ -68,7 +68,7 @@ export function useInfiniteComments(
       communityApiUrl,
       depositWalletAddress: userDepositWalletAddress,
     })
-  }, [communityApiUrl, isPlayMoneyAmm, runWithSignaturePrompt, signMessageAsync, user, userAddress, userDepositWalletAddress])
+  }, [communityApiUrl, isSlimefishBackendAmm, runWithSignaturePrompt, signMessageAsync, user, userAddress, userDepositWalletAddress])
 
   const fetchCommentsPage = useCallback(async ({ pageParam = 0 }: { pageParam: number }) => {
     const response = await fetch(`${communityApiUrl}/comments?event_slug=${eventSlug}&page=${pageParam}`)

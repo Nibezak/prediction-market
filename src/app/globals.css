@@ -1,4 +1,5 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
+@source '../';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
@@ -256,6 +257,10 @@
   animation: trade-flow-rise 8s ease-out forwards;
 }
 
+@utility animate-pull-refresh-wave {
+  animation: pull-refresh-wave 0.72s ease-in-out infinite;
+}
+
 @utility text-2xs {
   font-size: 10px;
 }
@@ -337,5 +342,17 @@
   100% {
     transform: translateY(-10px);
     opacity: 0;
+  }
+}
+
+@keyframes pull-refresh-wave {
+  0%,
+  100% {
+    transform: scaleY(0.65);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scaleY(1.18);
+    opacity: 1;
   }
 }

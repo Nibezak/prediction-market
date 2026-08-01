@@ -10,6 +10,7 @@ interface EventOrderPanelResolvedMarketDisplayProps {
   isSingleMarket: boolean
   shouldShowResolvedSportsSubtitle: boolean
   resolvedMarketTitle: string | null
+  positionRows: Array<{ label: string, shares: string, stake: string }>
   hasClaimableWinnings: boolean
   claimPositionLabel: string
   claimValuePerShareLabel: string
@@ -25,6 +26,7 @@ export default function EventOrderPanelResolvedMarketDisplay({
   isSingleMarket,
   shouldShowResolvedSportsSubtitle,
   resolvedMarketTitle,
+  positionRows,
   hasClaimableWinnings,
   claimPositionLabel,
   claimValuePerShareLabel,
@@ -48,7 +50,7 @@ export default function EventOrderPanelResolvedMarketDisplay({
           ? (isClosed ? t('Market Closed') : t('Market Paused'))
           : (
               <>
-                {t('Outcome:')}
+                {resolvedMarketTitle && !isSingleMarket ? `${resolvedMarketTitle}:` : t('Outcome:')}
                 {' '}
                 {resolvedOutcomeLabel}
               </>
@@ -57,8 +59,22 @@ export default function EventOrderPanelResolvedMarketDisplay({
       {isClosed && (
         <div className="text-sm text-muted-foreground">{t('Awaiting final outcome')}</div>
       )}
-      {!isPaused && ((!isSingleMarket || shouldShowResolvedSportsSubtitle) && resolvedMarketTitle) && (
+      {!isPaused && ((isSingleMarket && shouldShowResolvedSportsSubtitle) && resolvedMarketTitle) && (
         <div className="text-sm text-muted-foreground">{resolvedMarketTitle}</div>
+      )}
+      {!isPaused && positionRows.length > 0 && (
+        <div className="mt-2 w-full border-t border-border pt-3 text-left">
+          <p className="mb-2 text-center text-sm font-semibold text-foreground">{t('Your trade')}</p>
+          <div className="divide-y divide-border border border-border">
+            {positionRows.map(row => (
+              <div key={row.label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2 text-sm">
+                <span className="font-medium text-foreground">{row.label}</span>
+                <span className="text-muted-foreground">{row.shares}</span>
+                <span className="font-medium text-foreground">{row.stake}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
       {!isPaused && hasClaimableWinnings && (
         <div className="mt-2 w-full space-y-3 text-left">

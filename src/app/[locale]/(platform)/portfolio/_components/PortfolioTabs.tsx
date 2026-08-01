@@ -4,19 +4,19 @@ import type { Route } from 'next'
 import { useExtracted } from 'next-intl'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { startTransition, useMemo, useOptimistic } from 'react'
-import PortfolioOpenOrdersList from '@/app/[locale]/(platform)/portfolio/_components/PortfolioOpenOrdersList'
 import PublicActivityList from '@/app/[locale]/(platform)/profile/_components/PublicActivityList'
 import PublicPositionsList from '@/app/[locale]/(platform)/profile/_components/PublicPositionsList'
+import PortfolioTransactionsList from '@/app/[locale]/(platform)/portfolio/_components/PortfolioTransactionsList'
 import { useTabIndicatorPosition } from '@/hooks/useTabIndicatorPosition'
 import { cn } from '@/lib/utils'
 
-type TabType = 'positions' | 'openOrders' | 'history'
+type TabType = 'positions' | 'history' | 'transactions'
 
 const TAB_QUERY_PARAM = 'tab'
 const tabQueryValueByTab: Record<TabType, string> = {
   positions: 'positions',
-  openOrders: 'Open orders',
   history: 'history',
+  transactions: 'transactions',
 }
 
 function resolveTabFromQueryValue(value: string | null): TabType {
@@ -29,12 +29,11 @@ function resolveTabFromQueryValue(value: string | null): TabType {
     .toLowerCase()
     .replace(/[\s_+-]+/g, '')
 
-  if (normalized === 'openorders' || normalized === 'openorder' || normalized === 'orders') {
-    return 'openOrders'
-  }
-
   if (normalized === 'history' || normalized === 'activity') {
     return 'history'
+  }
+  if (normalized === 'transactions' || normalized === 'transaction') {
+    return 'transactions'
   }
 
   return 'positions'
@@ -42,8 +41,8 @@ function resolveTabFromQueryValue(value: string | null): TabType {
 
 const baseTabs = [
   { id: 'positions' as const },
-  { id: 'openOrders' as const },
   { id: 'history' as const },
+  { id: 'transactions' as const },
 ]
 
 interface PortfolioTabsProps {
@@ -106,9 +105,9 @@ export default function PortfolioTabs({ userAddress }: PortfolioTabsProps) {
             >
               {tab.id === 'positions'
                 ? t('Positions')
-                : tab.id === 'openOrders'
-                  ? t('Open Orders')
-                  : t('History')}
+                : tab.id === 'history'
+                  ? t('History')
+                  : t('Transactions')}
             </button>
           ))}
         </div>
@@ -128,8 +127,8 @@ export default function PortfolioTabs({ userAddress }: PortfolioTabsProps) {
 
       <div className="space-y-4 px-0 pt-4 pb-0 sm:px-0">
         {activeTab === 'positions' && <PublicPositionsList userAddress={userAddress} />}
-        {activeTab === 'openOrders' && <PortfolioOpenOrdersList userAddress={userAddress} />}
         {activeTab === 'history' && <PublicActivityList userAddress={userAddress} />}
+        {activeTab === 'transactions' && <PortfolioTransactionsList />}
       </div>
     </div>
   )

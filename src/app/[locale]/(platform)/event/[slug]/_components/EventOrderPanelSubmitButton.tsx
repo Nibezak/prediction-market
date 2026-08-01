@@ -40,8 +40,8 @@ export default function EventOrderPanelSubmitButton({
       <Button
         type={type}
         size="outcomeLg"
-        disabled={isDisabled}
-        aria-disabled={isDisabled}
+        disabled={isDisabled || isLoading}
+        aria-disabled={isDisabled || isLoading}
         onClick={onClick}
         className={cn(
           `

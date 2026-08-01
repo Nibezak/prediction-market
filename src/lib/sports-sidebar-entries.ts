@@ -180,7 +180,6 @@ const sportsSidebarSpec: SidebarSpecItem[] = [
       { type: 'link', source: { menuSlug: 'bkbsl' } },
       { type: 'link', source: { menuSlug: 'bkbbl' } },
       { type: 'link', source: { menuSlug: 'bkligend' } },
-      { type: 'link', source: { menuSlug: 'bkisrsl' } },
       { type: 'link', source: { menuSlug: 'bkplk' } },
       { type: 'link', source: { menuSlug: 'bkseriea' } },
       { type: 'link', source: { menuSlug: 'nba' } },

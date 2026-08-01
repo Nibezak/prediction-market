@@ -1,7 +1,14 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+const BUILT_IN_ADMIN_EMAILS = new Set([
+  'kevin.nibeza@gmail.com',
+  'admin@slimefish.com',
+])
 
-export const ADMIN_VERIFICATION_COOKIE_NAME = 'tellwise_admin_verified'
-const ADMIN_VERIFICATION_COOKIE_MAX_AGE_SECONDS = 60 * 30
+function parseEmailList(value: string | undefined) {
+  return (value || '')
+    .split(',')
+    .map(item => item.trim().toLowerCase())
+    .filter(Boolean)
+}
 
 function parseAdminWalletsEnv(value: string): string[] {
   const trimmed = value.trim()
@@ -51,19 +58,17 @@ export function isAdminWallet(address?: string | null): boolean {
   return getAdminWallets().includes(address.toLowerCase())
 }
 
-function requireAdminEnv(name: 'ADMIN_VERIFICATION_EMAIL' | 'ADMIN_VERIFICATION_PASSPHRASE'): string {
+function requireAdminEmailEnv(): string {
+  const name = 'ADMIN_VERIFICATION_EMAIL'
   const value = process.env[name]?.trim()
   if (!value) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(`${name} is required for admin access.`)
-    }
     return ''
   }
   return value
 }
 
 export function getAdminVerificationEmail(): string {
-  return requireAdminEnv('ADMIN_VERIFICATION_EMAIL').toLowerCase()
+  return requireAdminEmailEnv().toLowerCase()
 }
 
 export function isAdminEmail(email?: string | null): boolean {
@@ -71,76 +76,17 @@ export function isAdminEmail(email?: string | null): boolean {
     return false
   }
 
+  const normalizedEmail = email.trim().toLowerCase()
   const adminEmail = getAdminVerificationEmail()
-  return Boolean(adminEmail) && email.trim().toLowerCase() === adminEmail
+  return BUILT_IN_ADMIN_EMAILS.has(normalizedEmail)
+    || (Boolean(adminEmail) && normalizedEmail === adminEmail)
 }
 
-export function getAdminVerificationPassphrase(): string {
-  return requireAdminEnv('ADMIN_VERIFICATION_PASSPHRASE')
-}
-
-export function verifyAdminPassphrase(passphrase: string): boolean {
-  const expected = getAdminVerificationPassphrase()
-  const received = passphrase.trim()
-  if (!expected || !received) {
+export function isSuperAdminEmail(email?: string | null): boolean {
+  if (!email) {
     return false
   }
-
-  const expectedBuffer = Buffer.from(expected)
-  const receivedBuffer = Buffer.from(received)
-  if (expectedBuffer.length !== receivedBuffer.length) {
-    return false
-  }
-
-  return timingSafeEqual(expectedBuffer, receivedBuffer)
-}
-
-function getAdminCookieSecret() {
-  return process.env.BETTER_AUTH_SECRET?.trim() || process.env.ADMIN_VERIFICATION_PASSPHRASE?.trim() || ''
-}
-
-function signAdminVerificationPayload(payload: string) {
-  const secret = getAdminCookieSecret()
-  if (!secret) {
-    return ''
-  }
-  return createHmac('sha256', secret).update(payload).digest('hex')
-}
-
-export function createAdminVerificationCookieValue(userId: string) {
-  const expiresAt = Date.now() + ADMIN_VERIFICATION_COOKIE_MAX_AGE_SECONDS * 1000
-  const payload = `${userId}.${expiresAt}`
-  const signature = signAdminVerificationPayload(payload)
-  if (!signature) {
-    return ''
-  }
-  return `${payload}.${signature}`
-}
-
-export function verifyAdminVerificationCookieValue(value: string | undefined, userId: string) {
-  if (!value || !userId) {
-    return false
-  }
-
-  const [cookieUserId, expiresAtRaw, signature] = value.split('.')
-  if (!cookieUserId || !expiresAtRaw || !signature || cookieUserId !== userId) {
-    return false
-  }
-
-  const expiresAt = Number.parseInt(expiresAtRaw, 10)
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) {
-    return false
-  }
-
-  const payload = `${cookieUserId}.${expiresAtRaw}`
-  const expected = signAdminVerificationPayload(payload)
-  if (!expected || expected.length !== signature.length) {
-    return false
-  }
-
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
-}
-
-export function getAdminVerificationCookieMaxAge() {
-  return ADMIN_VERIFICATION_COOKIE_MAX_AGE_SECONDS
+  const normalizedEmail = email.trim().toLowerCase()
+  return parseEmailList(process.env.SUPER_ADMIN_EMAILS).includes(normalizedEmail)
+    || normalizedEmail === 'kevin.nibeza@gmail.com'
 }

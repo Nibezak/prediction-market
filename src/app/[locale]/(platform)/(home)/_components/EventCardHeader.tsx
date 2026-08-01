@@ -6,6 +6,7 @@ import {
 } from '@/app/[locale]/(platform)/(home)/_utils/homeCardMarketDisplay'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
+import { NewBadge } from '@/components/ui/new-badge'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { resolveEventPagePath } from '@/lib/events-routing'
@@ -22,6 +23,7 @@ interface EventCardHeaderProps {
   isSingleMarket: boolean
   primaryMarket?: Market
   roundedPrimaryDisplayChance: number | null
+  shouldShowNewBadge?: boolean
 }
 
 export default function EventCardHeader({
@@ -30,6 +32,7 @@ export default function EventCardHeader({
   isSingleMarket,
   primaryMarket,
   roundedPrimaryDisplayChance,
+  shouldShowNewBadge,
 }: EventCardHeaderProps) {
   const t = useExtracted()
   const normalizeOutcomeLabel = useOutcomeLabel()
@@ -55,7 +58,7 @@ export default function EventCardHeader({
 
   return (
     <div className="mb-3 flex items-start justify-between">
-      <AppLink intentPrefetch href={eventHref} className="flex flex-1 items-center gap-2 pr-2">
+      <AppLink intentPrefetch href={eventHref} className={cn("flex flex-1 items-center gap-2", shouldShowNewBadge ? "pr-16" : "pr-2")}>
         <div
           className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm"
         >

@@ -1,5 +1,6 @@
 'use client'
 
+import { BadgePlusIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
@@ -20,14 +21,20 @@ function useDepositRequestTrigger() {
   return { requestId, handleClick }
 }
 
-export default function HeaderDepositButton() {
+export default function HeaderDepositButton({ iconOnly = false }: { iconOnly?: boolean }) {
   const t = useExtracted()
   const { requestId, handleClick } = useDepositRequestTrigger()
 
   return (
     <>
-      <Button size="headerCompact" onClick={handleClick}>
-        {t('Deposit')}
+      <Button
+        size={iconOnly ? 'icon' : 'headerCompact'}
+        variant={iconOnly ? 'ghost' : 'default'}
+        onClick={handleClick}
+        aria-label={t('Deposit')}
+        title={t('Deposit')}
+      >
+        {iconOnly ? <BadgePlusIcon className="size-5" strokeWidth={2.25} /> : t('Deposit')}
       </Button>
       {requestId > 0 && <HeaderDepositFlow requestId={requestId} />}
     </>

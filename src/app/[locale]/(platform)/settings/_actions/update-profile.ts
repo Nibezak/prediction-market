@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { UserRepository } from '@/lib/db/queries/user'
 import { validateOutboundImageUrl } from '@/lib/og-image-security'
-import { uploadPublicAsset } from '@/lib/storage'
+import { getPublicAssetUrl, uploadPublicAsset } from '@/lib/storage'
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
@@ -15,6 +15,7 @@ const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/web
 export interface ActionState {
   error?: string
   errors?: Record<string, string | undefined>
+  image?: string
 }
 
 function emptyStringToUndefined(value: unknown) {
@@ -126,7 +127,7 @@ export async function updateUserAction(formData: FormData): Promise<ActionState>
     }
 
     revalidatePath('/settings')
-    return {}
+    return { image: typeof updateData.image === 'string' ? getPublicAssetUrl(updateData.image) : user.image }
   }
   catch {
     return { error: DEFAULT_ERROR_MESSAGE }
@@ -149,7 +150,7 @@ async function uploadImage(user: any, image: File) {
   })
 
   if (error) {
-    return user.image?.startsWith('http') ? null : user.image
+    throw new Error(`Profile image upload failed: ${error}`)
   }
 
   return fileName

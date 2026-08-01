@@ -10,7 +10,12 @@ import { formatCentsLabel, formatCompactCurrency, formatPercent } from '@/lib/fo
 import { fetchSafeOgImageDataUrl } from '@/lib/og-image-security'
 import { resolveOutcomeButtonTheme } from '@/lib/outcome-theme'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
+import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 import resolveSiteUrl from '@/lib/site-url'
+import {
+  buildSvgDataUri,
+  DEFAULT_THEME_SITE_LOGO_SVG,
+} from '@/lib/theme-site-identity'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
 const IMAGE_WIDTH = 1200
@@ -19,6 +24,7 @@ const CHART_WIDTH = 598
 const CHART_HEIGHT = 120
 const MAX_CHART_POINTS = 28
 const SOCIAL_HISTORY_FETCH_TIMEOUT_MS = 1500
+const SOCIAL_SERIES_COLORS = ['#16a34a', '#f97316', '#2563eb', '#a855f7', '#e11d48', '#0891b2', '#ca8a04', '#4f46e5', '#db2777', '#65a30d']
 const THEME_PRESET_PRIMARY_COLOR = {
   amber: 'oklch(0.881 0.168 94.237)',
   default: 'oklch(0.55 0.2 255)',
@@ -323,6 +329,34 @@ async function fetchMarketPriceHistory(tokenId: string, createdAt: string, resol
   }
 }
 
+async function fetchOutcomePriceHistories(outcomes: MarketOutcome[]) {
+  const tokenIds = outcomes.map(outcome => outcome.token_id).filter((tokenId): tokenId is string => Boolean(tokenId))
+  const serviceKey = process.env.SLIMEFISH_BACKEND_SERVICE_API_KEY?.trim() || process.env.TELLWISE_SECRET?.trim() || ''
+  const baseUrl = process.env.AMM_BASE_URL?.trim() || 'http://localhost:8000/api/v1'
+  if (tokenIds.length === 0 || !serviceKey) return {} as Record<string, PriceHistoryPoint[]>
+
+  try {
+    const url = `${baseUrl.replace(/\/$/, '')}/prices`
+    const body = JSON.stringify({ markets: tokenIds })
+    const response = await fetch(url, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: {
+        'content-type': 'application/json',
+        'x-tellwise-secret': serviceKey,
+      } }),
+      body,
+      signal: AbortSignal.timeout(SOCIAL_HISTORY_FETCH_TIMEOUT_MS),
+    })
+    if (!response.ok) return {}
+    const payload = await response.json() as { history?: Record<string, PriceHistoryPoint[]> }
+    return payload.history ?? {}
+  }
+  catch {
+    return {}
+  }
+}
+
 function buildFallbackHistory(price: number | null) {
   const safePrice = Number.isFinite(price) ? Math.max(0, Math.min(1, price ?? 0.5)) : 0.5
 
@@ -515,6 +549,10 @@ export async function GET(request: Request) {
   const event = eventResult.data
   const siteUrl = resolveSiteUrl(process.env)
   const siteName = runtimeTheme.site.name
+  const siteLogoUrl = await fetchSafeOgImageDataUrl(runtimeTheme.site.logoUrl, {
+    siteUrl,
+    timeoutMs: 900,
+  }) || buildSvgDataUri(DEFAULT_THEME_SITE_LOGO_SVG)
   const primaryColor = resolveThemePrimaryColor(
     runtimeTheme.theme.light.primary ?? runtimeTheme.theme.dark.primary ?? null,
     runtimeTheme.theme.presetId,
@@ -522,13 +560,28 @@ export async function GET(request: Request) {
   const explicitMarketRequested = Boolean(marketSlug)
   const focusedMarket = resolveFocusedMarket(event, marketSlug)
   const chartTokenId = resolveChartTokenId(focusedMarket)
-  const [eventImageUrl, chartHistory] = await Promise.all([
+  const isCategoricalMarket = (focusedMarket?.outcomes.length ?? 0) > 2
+  const [eventImageUrl, chartHistory, outcomeHistories] = await Promise.all([
     resolveEventImage(event, focusedMarket, siteUrl),
-    fetchMarketPriceHistory(chartTokenId, event.created_at, event.resolved_at),
+    isCategoricalMarket ? Promise.resolve([]) : fetchMarketPriceHistory(chartTokenId, event.created_at, event.resolved_at),
+    isCategoricalMarket && focusedMarket
+      ? fetchOutcomePriceHistories(focusedMarket.outcomes)
+      : Promise.resolve({} as Record<string, PriceHistoryPoint[]>),
   ])
   const outcomeButtons = resolveOutcomeButtons(event, focusedMarket, explicitMarketRequested)
   const headlineMetric = resolveHeadlineMetric(event, focusedMarket, explicitMarketRequested)
   const chartData = buildChartData(chartHistory.length > 0 ? chartHistory : buildFallbackHistory(focusedMarket?.price ?? null))
+  const categoricalChartSeries = isCategoricalMarket && focusedMarket
+    ? focusedMarket.outcomes.map((outcome, index) => {
+        const price = resolveOutcomePrice(focusedMarket, outcome) ?? (1 / focusedMarket.outcomes.length)
+        const history = outcome.token_id ? outcomeHistories[outcome.token_id] : null
+        return {
+          label: outcome.outcome_text?.trim() || `Outcome ${index + 1}`,
+          color: SOCIAL_SERIES_COLORS[index % SOCIAL_SERIES_COLORS.length]!,
+          chart: buildChartData(history?.length ? history : buildFallbackHistory(price)),
+        }
+      })
+    : []
   const headlinePriceLabel = headlineMetric.price !== null && headlineMetric.price !== undefined
     ? formatPercent((headlineMetric.price ?? 0) * 100, { digits: 0 })
     : null
@@ -589,7 +642,28 @@ export async function GET(request: Request) {
                     }}
                   />
                 )
-              : renderFallbackImage(event.title)}
+              : siteLogoUrl
+                ? (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: primaryColor,
+                      }}
+                    >
+                      <OgImage
+                        src={siteLogoUrl}
+                        alt=""
+                        width={180}
+                        height={180}
+                        style={{ width: '180px', height: '180px', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )
+                : renderFallbackImage(event.title)}
             <div
               style={{
                 position: 'absolute',
@@ -681,6 +755,7 @@ export async function GET(request: Request) {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
+                    gap: '8px',
                     borderRadius: '999px',
                     background: '#f8fafc',
                     padding: '8px 14px',
@@ -689,6 +764,17 @@ export async function GET(request: Request) {
                     color: '#94a3b8',
                   }}
                 >
+                  {siteLogoUrl
+                    ? (
+                        <OgImage
+                          src={siteLogoUrl}
+                          alt=""
+                          width={22}
+                          height={22}
+                          style={{ width: '22px', height: '22px', objectFit: 'contain' }}
+                        />
+                      )
+                    : null}
                   {siteName}
                 </div>
               </div>
@@ -786,12 +872,14 @@ export async function GET(request: Request) {
                 style={{
                   position: 'relative',
                   width: `${CHART_WIDTH}px`,
-                  height: `${CHART_HEIGHT}px`,
+                  minHeight: isCategoricalMarket ? '164px' : `${CHART_HEIGHT}px`,
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   borderRadius: '20px',
                   background: '#f8fafc',
-                  padding: '18px 16px',
+                  padding: isCategoricalMarket ? '12px 16px' : '18px 16px',
                 }}
               >
                 <svg
@@ -802,23 +890,54 @@ export async function GET(request: Request) {
                     display: 'block',
                   }}
                 >
-                  <path
-                    d={chartData.path}
-                    fill="none"
-                    stroke={primaryColor}
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {chartEndPoint && (
-                    <circle
-                      cx={chartEndPoint.x}
-                      cy={chartEndPoint.y}
-                      r="5"
-                      fill={primaryColor}
-                    />
-                  )}
+                  {categoricalChartSeries.length > 0
+                    ? categoricalChartSeries.map((series) => {
+                        const endPoint = series.chart.points.at(-1)
+                        return (
+                          <g key={series.label}>
+                            <path
+                              d={series.chart.path}
+                              fill="none"
+                              stroke={series.color}
+                              strokeWidth="4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            {endPoint && <circle cx={endPoint.x} cy={endPoint.y} r="5" fill={series.color} />}
+                          </g>
+                        )
+                      })
+                    : (
+                        <>
+                          <path
+                            d={chartData.path}
+                            fill="none"
+                            stroke={primaryColor}
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          {chartEndPoint && (
+                            <circle
+                              cx={chartEndPoint.x}
+                              cy={chartEndPoint.y}
+                              r="5"
+                              fill={primaryColor}
+                            />
+                          )}
+                        </>
+                      )}
                 </svg>
+                {categoricalChartSeries.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px 14px' }}>
+                    {categoricalChartSeries.map(series => (
+                      <div key={series.label} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: '#64748b' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '999px', background: series.color }} />
+                        <div style={{ display: 'flex' }}>{series.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div

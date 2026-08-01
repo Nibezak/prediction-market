@@ -1,6 +1,7 @@
 import type { FormEvent, ReactNode } from 'react'
 import type { User } from '@/types'
 import {
+  ArrowRightLeftIcon,
   AtSignIcon,
   CheckIcon,
   CircleCheckIcon,
@@ -8,6 +9,7 @@ import {
   Loader2Icon,
   LockKeyholeIcon,
   MailIcon,
+  PhoneIcon,
   WalletIcon,
   ZapIcon,
 } from 'lucide-react'
@@ -17,6 +19,8 @@ import { checkUsernameAvailabilityAction } from '@/app/[locale]/(platform)/_acti
 import { FundAccountDialog } from '@/app/[locale]/(platform)/_components/TradingDialogs'
 import { WalletFlow } from '@/app/[locale]/(platform)/_components/WalletFlow'
 import AppLink from '@/components/AppLink'
+import KenyanFlagIcon from '@/components/KenyanFlagIcon'
+import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -37,9 +41,10 @@ import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/ui/input-error'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
 import { cn } from '@/lib/utils'
 
-type OnboardingModal = 'username' | 'email' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
+type OnboardingModal = 'username' | 'phone' | 'email' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
 type EnableTradingStep = 'idle' | 'enabling' | 'deploying' | 'completed'
 type ApprovalsStep = 'idle' | 'signing' | 'completed'
 type UsernameAvailabilityState = 'idle' | 'checking' | 'available' | 'taken' | 'error'
@@ -64,6 +69,10 @@ interface TradingOnboardingDialogsProps {
   isEmailSubmitting: boolean
   onEmailSubmit: (email: string) => void
   onEmailSkip: () => void
+  phoneDefaultValue: string
+  phoneError: string | null
+  isPhoneSubmitting: boolean
+  onPhoneSubmit: (phoneNumber: string) => void
   enableTradingStep: EnableTradingStep
   enableTradingError: string | null
   onCreateDepositWallet: () => void
@@ -86,6 +95,7 @@ interface TradingOnboardingDialogsProps {
   onWithdrawOpenChange: (open: boolean) => void
   user: User | null
   meldUrl: string | null
+  defaultPhoneNumber?: string
 }
 
 function OnboardingDialogShell({
@@ -545,6 +555,111 @@ function EmailDialog({
   )
 }
 
+function PhoneDialog({
+  open,
+  onOpenChange,
+  defaultValue,
+  error,
+  isSubmitting,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  defaultValue: string
+  error: string | null
+  isSubmitting: boolean
+  onSubmit: (phoneNumber: string) => void
+}) {
+  const t = useExtracted()
+  const site = useSiteIdentity()
+  const [phoneNumber, setPhoneNumber] = useState(defaultValue)
+  const normalizedPhone = normalizeKenyanPhone(phoneNumber)
+
+  useEffect(() => {
+    if (open) {
+      setPhoneNumber(defaultValue)
+    }
+  }, [defaultValue, open])
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!normalizedPhone) {
+      return
+    }
+    onSubmit(normalizedPhone)
+  }
+
+  return (
+    <OnboardingDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('Add your phone number')}
+      description={null}
+      dismissible
+      dialogContentClassName="max-w-sm border bg-background p-5"
+      drawerContentClassName="max-h-[78vh] w-full bg-background px-4 pt-4 pb-5"
+      headerClassName="space-y-3 text-center"
+      titleClassName="text-center text-xl font-bold text-foreground"
+      icon={(
+        <div className="mx-auto flex items-center justify-center gap-2">
+          <div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <SiteLogoIcon
+              logoSvg={site.logoSvg}
+              logoImageUrl={site.logoImageUrl}
+              alt={`${site.name} logo`}
+              size={28}
+              className="size-7"
+              imageClassName="size-7 object-contain"
+            />
+          </div>
+          <ArrowRightLeftIcon className="size-4 text-muted-foreground" />
+          <div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <PhoneIcon className="size-5" />
+          </div>
+        </div>
+      )}
+    >
+      <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
+        <div className="flex h-12 items-center rounded-md border border-input bg-background px-3 shadow-xs">
+          <KenyanFlagIcon className="mr-2 shrink-0" />
+          <Input
+            value={phoneNumber}
+            onChange={event => setPhoneNumber(event.target.value)}
+            placeholder="+254, 07, 254, or 7..."
+            type="tel"
+            inputMode="tel"
+            className="h-10 border-0 px-0 text-base shadow-none focus-visible:ring-0"
+            disabled={isSubmitting}
+            autoFocus
+          />
+        </div>
+
+        {error && <InputError message={error} />}
+        {!error && phoneNumber.trim() && !normalizedPhone && (
+          <InputError message={t('Enter a valid Kenyan phone number.')} />
+        )}
+
+        <Button
+          type="submit"
+          className="h-11 w-full text-base"
+          disabled={isSubmitting || !normalizedPhone}
+        >
+          {isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : t('Continue')}
+        </Button>
+
+        <button
+          type="button"
+          className="mx-auto block text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          disabled={isSubmitting}
+          onClick={() => onOpenChange(false)}
+        >
+          {t('Do this later')}
+        </button>
+      </form>
+    </OnboardingDialogShell>
+  )
+}
+
 function EnableTradingDialog({
   open,
   onOpenChange,
@@ -891,6 +1006,10 @@ export default function TradingOnboardingDialogs({
   isEmailSubmitting,
   onEmailSubmit,
   onEmailSkip,
+  phoneDefaultValue,
+  phoneError,
+  isPhoneSubmitting,
+  onPhoneSubmit,
   enableTradingStep,
   enableTradingError,
   onCreateDepositWallet,
@@ -913,6 +1032,7 @@ export default function TradingOnboardingDialogs({
   onWithdrawOpenChange,
   user,
   meldUrl,
+  defaultPhoneNumber,
 }: TradingOnboardingDialogsProps) {
   return (
     <>
@@ -934,6 +1054,15 @@ export default function TradingOnboardingDialogs({
         isSubmitting={isEmailSubmitting}
         onSubmit={onEmailSubmit}
         onSkip={onEmailSkip}
+      />
+
+      <PhoneDialog
+        open={activeModal === 'phone'}
+        onOpenChange={open => onModalOpenChange('phone', open)}
+        defaultValue={phoneDefaultValue}
+        error={phoneError}
+        isSubmitting={isPhoneSubmitting}
+        onSubmit={onPhoneSubmit}
       />
 
       <EnableTradingDialog
@@ -984,6 +1113,7 @@ export default function TradingOnboardingDialogs({
         onWithdrawOpenChange={onWithdrawOpenChange}
         user={user}
         meldUrl={meldUrl}
+        defaultPhoneNumber={defaultPhoneNumber}
       />
     </>
   )

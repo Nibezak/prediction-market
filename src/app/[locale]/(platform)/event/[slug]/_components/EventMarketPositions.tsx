@@ -16,10 +16,9 @@ import { Drawer, DrawerContent } from '@/components/ui/drawer'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { MICRO_UNIT, ORDER_SIDE, OUTCOME_INDEX, tableHeaderClass } from '@/lib/constants'
+import { MICRO_UNIT, OUTCOME_INDEX, tableHeaderClass } from '@/lib/constants'
 import { fetchUserPositionsForMarket } from '@/lib/data-api/user'
 import {
-  formatAmountInputValue,
   formatCentsLabel,
   formatDollarValueLabel,
   formatPercent,
@@ -29,7 +28,7 @@ import {
 import { buildShareCardPayload } from '@/lib/share-card'
 import { getUserPublicAddress } from '@/lib/user-address'
 import { cn } from '@/lib/utils'
-import { useIsSingleMarket, useOrder } from '@/stores/useOrder'
+import { useIsSingleMarket } from '@/stores/useOrder'
 import { useUser } from '@/stores/useUser'
 
 interface EventMarketPositionsProps {
@@ -44,7 +43,7 @@ interface EventMarketPositionsProps {
 }
 
 const POSITION_VISIBILITY_THRESHOLD = 0.01
-const IS_PLAY_MONEY_AMM = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+const IS_SLIMEFISH_BACKEND_AMM = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
 
 function toNumber(value: unknown) {
   if (value === null || value === undefined) {
@@ -154,7 +153,7 @@ async function fetchAllUserPositions({
   status: 'active' | 'closed'
   signal?: AbortSignal
 }) {
-  if (IS_PLAY_MONEY_AMM) {
+  if (IS_SLIMEFISH_BACKEND_AMM) {
     return fetchAmmUserPositions({ status, signal })
   }
 
@@ -258,7 +257,7 @@ function useMarketPositionsQuery({
 }) {
   const query = useQuery({
     queryKey: ['user-market-positions', userAddress, market.condition_id, positionStatus],
-    queryFn: ({ signal }) => IS_PLAY_MONEY_AMM
+    queryFn: ({ signal }) => IS_SLIMEFISH_BACKEND_AMM
       ? fetchAmmUserPositions({
           conditionId: market.condition_id,
           status: positionStatus,
@@ -273,8 +272,9 @@ function useMarketPositionsQuery({
         }),
     enabled: Boolean(userAddress && market.condition_id),
     staleTime: 1000 * 60 * 5,
-    refetchInterval: userAddress ? 10_000 : false,
-    refetchIntervalInBackground: true,
+    refetchInterval: IS_SLIMEFISH_BACKEND_AMM ? false : (userAddress ? 10_000 : false),
+    refetchIntervalInBackground: !IS_SLIMEFISH_BACKEND_AMM,
+    refetchOnWindowFocus: !IS_SLIMEFISH_BACKEND_AMM,
     gcTime: 1000 * 60 * 10,
     retry: 2,
   })
@@ -314,8 +314,9 @@ function useEventWidePositionsQuery({
       }),
     enabled: shouldFetchEventPositions,
     staleTime: 1000 * 60 * 5,
-    refetchInterval: shouldFetchEventPositions ? 10_000 : false,
-    refetchIntervalInBackground: true,
+    refetchInterval: IS_SLIMEFISH_BACKEND_AMM ? false : (shouldFetchEventPositions ? 10_000 : false),
+    refetchIntervalInBackground: !IS_SLIMEFISH_BACKEND_AMM,
+    refetchOnWindowFocus: !IS_SLIMEFISH_BACKEND_AMM,
     gcTime: 1000 * 60 * 10,
   })
 }
@@ -528,13 +529,11 @@ function buildShareCardPosition(position: UserPosition) {
 function MarketPositionRow({
   position,
   market,
-  onSell,
   onShare,
   onConvert,
 }: {
   position: UserPosition
   market: Event['markets'][number]
-  onSell: (position: UserPosition) => void
   onShare: (position: UserPosition) => void
   onConvert?: (position: UserPosition) => void
 }) {
@@ -692,15 +691,6 @@ function MarketPositionRow({
               {t('Convert')}
             </Button>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Sell position"
-            onClick={() => onSell(position)}
-          >
-            {t('Sell')}
-          </Button>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -837,15 +827,8 @@ export default function EventMarketPositions({
 }: EventMarketPositionsProps) {
   const t = useExtracted()
   const user = useUser()
-  const userAddress = IS_PLAY_MONEY_AMM ? (user?.id || '') : getUserPublicAddress(user)
-  const isMobile = useIsMobile()
+  const userAddress = IS_SLIMEFISH_BACKEND_AMM ? (user?.id || '') : getUserPublicAddress(user)
   const isSingleMarket = useIsSingleMarket()
-  const setOrderMarket = useOrder(state => state.setMarket)
-  const setOrderOutcome = useOrder(state => state.setOutcome)
-  const setOrderSide = useOrder(state => state.setSide)
-  const setOrderAmount = useOrder(state => state.setAmount)
-  const setIsMobileOrderPanelOpen = useOrder(state => state.setIsMobileOrderPanelOpen)
-  const orderInputRef = useOrder(state => state.inputRef)
 
   const positionStatus = market.is_active && !market.is_resolved ? 'active' : 'closed'
 
@@ -887,43 +870,6 @@ export default function EventMarketPositions({
     visiblePositions,
     eventPositionsData: eventPositionsQuery.data,
   })
-
-  const handleSell = useCallback((positionItem: UserPosition) => {
-    if (!market) {
-      return
-    }
-
-    const normalizedOutcome = positionItem.outcome_text?.toLowerCase()
-    const explicitOutcomeIndex = typeof positionItem.outcome_index === 'number' ? positionItem.outcome_index : undefined
-    const resolvedOutcomeIndex = explicitOutcomeIndex ?? (
-      normalizedOutcome === 'no'
-        ? OUTCOME_INDEX.NO
-        : OUTCOME_INDEX.YES
-    )
-    const targetOutcome = market.outcomes.find(outcome => outcome.outcome_index === resolvedOutcomeIndex)
-      ?? market.outcomes[0]
-
-    setOrderMarket(market)
-    if (targetOutcome) {
-      setOrderOutcome(targetOutcome)
-    }
-    setOrderSide(ORDER_SIDE.SELL)
-
-    const shares = resolvePositionShares(positionItem)
-    if (shares > 0) {
-      setOrderAmount(formatAmountInputValue(shares, { roundingMode: 'floor' }))
-    }
-    else {
-      setOrderAmount('')
-    }
-
-    if (isMobile) {
-      setIsMobileOrderPanelOpen(true)
-    }
-    else {
-      orderInputRef?.current?.focus()
-    }
-  }, [isMobile, market, orderInputRef, setIsMobileOrderPanelOpen, setOrderAmount, setOrderMarket, setOrderOutcome, setOrderSide])
 
   const shareCardPayload = useMemo(() => {
     if (!sharePosition) {
@@ -1014,7 +960,6 @@ export default function EventMarketPositions({
                 key={`${position.outcome_text}-${position.last_activity_at}`}
                 position={position}
                 market={market}
-                onSell={handleSell}
                 onShare={handleShareClick}
                 onConvert={isNegRiskEnabled && resolvedConvertOptions.length > 0 ? handleConvertClick : undefined}
               />

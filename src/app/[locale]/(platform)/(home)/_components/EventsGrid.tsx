@@ -13,9 +13,9 @@ import EventsEmptyState from '@/app/[locale]/(platform)/event/[slug]/_components
 import { useEventLastTrades } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventLastTrades'
 import { useEventMarketQuotes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices'
 import { buildMarketTargets } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { useColumns } from '@/hooks/useColumns'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
-import { useDebounce } from '@/hooks/useDebounce'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { fetchEventsApi } from '@/lib/events-api'
 import { filterHomeEvents, HOME_EVENTS_PAGE_SIZE, isEventResolvedLike } from '@/lib/home-events'
@@ -39,7 +39,6 @@ const EMPTY_PRICE_OVERRIDES: Record<string, number> = {}
 const eventsSnapshotCache = new Map<string, Event[]>()
 const EVENTS_SNAPSHOT_CACHE_LIMIT = 24
 const HOME_LIVE_PRICE_OBSERVER_ROOT_MARGIN = '200px 0px'
-const HOME_LIVE_OVERRIDE_SETTLE_DELAY_MS = 2_000
 const HOME_FEED_REFRESH_INTERVAL_MS = 60_000
 
 function hasFiniteTimestamp(value: number | null | undefined) {
@@ -355,6 +354,10 @@ function useHomeLivePriceOverrides({
     () => livePriceEvents.flatMap(event => buildMarketTargets(resolveHomeCardMarkets(event))),
     [livePriceEvents],
   )
+  const liveSnapshotsByMarket = useAmmLiveMarkets(
+    marketTargets.map(target => target.conditionId),
+    marketTargets.length > 0,
+  )
   const marketQuotesByMarket = useEventMarketQuotes(marketTargets)
   const lastTradesByMarket = useEventLastTrades(marketTargets)
   const priceOverridesByMarket = useMemo(() => {
@@ -363,16 +366,20 @@ function useHomeLivePriceOverrides({
     }
 
     const strictPriceByMarket: Record<string, number> = {}
-    Object.keys({ ...marketQuotesByMarket, ...lastTradesByMarket }).forEach((conditionId) => {
+    Object.keys({ ...marketQuotesByMarket, ...lastTradesByMarket, ...liveSnapshotsByMarket }).forEach((conditionId) => {
+      const target = marketTargets.find(item => item.conditionId === conditionId)
+      const livePrice = target
+        ? liveSnapshotsByMarket[conditionId]?.options.find(option => option.id === target.tokenId)?.probability
+        : undefined
       const quote = marketQuotesByMarket[conditionId]
       const lastTrade = lastTradesByMarket[conditionId]
-      const displayPrice = resolveDisplayPrice({
-        bid: quote?.bid ?? null,
-        ask: quote?.ask ?? null,
-        midpoint: quote?.mid ?? null,
-        lastTrade,
-        strictFallbacks: true,
-      })
+      const displayPrice = livePrice ?? resolveDisplayPrice({
+          bid: quote?.bid ?? null,
+          ask: quote?.ask ?? null,
+          midpoint: quote?.mid ?? null,
+          lastTrade,
+          strictFallbacks: true,
+        })
 
       if (displayPrice != null) {
         strictPriceByMarket[conditionId] = displayPrice
@@ -386,29 +393,25 @@ function useHomeLivePriceOverrides({
         return
       }
 
+      const liveValues = displayMarkets.map(market => strictPriceByMarket[market.condition_id])
+      const liveTotal = liveValues.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
       displayMarkets.forEach((market) => {
         const displayPrice = strictPriceByMarket[market.condition_id]
         if (displayPrice != null) {
-          nextOverrides[market.condition_id] = displayPrice
+          nextOverrides[market.condition_id] = displayMarkets.length > 1 && liveTotal > 0
+            ? displayPrice / liveTotal
+            : displayPrice
         }
       })
     })
 
     return nextOverrides
-  }, [lastTradesByMarket, livePriceEvents, marketQuotesByMarket])
-  const priceOverrideSignature = useMemo(
-    () => Object.entries(priceOverridesByMarket)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([marketId, price]) => `${marketId}:${price}`)
-      .join('|'),
-    [priceOverridesByMarket],
-  )
-  const debouncedPriceOverridesByMarket = useDebounce(priceOverridesByMarket, HOME_LIVE_OVERRIDE_SETTLE_DELAY_MS)
-  const stablePriceOverridesByMarket = priceOverrideSignature
-    ? debouncedPriceOverridesByMarket
+  }, [lastTradesByMarket, livePriceEvents, liveSnapshotsByMarket, marketQuotesByMarket, marketTargets])
+  const stablePriceOverridesByMarket = Object.keys(priceOverridesByMarket).length > 0
+    ? priceOverridesByMarket
     : EMPTY_PRICE_OVERRIDES
 
-  return { stablePriceOverridesByMarket }
+  return { stablePriceOverridesByMarket, liveSnapshotsByMarket }
 }
 
 interface UseInfiniteScrollLoadMoreParams {
@@ -609,8 +612,8 @@ export default function EventsGrid({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     staleTime: 'static',
-    refetchInterval: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : false,
-    refetchIntervalInBackground: true,
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
     initialDataUpdatedAt: 0,
     placeholderData: keepPreviousData,
   })
@@ -637,10 +640,33 @@ export default function EventsGrid({
     : eventsToRender
 
   const { parentRef, livePriceEventIds } = useHomeLivePriceVisibility(hydrationSafeEventsToRender)
-  const { stablePriceOverridesByMarket } = useHomeLivePriceOverrides({
+  const { stablePriceOverridesByMarket, liveSnapshotsByMarket } = useHomeLivePriceOverrides({
     hydrationSafeEventsToRender,
     livePriceEventIds,
   })
+  const liveEventsToRender = useMemo(() => hydrationSafeEventsToRender.map((event) => {
+    let hasLiveMarket = false
+    let liveEventVolume = 0
+    const markets = event.markets.map((market) => {
+      const snapshot = liveSnapshotsByMarket[market.condition_id]
+      if (!snapshot) {
+        liveEventVolume += Number.isFinite(market.volume) ? market.volume : 0
+        return market
+      }
+
+      hasLiveMarket = true
+      liveEventVolume += snapshot.volume
+      return {
+        ...market,
+        volume: snapshot.volume,
+        volume_24h: snapshot.volume24h,
+      }
+    })
+
+    return hasLiveMarket
+      ? { ...event, markets, volume: liveEventVolume }
+      : event
+  }), [hydrationSafeEventsToRender, liveSnapshotsByMarket])
 
   const isLoadingNewData = eventsToRender.length === 0
     && (
@@ -690,7 +716,7 @@ export default function EventsGrid({
   return (
     <div ref={parentRef} className="w-full space-y-3 transition-opacity duration-200">
       <EventsStaticGrid
-        events={hydrationSafeEventsToRender}
+        events={liveEventsToRender}
         priceOverridesByMarket={hasHydrated ? stablePriceOverridesByMarket : EMPTY_PRICE_OVERRIDES}
         maxColumns={maxColumns}
         isFetching={(visibleEvents.length === 0) || (isFetching && hasFreshQueryData)}

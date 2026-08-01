@@ -1,7 +1,19 @@
 import type { Event } from '@/types'
 
-const CHART_COLOR_VARIABLES = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+const CHART_COLOR_VARIABLES = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  '#EAB308',
+  '#EC4899',
+  '#06B6D4',
+  '#F97316',
+  '#A855F7',
+]
 const MAX_SERIES = 10
+const OUTCOME_SERIES_SEPARATOR = '::outcome::'
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
 
 export function getMaxSeriesCount() {
@@ -159,6 +171,23 @@ export function getOutcomeLabelForMarket(
   return outcomeIndex === 0 ? 'Yes' : 'No'
 }
 
+export function buildOutcomeSeriesKey(conditionId: string, outcomeIndex: number) {
+  return `${conditionId}${OUTCOME_SERIES_SEPARATOR}${outcomeIndex}`
+}
+
+function resolveSeriesMarket(event: Event, seriesKey: string) {
+  const separatorIndex = seriesKey.lastIndexOf(OUTCOME_SERIES_SEPARATOR)
+  if (separatorIndex < 0) {
+    return { market: event.markets.find(current => current.condition_id === seriesKey), outcomeIndex: null }
+  }
+  const conditionId = seriesKey.slice(0, separatorIndex)
+  const outcomeIndex = Number(seriesKey.slice(separatorIndex + OUTCOME_SERIES_SEPARATOR.length))
+  return {
+    market: event.markets.find(current => current.condition_id === conditionId),
+    outcomeIndex: Number.isInteger(outcomeIndex) ? outcomeIndex : null,
+  }
+}
+
 export function getOutcomeColorForMarket(
   market: Event['markets'][number] | undefined,
   outcomeIndex: number,
@@ -180,14 +209,24 @@ export function getOutcomeColorForMarket(
 
 export function buildChartSeries(event: Event, marketIds: string[]) {
   return marketIds
-    .map((conditionId, index) => {
-      const market = event.markets.find(current => current.condition_id === conditionId)
+    .map((seriesKey, index) => {
+      const { market, outcomeIndex } = resolveSeriesMarket(event, seriesKey)
       if (!market) {
         return null
       }
+      const outcome = outcomeIndex == null
+        ? null
+        : market.outcomes.find(current => current.outcome_index === outcomeIndex)
+      const marketLabel = getMarketSeriesLabel(market)
+      const outcomeText = outcome?.outcome_text?.trim()
+      const isBinaryYesNo = outcomeText?.toLowerCase() === 'yes' || outcomeText?.toLowerCase() === 'no'
+      const name = (isBinaryYesNo || !outcomeText)
+        ? (marketLabel || outcomeText || 'Yes')
+        : outcomeText
+
       return {
-        key: conditionId,
-        name: getMarketSeriesLabel(market),
+        key: seriesKey,
+        name,
         color: CHART_COLOR_VARIABLES[index % CHART_COLOR_VARIABLES.length],
       }
     })

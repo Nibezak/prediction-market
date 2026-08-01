@@ -2,6 +2,7 @@ import type { Event } from '@/types'
 import { eq } from 'drizzle-orm'
 import { markets } from '@/lib/db/schema'
 import { db, pmSql } from '@/lib/drizzle'
+import { readCachedLiveSnapshots } from '@/lib/amm-live'
 
 type AmmVolumeRow = { marketId: string, volume: string, volume24h: string }
 
@@ -45,9 +46,13 @@ export async function synchronizeAmmMarketVolumes(marketIds: string[]) {
 export async function hydrateEventsWithAmmVolumes(events: Event[]): Promise<Event[]> {
   if (events.length === 0) return events
   try {
-    const volumeByMarketId = await synchronizeAmmMarketVolumes(
+    const snapshots = await readCachedLiveSnapshots(
       events.flatMap(event => event.markets.map(market => market.condition_id)),
     )
+    const volumeByMarketId = new Map(snapshots.map(snapshot => [snapshot.marketId, {
+      volume: snapshot.volume,
+      volume24h: snapshot.volume24h,
+    }]))
     return events.map((event) => {
       const nextMarkets = event.markets.map((market) => {
         const volume = volumeByMarketId.get(market.condition_id)

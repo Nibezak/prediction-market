@@ -8,6 +8,7 @@ import {
   HOME_FEATURED_COMMENT_BLACKLIST_KEY,
   HOME_FEATURED_DEFAULT_CONTEXT_MODE_KEY,
   HOME_FEATURED_ENABLED_KEY,
+  HOME_FEATURED_HOT_PICKS_TAGS_KEY,
   HOME_FEATURED_INCLUDE_NEW_EVENTS_KEY,
   HOME_FEATURED_INCLUDE_SPORTS_TODAY_KEY,
   HOME_FEATURED_MAX_CARDS_KEY,
@@ -191,5 +192,6 @@ export function buildHomeFeaturedSettingsUpdateRows(settings: HomeFeaturedSettin
     { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_SIDE_CARD_USE_IMAGE_KEY, value: String(settings.sideCard.useImage) },
     { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_SIDE_CARD_IMAGE_PATH_KEY, value: settings.sideCard.imagePath },
     { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_SIDE_CARD_SLIDES_KEY, value: serializeHomeFeaturedSideCardSlides(settings.sideCard.slides) },
+    { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_HOT_PICKS_TAGS_KEY, value: JSON.stringify(settings.hotPicksTags ?? []) },
   ]
 }

@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { createPublicClient, getContract, http } from 'viem'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
+import { useAmmLiveAccount } from '@/hooks/useAmmLiveAccount'
+import { authClient } from '@/lib/auth-client'
 import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
 import { defaultViemNetwork, resolveViemRpcUrl } from '@/lib/viem-network'
 import { normalizeAddress } from '@/lib/wallet'
@@ -15,6 +17,7 @@ interface Balance {
 }
 
 export const DEPOSIT_WALLET_BALANCE_QUERY_KEY = 'deposit-wallet-usdc-balance'
+export const SLIMEFISH_BACKEND_BALANCE_QUERY_KEY = 'slimefish-ledger-user-balance'
 
 const USDC_DECIMALS = 6
 const ERC20_ABI = [
@@ -43,12 +46,17 @@ function createBrowserPublicClient(rpcUrl: string): PublicClient {
 
 export function useBalance(options: UseBalanceOptions = {}) {
   const user = useUser()
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const { data: authSession, isPending: isAuthSessionPending } = authClient.useSession()
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const authenticatedUserId = !isAuthSessionPending && authSession?.user?.id
+    ? authSession.user.id
+    : user?.id ?? null
+  const liveAccount = useAmmLiveAccount(isSlimefishBackendAmm && Boolean(authenticatedUserId), authenticatedUserId)
   const { polygonRpcUrl } = usePublicRuntimeConfig()
   const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const client = useMemo(
-    () => (typeof window === 'undefined' ? null : createBrowserPublicClient(rpcUrl)),
-    [rpcUrl],
+    () => (isSlimefishBackendAmm || typeof window === 'undefined' ? null : createBrowserPublicClient(rpcUrl)),
+    [isSlimefishBackendAmm, rpcUrl],
   )
 
   const sourceDepositWalletAddress = Object.hasOwn(options, 'depositWalletAddress')
@@ -60,7 +68,7 @@ export function useBalance(options: UseBalanceOptions = {}) {
     : null
 
   const contract = useMemo(() => {
-    if (!client || !depositWalletAddress) {
+    if (isSlimefishBackendAmm || !client || !depositWalletAddress) {
       return null
     }
 
@@ -69,11 +77,11 @@ export function useBalance(options: UseBalanceOptions = {}) {
       abi: ERC20_ABI,
       client,
     })
-  }, [client, depositWalletAddress])
+  }, [client, depositWalletAddress, isSlimefishBackendAmm])
 
   const isOptionsEnabled = options.enabled ?? true
   const isQueryEnabled = Boolean(isOptionsEnabled && (
-    isPlayMoneyAmm ? user?.id : client && depositWalletAddress
+    isSlimefishBackendAmm ? false : client && depositWalletAddress
   ))
 
   const {
@@ -82,44 +90,14 @@ export function useBalance(options: UseBalanceOptions = {}) {
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY, isPlayMoneyAmm ? user?.id : depositWalletAddress],
+    queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY, isSlimefishBackendAmm ? user?.id : depositWalletAddress],
     enabled: isQueryEnabled,
     staleTime: 'static',
     gcTime: 5 * 60 * 1000,
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
+    refetchInterval: isSlimefishBackendAmm ? false : 10_000,
+    refetchIntervalInBackground: !isSlimefishBackendAmm,
+    refetchOnWindowFocus: !isSlimefishBackendAmm,
     queryFn: async (): Promise<Balance> => {
-      if (isPlayMoneyAmm) {
-        try {
-          const ammRes = await fetch('/api/amm/users/me/balance', {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          })
-          if (ammRes.ok) {
-            const ammBody = await ammRes.json()
-            if (ammBody?.data?.balance != null) {
-              const balanceValue = typeof ammBody.data.balance === 'object'
-                ? ammBody.data.balance.total
-                : ammBody.data.balance
-              let usdcBal = Number(balanceValue)
-              if (Number.isNaN(usdcBal)) {
-                usdcBal = 0
-              }
-              return {
-                raw: usdcBal,
-                text: usdcBal.toFixed(2),
-                symbol: 'USDC',
-              }
-            }
-          }
-        }
-        catch (err) {
-          console.error('Failed to fetch AMM balance:', err)
-        }
-        return INITIAL_STATE
-      }
-
       if (!client || !contract || !depositWalletAddress) {
         return INITIAL_STATE
       }
@@ -143,12 +121,63 @@ export function useBalance(options: UseBalanceOptions = {}) {
     },
   })
 
-  const balance = isQueryEnabled && data ? data : INITIAL_STATE
-  const isLoadingBalance = isQueryEnabled ? (isLoading || (!data && isFetching)) : false
+  const {
+    data: slimefishBackendBalance,
+    isLoading: isLoadingSlimefishBackendBalance,
+    isFetching: isFetchingSlimefishBackendBalance,
+    refetch: refetchSlimefishBackendBalance,
+  } = useQuery({
+    queryKey: [SLIMEFISH_BACKEND_BALANCE_QUERY_KEY, authenticatedUserId],
+    enabled: Boolean(isOptionsEnabled && isSlimefishBackendAmm && authenticatedUserId),
+    staleTime: 2_000,
+    gcTime: 5 * 60 * 1000,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    queryFn: async (): Promise<number> => {
+      const response = await fetch('/api/amm/users/me/balance', { cache: 'no-store' })
+      if (!response.ok) {
+        return 0
+      }
+      const payload = await response.json().catch(() => null)
+      const value = payload?.data?.balance?.total ?? payload?.data?.balance ?? 0
+      const numeric = Number(value)
+      return Number.isFinite(numeric) ? numeric : 0
+    },
+  })
+
+  const sessionUserBalanceRaw = (authSession?.user as any)?.balance ?? (authSession?.user as any)?.cash
+  const storeUserBalanceRaw = (user as any)?.balance ?? (user as any)?.cash
+  const hasValidSessionBalance = typeof sessionUserBalanceRaw === 'number' && Number.isFinite(sessionUserBalanceRaw)
+  const hasValidStoreBalance = typeof storeUserBalanceRaw === 'number' && Number.isFinite(storeUserBalanceRaw)
+  const hasValidQueryBalance = typeof slimefishBackendBalance === 'number' && Number.isFinite(slimefishBackendBalance)
+  const hasValidBalance = hasValidStoreBalance || hasValidSessionBalance || hasValidQueryBalance || liveAccount != null
+
+  const rawBalance = liveAccount
+    ? liveAccount.balance
+    : hasValidQueryBalance
+      ? slimefishBackendBalance
+      : hasValidStoreBalance
+        ? storeUserBalanceRaw
+        : hasValidSessionBalance
+          ? sessionUserBalanceRaw
+          : 0
+
+  const balance = isSlimefishBackendAmm
+    ? {
+        raw: rawBalance,
+        text: rawBalance.toFixed(2),
+        symbol: '$',
+      }
+    : isQueryEnabled && data ? data : INITIAL_STATE
+
+  const isLoadingBalance = isSlimefishBackendAmm
+    ? Boolean(isOptionsEnabled && !hasValidBalance && (isAuthSessionPending || isLoadingSlimefishBackendBalance || isFetchingSlimefishBackendBalance) && Boolean(authSession?.user || user))
+    : isQueryEnabled ? (isLoading || (!data && isFetching)) : false
 
   return {
     balance,
     isLoadingBalance,
-    refetchBalance: refetch,
+    refetchBalance: isSlimefishBackendAmm ? refetchSlimefishBackendBalance : refetch,
   }
 }

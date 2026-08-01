@@ -1,5 +1,5 @@
 import type { ChangeEventHandler, FormEventHandler } from 'react'
-import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
+import type { WalletOnrampProgress } from '@/app/[locale]/(platform)/_components/wallet-modal/WalletOnrampForm'
 
 export const MELD_PAYMENT_METHODS = [
   'apple_pay',
@@ -45,27 +45,13 @@ export const WITHDRAW_CHAIN_OPTIONS = [
   { value: 'Optimism', label: 'Optimism', icon: '/images/withdraw/chain/optimism.svg', enabled: false },
 ] as const
 
-export function getSelectedWalletTokenId(items: LiFiWalletTokenItem[], preferredSelectedTokenId: string) {
-  if (!items.length) {
-    return ''
-  }
-
-  if (preferredSelectedTokenId && items.some(item => item.id === preferredSelectedTokenId && !item.disabled)) {
-    return preferredSelectedTokenId
-  }
-
-  const firstEnabledItem = items.find(item => !item.disabled)
-  return firstEnabledItem?.id ?? ''
-}
-
-type WalletDepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
+type WalletDepositView = 'fund' | 'receive'
 
 export interface WalletDepositModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   isMobile: boolean
   walletAddress?: string | null
-  walletEoaAddress?: string | null
   siteName?: string
   meldUrl: string | null
   hasDeployedDepositWallet: boolean
@@ -74,8 +60,9 @@ export interface WalletDepositModalProps {
   onBuy: (url: string) => void
   depositWalletBalance?: string | null
   isDepositWalletBalanceLoading?: boolean
-  walletBalance?: string | null
-  isBalanceLoading?: boolean
+  defaultPhoneNumber?: string
+  onrampProgress?: WalletOnrampProgress | null
+  onOnrampProgressChange?: (progress: WalletOnrampProgress | null) => void
 }
 
 export interface WalletWithdrawModalProps {
@@ -88,10 +75,14 @@ export interface WalletWithdrawModalProps {
   sendAmount: string
   onChangeSendAmount: (value: string) => void
   isSending: boolean
+  isSubmitted?: boolean
+  error?: string
+  onRetrySend?: () => void
   onSubmitSend: FormEventHandler<HTMLFormElement>
   connectedWalletAddress?: string | null
   onUseConnectedWallet?: () => void
   availableBalance?: number | null
   onMax?: () => void
   isBalanceLoading?: boolean
+  defaultPhoneNumber?: string
 }

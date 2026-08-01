@@ -23,7 +23,7 @@ export default function GlobalError({
   useSentryCapture(error)
 
   return (
-    <html lang="en">
+    <html lang="en" data-theme-preset="lime" data-theme-mode="dark">
       <body>
         <NextError statusCode={0} />
       </body>

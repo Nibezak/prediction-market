@@ -318,6 +318,7 @@ function useEmbedCode({
   const webComponentCode = useMemo(
     () =>
       buildWebComponentCode(
+        embedBaseUrl,
         embedElementName,
         selectedMarketSlug,
         theme,
@@ -326,7 +327,7 @@ function useEmbedCode({
         showTimeRange,
         affiliateCode,
       ),
-    [embedElementName, selectedMarketSlug, theme, showVolume, showChart, showTimeRange, affiliateCode],
+    [embedBaseUrl, embedElementName, selectedMarketSlug, theme, showVolume, showChart, showTimeRange, affiliateCode],
   )
 
   const iframeLines = useMemo<EmbedCodeLine[]>(() => ([

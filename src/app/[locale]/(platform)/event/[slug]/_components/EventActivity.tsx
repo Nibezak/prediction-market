@@ -98,6 +98,42 @@ function getMarketTokenIds(markets: Event['markets']) {
 
 const WS_REFRESH_THROTTLE_MS = 2000
 const ACTIVITY_POLL_INTERVAL_MS = 60_000
+const USE_SLIMEFISH_BACKEND_AMM = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+
+function filterSlimefishBackendActivity(activities: ActivityOrder[], minAmountFilter: string) {
+  if (minAmountFilter === 'none') {
+    return activities
+  }
+
+  const minimumAmount = Number.parseInt(minAmountFilter, 10)
+  if (!Number.isFinite(minimumAmount)) {
+    return activities
+  }
+
+  return activities.filter(activity => Number(fromMicro(activity.total_value)) >= minimumAmount)
+}
+
+async function fetchSlimefishBackendActivity({
+  marketKey,
+  minAmountFilter,
+  signal,
+}: {
+  marketKey: string
+  minAmountFilter: string
+  signal?: AbortSignal
+}) {
+  const response = await fetch(`/api/event-activity?market=${encodeURIComponent(marketKey)}`, {
+    cache: 'no-store',
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to load live event activity')
+  }
+
+  const activities = await response.json() as ActivityOrder[]
+  return filterSlimefishBackendActivity(activities, minAmountFilter)
+}
 
 function useInfiniteScrollSentinel({
   sentinelRef,
@@ -149,6 +185,7 @@ function useInfiniteScrollSentinel({
 }
 
 function useRealtimeActivityRefresh({
+  enabled,
   hasMarkets,
   loading,
   marketIds,
@@ -157,6 +194,7 @@ function useRealtimeActivityRefresh({
   queryClient,
   queryKey,
 }: {
+  enabled: boolean
   hasMarkets: boolean
   loading: boolean
   marketIds: string[]
@@ -169,7 +207,7 @@ function useRealtimeActivityRefresh({
   const lastWsRefreshAtRef = useRef(0)
 
   const refreshLatestActivity = useCallback(async function refreshLatestActivity() {
-    if (!hasMarkets || loading || isPollingRef.current) {
+    if (!enabled || !hasMarkets || loading || isPollingRef.current) {
       return
     }
 
@@ -220,10 +258,10 @@ function useRealtimeActivityRefresh({
     finally {
       isPollingRef.current = false
     }
-  }, [hasMarkets, loading, marketIds, minAmountFilter, queryClient, queryKey])
+  }, [enabled, hasMarkets, loading, marketIds, minAmountFilter, queryClient, queryKey])
 
   useEffect(function pollActivityWhilePageVisible() {
-    if (!hasMarkets) {
+    if (!enabled || !hasMarkets) {
       return
     }
 
@@ -237,10 +275,10 @@ function useRealtimeActivityRefresh({
     return function stopActivityPolling() {
       window.clearInterval(interval)
     }
-  }, [hasMarkets, refreshLatestActivity])
+  }, [enabled, hasMarkets, refreshLatestActivity])
 
   const handleMarketChannelMessage = useCallback((payload: any) => {
-    if (!hasMarkets || tokenIds.length === 0) {
+    if (!enabled || !hasMarkets || tokenIds.length === 0) {
       return
     }
     if (payload?.event_type !== 'last_trade_price') {
@@ -259,9 +297,51 @@ function useRealtimeActivityRefresh({
     }
     lastWsRefreshAtRef.current = now
     void refreshLatestActivity()
-  }, [hasMarkets, refreshLatestActivity, tokenIds])
+  }, [enabled, hasMarkets, refreshLatestActivity, tokenIds])
 
   useMarketChannelSubscription(handleMarketChannelMessage)
+}
+
+function useSlimefishBackendActivityStream({
+  enabled,
+  marketKey,
+  minAmountFilter,
+  queryClient,
+  queryKey,
+}: {
+  enabled: boolean
+  marketKey: string
+  minAmountFilter: string
+  queryClient: ReturnType<typeof useQueryClient>
+  queryKey: readonly unknown[]
+}) {
+  useEffect(function subscribeToSlimefishBackendActivity() {
+    if (!enabled || !marketKey) {
+      return
+    }
+
+    const source = new EventSource(`/api/event-activity/stream?market=${encodeURIComponent(marketKey)}`)
+
+    function updateActivity(event: MessageEvent<string>) {
+      try {
+        const activities = filterSlimefishBackendActivity(JSON.parse(event.data) as ActivityOrder[], minAmountFilter)
+        queryClient.setQueryData<InfiniteData<ActivityOrder[]>>(queryKey, {
+          pages: [activities],
+          pageParams: [0],
+        })
+      }
+      catch (error) {
+        console.error('Failed to process live event activity', error)
+      }
+    }
+
+    source.addEventListener('activity', updateActivity as EventListener)
+
+    return function unsubscribeFromSlimefishBackendActivity() {
+      source.removeEventListener('activity', updateActivity as EventListener)
+      source.close()
+    }
+  }, [enabled, marketKey, minAmountFilter, queryClient, queryKey])
 }
 
 export default function EventActivity({ event }: EventActivityProps) {
@@ -332,14 +412,25 @@ export default function EventActivity({ event }: EventActivityProps) {
     refetch,
   } = useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam = 0, signal }) =>
-      fetchEventTrades({
+    queryFn: ({ pageParam = 0, signal }) => {
+      if (USE_SLIMEFISH_BACKEND_AMM) {
+        return pageParam === 0
+          ? fetchSlimefishBackendActivity({ marketKey, minAmountFilter, signal })
+          : Promise.resolve([])
+      }
+
+      return fetchEventTrades({
         marketIds,
         pageParam,
         minAmountFilter,
         signal,
-      }),
+      })
+    },
     getNextPageParam: (lastPage, allPages) => {
+      if (USE_SLIMEFISH_BACKEND_AMM) {
+        return undefined
+      }
+
       if (lastPage.length === EVENT_ACTIVITY_PAGE_SIZE) {
         return allPages.reduce((total, page) => total + page.length, 0)
       }
@@ -369,10 +460,19 @@ export default function EventActivity({ event }: EventActivityProps) {
   })
 
   useRealtimeActivityRefresh({
+    enabled: !USE_SLIMEFISH_BACKEND_AMM,
     hasMarkets,
     loading,
     marketIds,
     tokenIds,
+    minAmountFilter,
+    queryClient,
+    queryKey,
+  })
+
+  useSlimefishBackendActivityStream({
+    enabled: USE_SLIMEFISH_BACKEND_AMM && hasMarkets,
+    marketKey,
     minAmountFilter,
     queryClient,
     queryKey,

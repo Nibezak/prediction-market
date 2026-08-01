@@ -174,6 +174,7 @@ function useEmbedCodeBuilders({
 
   const webComponentCode = useMemo(() => {
     return buildWebComponentCode(
+      embedBaseUrl,
       embedElementName,
       marketSlug,
       theme,
@@ -182,7 +183,7 @@ function useEmbedCodeBuilders({
       effectiveShowTimeRange,
       affiliateCode,
     )
-  }, [embedElementName, marketSlug, theme, showVolume, showChart, effectiveShowTimeRange, affiliateCode])
+  }, [embedBaseUrl, embedElementName, marketSlug, theme, showVolume, showChart, effectiveShowTimeRange, affiliateCode])
 
   const iframeLines = useMemo<EmbedCodeLine[]>(() => {
     return [
@@ -192,7 +193,8 @@ function useEmbedCodeBuilders({
       attributeLine('\t', 'width', '400'),
       attributeLine('\t', 'height', String(iframeHeight)),
       attributeLine('\t', 'frameBorder', '0'),
-      tagSelfCloseLine(''),
+      tagEndLine(''),
+      tagCloseLine('', 'iframe'),
     ]
   }, [embedIframeTitle, iframeSrc, iframeHeight])
 
@@ -201,7 +203,7 @@ function useEmbedCodeBuilders({
       tagWithAttributeLine('', 'div', 'id', embedElementName, '>'),
       tagOpenLine('\t', 'script'),
       attributeLine('\t\t', 'type', 'module'),
-      attributeLine('\t\t', 'src', EMBED_SCRIPT_URL),
+      attributeLine('\t\t', 'src', `${embedBaseUrl}${EMBED_SCRIPT_URL}`),
       tagEndLine('\t'),
       tagCloseLine('\t', 'script'),
       tagOpenLine('\t', embedElementName),
@@ -226,7 +228,7 @@ function useEmbedCodeBuilders({
     lines.push(tagCloseLine('', 'div'))
 
     return lines
-  }, [affiliateCode, embedElementName, marketSlug, showChart, effectiveShowTimeRange, showVolume, theme])
+  }, [affiliateCode, embedBaseUrl, embedElementName, marketSlug, showChart, effectiveShowTimeRange, showVolume, theme])
 
   return { features, iframeSrc, previewSrc, iframeCode, webComponentCode, iframeLines, webComponentLines }
 }

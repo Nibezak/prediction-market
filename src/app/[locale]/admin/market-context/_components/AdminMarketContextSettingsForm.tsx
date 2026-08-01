@@ -188,7 +188,7 @@ function AdminMarketContextSettingsFormInner({
           <p className="text-xs text-muted-foreground">
             {t('You need to enable OpenRouter, the credentials and model selection are in')}
             {' '}
-            <AppLink href="/admin" className="underline underline-offset-4">
+            <AppLink href="/admin/settings" className="underline underline-offset-4">
               {t('General Settings')}
             </AppLink>
             .

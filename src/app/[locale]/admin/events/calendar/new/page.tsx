@@ -11,6 +11,7 @@ import { EventCreationRepository } from '@/lib/db/queries/event-creations'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
 import { UserRepository } from '@/lib/db/queries/user'
 import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
+import { getUserPlatformRole } from '@/lib/staff-role'
 
 type CreationMode = 'single' | 'recurring'
 
@@ -106,6 +107,14 @@ async function AdminCreateEventNewContent({
           allowPastResolutionDate={effectiveMode === 'recurring' && isEditingExistingDraft}
           serverDraftPayload={draftResult.data?.draftPayload ?? null}
           serverAssetPayload={draftResult.data?.assetPayload ?? null}
+          creatorIdentity={currentUser
+            ? {
+                id: currentUser.id,
+                username: currentUser.username,
+                email: currentUser.email,
+                role: getUserPlatformRole(currentUser),
+              }
+            : null}
         />
       </div>
     </>

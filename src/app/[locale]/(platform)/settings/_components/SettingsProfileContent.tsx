@@ -8,11 +8,14 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignMessage } from 'wagmi'
 import { updateUserAction } from '@/app/[locale]/(platform)/settings/_actions/update-profile'
+import { updateDisplaySettingsAction } from '@/app/[locale]/(platform)/settings/_actions/update-display-settings'
 import AppLink from '@/components/AppLink'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/ui/input-error'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
@@ -63,6 +66,11 @@ export default function SettingsProfileContent({ user }: { user: User }) {
   const communityApiUrl = communityUrl
   const { errors, setErrors, formError, setFormError, isPending, setIsPending, fileInputRef } = useProfileFormState()
   const { previewImage, setPreviewImage } = useAvatarPreview()
+  const [showHomeFeaturedMobile, setShowHomeFeaturedMobile] = useState(
+    user.settings?.display?.show_home_featured_mobile !== false,
+  )
+  const [showHideFeaturedConfirmation, setShowHideFeaturedConfirmation] = useState(false)
+  const [isDisplayPreferencePending, setIsDisplayPreferencePending] = useState(false)
   const avatarUrl = user.image?.trim() ?? ''
   const avatarSeed = user.deposit_wallet_address || user.address || user.username || 'user'
   const showPlaceholder = !previewImage && shouldUseAvatarPlaceholder(avatarUrl)
@@ -83,6 +91,32 @@ export default function SettingsProfileContent({ user }: { user: User }) {
 
   function handleUploadClick() {
     fileInputRef.current?.click()
+  }
+
+  async function saveHomeFeaturedMobilePreference(nextValue: boolean) {
+    setIsDisplayPreferencePending(true)
+    const result = await updateDisplaySettingsAction(nextValue)
+    setIsDisplayPreferencePending(false)
+    if (result.error) {
+      toast.error(result.error)
+      return false
+    }
+
+    setShowHomeFeaturedMobile(nextValue)
+    useUser.setState(previous => previous
+      ? {
+          ...previous,
+          settings: {
+            ...(previous.settings ?? {}),
+            display: {
+              ...(previous.settings?.display ?? {}),
+              show_home_featured_mobile: nextValue,
+            },
+          },
+        }
+      : previous)
+    toast.success(t('Display preference saved.'))
+    return true
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -144,6 +178,7 @@ export default function SettingsProfileContent({ user }: { user: User }) {
         localForm.set('email', emailValue)
       }
       localForm.set('username', communityUsername)
+      if (selectedImageFile) localForm.set('image', selectedImageFile)
       if (updatedAvatarUrl) {
         localForm.set('avatar_url', updatedAvatarUrl)
       }
@@ -154,6 +189,7 @@ export default function SettingsProfileContent({ user }: { user: User }) {
         setFormError(result.error || null)
         return
       }
+      updatedAvatarUrl = result.image
 
       useUser.setState((previous) => {
         const baseUser = previous ?? user
@@ -310,6 +346,55 @@ export default function SettingsProfileContent({ user }: { user: User }) {
           </Button>
         </div>
       </form>
+
+      <section className="grid gap-4 rounded-lg border p-6 md:hidden">
+        <div className="flex items-center justify-between gap-4">
+          <div className="grid gap-1">
+            <Label htmlFor="show-home-featured-mobile">{t('Featured market on home')}</Label>
+            <p className="text-sm text-muted-foreground">
+              {t('Show the featured market card on the mobile home screen.')}
+            </p>
+          </div>
+          <Switch
+            id="show-home-featured-mobile"
+            checked={showHomeFeaturedMobile}
+            disabled={isDisplayPreferencePending}
+            onCheckedChange={(checked) => {
+              if (!checked) {
+                setShowHideFeaturedConfirmation(true)
+                return
+              }
+              void saveHomeFeaturedMobilePreference(true)
+            }}
+          />
+        </div>
+      </section>
+
+      <Dialog open={showHideFeaturedConfirmation} onOpenChange={setShowHideFeaturedConfirmation}>
+        <DialogContent className="bg-background sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('Hide featured market?')}</DialogTitle>
+            <DialogDescription>
+              {t('The featured market will no longer appear on your mobile home screen. You can turn it back on in settings.')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowHideFeaturedConfirmation(false)}>
+              {t('No, keep it')}
+            </Button>
+            <Button
+              type="button"
+              disabled={isDisplayPreferencePending}
+              onClick={async () => {
+                const saved = await saveHomeFeaturedMobilePreference(false)
+                if (saved) setShowHideFeaturedConfirmation(false)
+              }}
+            >
+              {isDisplayPreferencePending ? t('Saving...') : t('Yes, hide it')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

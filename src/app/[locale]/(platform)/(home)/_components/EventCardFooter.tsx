@@ -38,15 +38,11 @@ export default function EventCardFooter({
             <span className="leading-none font-medium text-red-500 uppercase">Live</span>
           </span>
         )}
-        {shouldShowNewBadge
-          ? <NewBadge />
-          : (
-              <span>
-                {formatVolume(resolvedVolume)}
-                {' '}
-                Vol.
-              </span>
-            )}
+        <span>
+          {formatVolume(resolvedVolume)}
+          {' '}
+          Vol.
+        </span>
         {recurrenceDisplayLabel && (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Repeat className="size-3" />

@@ -1,16 +1,19 @@
 'use client'
 
-import { BadgePercentIcon, ChevronDownIcon, DownloadIcon, SettingsIcon, ShieldIcon, TrophyIcon, UnplugIcon } from 'lucide-react'
+import { BadgePercentIcon, BookmarkIcon, ChevronDownIcon, DownloadIcon, InfoIcon, MessageCircleIcon, SettingsIcon, ShieldIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
+import HeaderNotifications from '@/app/[locale]/(platform)/_components/HeaderNotifications'
 import AppLink from '@/components/AppLink'
-import HeaderPortfolio from '@/components/HeaderPortfolio'
 import LocaleSwitcherMenuItem from '@/components/LocaleSwitcherMenuItem'
 import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
+import { Drawer, DrawerClose, DrawerContent, DrawerTrigger } from '@/components/ui/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,16 +23,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import UserInfoSection from '@/components/UserInfoSection'
 import { useBalance } from '@/hooks/useBalance'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { usePortfolioValue } from '@/hooks/usePortfolioValue'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { usePathname } from '@/i18n/navigation'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { signOutAndRedirect } from '@/lib/logout'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
-import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
-import dynamic from 'next/dynamic'
 
 const HeaderDepositButton = dynamic(
   () => import('@/app/[locale]/(platform)/_components/HeaderDepositButton'),
@@ -104,10 +105,14 @@ function useHoverMenu(enableHoverOpen: boolean) {
   return { menuOpen, setMenuOpen, wrapperRef, clearCloseTimeout, handleWrapperPointerEnter, handleWrapperPointerLeave, handleMenuClose }
 }
 
-export default function HeaderDropdownUserMenuAuth() {
+interface HeaderDropdownUserMenuAuthProps {
+  displayMode?: 'dropdown' | 'mobile-drawer'
+  onHowItWorks?: () => void
+}
+
+export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', onHowItWorks }: HeaderDropdownUserMenuAuthProps) {
   const t = useExtracted()
   const user = useUser()
-  const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const pathname = usePathname()
   const isAdmin = pathname.startsWith('/admin')
   const isMobile = useIsMobile()
@@ -121,9 +126,23 @@ export default function HeaderDropdownUserMenuAuth() {
     : undefined
 
   const { balance, isLoadingBalance } = useBalance()
-  const { isLoading: isLoadingPortfolio, value: positionsValue } = usePortfolioValue()
+  const { formatMoney } = useDisplayCurrency()
+  const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const tradingOnboarding = useOptionalTradingOnboarding()
   const startDepositFlow = tradingOnboarding?.startDepositFlow
+
+  async function handleLogout() {
+    handleMenuClose()
+
+    try {
+      await signOutAndRedirect({
+        currentPathname: window.location.pathname,
+      })
+    }
+    catch {
+      toast.error(t('Could not log out. Please try again.'))
+    }
+  }
 
   async function handleInstallAction() {
     handleMenuClose()
@@ -146,21 +165,168 @@ export default function HeaderDropdownUserMenuAuth() {
     }
   }
 
-  async function handleLogout() {
-    handleMenuClose()
-
-    try {
-      await signOutAndRedirect({
-        currentPathname: window.location.pathname,
-      })
-    }
-    catch {
-      toast.error(t('Could not log out. Please try again.'))
-    }
-  }
-
   if (!user) {
     return null
+  }
+
+  if (displayMode === 'mobile-drawer') {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          <button
+            type="button"
+            className={cn(`
+              flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
+              text-muted-foreground transition-colors
+              focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none
+            `)}
+            aria-label={t('Profile')}
+          >
+            {showPlaceholder
+              ? <span aria-hidden="true" className="size-[19px] rounded-full" style={placeholderStyle} />
+              : <Image src={avatarUrl} alt="" width={19} height={19} className="size-[19px] rounded-full object-cover" />}
+            <span>{t('Profile')}</span>
+          </button>
+        </DrawerTrigger>
+        <DrawerContent className="max-h-[88vh] rounded-t-[1.75rem] border-border/70 bg-background px-4 pt-3 pb-6">
+          <div className="grid gap-4 overflow-y-auto pt-2">
+            <div className="rounded-2xl border border-border/70 p-2">
+              <UserInfoSection />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-3">
+              <AppLink href="/portfolio" className="text-lg font-semibold text-yes">
+                {isLoadingBalance
+                  ? <span className="block h-6 w-20 animate-pulse rounded-md bg-muted" />
+                  : (
+                      <span>{formatMoney(Number.isFinite(balance?.raw) ? balance?.raw ?? 0 : 0)}</span>
+                    )}
+              </AppLink>
+              {startDepositFlow
+                ? <Button size="sm" onClick={startDepositFlow}>{t('Deposit')}</Button>
+                : <HeaderDepositButton />}
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-border/70">
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="text-sm font-semibold">{t('Notifications')}</span>
+                <HeaderNotifications />
+              </div>
+              <div className="mx-4 h-px bg-border/70" />
+              {user.is_staff && (
+                <>
+                  <DrawerClose asChild>
+                    <AppLink
+                      intentPrefetch
+                      href="/admin"
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                    >
+                      <ShieldIcon className="size-4" />
+                      {t('Admin')}
+                    </AppLink>
+                  </DrawerClose>
+                  <div className="mx-4 h-px bg-border/70" />
+                </>
+              )}
+              <DrawerClose asChild>
+                <AppLink intentPrefetch href="/predictions/trending?bookmarked=true" className="flex items-center gap-3 px-4 py-3 text-sm font-semibold">
+                  <BookmarkIcon className="size-4 text-primary" />
+                  {t('Bookmarks')}
+                </AppLink>
+              </DrawerClose>
+              <div className="mx-4 h-px bg-border/70" />
+              <DrawerClose asChild>
+                <AppLink
+                  intentPrefetch
+                  href="/settings"
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                >
+                  <SettingsIcon className="size-4 text-orange-500" />
+                  {t('Settings')}
+                </AppLink>
+              </DrawerClose>
+              <div className="mx-4 h-px bg-border/70" />
+              <DrawerClose asChild>
+                <AppLink
+                  intentPrefetch
+                  href="/settings/affiliate"
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                >
+                  <BadgePercentIcon className="size-4 text-emerald-600" />
+                  {t('Affiliate')}
+                </AppLink>
+              </DrawerClose>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-3">
+              <span className="text-sm font-semibold">{t('Dark Mode')}</span>
+              <ThemeSelector />
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-border/70">
+              <DrawerClose asChild>
+                <a href="https://whatsapp.com" target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-muted-foreground">
+                  <MessageCircleIcon className="size-4" />
+                  {t('WhatsApp group')}
+                </a>
+              </DrawerClose>
+              <div className="mx-4 h-px bg-border/70" />
+              {canShowInstallUi && (
+                <>
+                  <DrawerClose asChild>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold"
+                      onClick={() => void handleInstallAction()}
+                      disabled={isPrompting}
+                    >
+                      <DownloadIcon className="size-4 text-sky-500" />
+                      {t('Install app')}
+                    </button>
+                  </DrawerClose>
+                  <div className="mx-4 h-px bg-border/70" />
+                </>
+              )}
+              <DrawerClose asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-muted-foreground"
+                  onClick={() => {
+                    if (onHowItWorks) {
+                      onHowItWorks()
+                      return
+                    }
+                    const searchParams = new URLSearchParams(window.location.search)
+                    searchParams.set('howItWorks', 'true')
+                    window.history.pushState(null, '', `?${searchParams.toString()}`)
+                    window.dispatchEvent(new Event('popstate'))
+                  }}
+                >
+                  <InfoIcon className="size-4" />
+                  {t('How it works')}
+                </button>
+              </DrawerClose>
+              <div className="mx-4 h-px bg-border/70" />
+              <DrawerClose asChild>
+                <AppLink
+                  intentPrefetch
+                  href="/tos"
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-muted-foreground"
+                >
+                  {t('Terms of Use')}
+                </AppLink>
+              </DrawerClose>
+              <div className="mx-4 h-px bg-border/70" />
+              <DrawerClose asChild>
+                <button type="button" className="w-full px-4 py-3 text-left text-sm font-semibold text-destructive" onClick={() => void handleLogout()}>
+                  {t('Logout')}
+                </button>
+              </DrawerClose>
+            </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
   }
 
   return (
@@ -232,6 +398,22 @@ export default function HeaderDropdownUserMenuAuth() {
 
           <DropdownMenuSeparator />
 
+          {user.is_staff && (
+            <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
+              <AppLink intentPrefetch href="/admin" className="flex w-full items-center gap-1.5">
+                <ShieldIcon className="size-4 text-current" />
+                {t('Admin')}
+              </AppLink>
+            </DropdownMenuItem>
+          )}
+
+          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
+            <AppLink intentPrefetch href="/predictions/trending?bookmarked=true" className="flex w-full items-center gap-1.5">
+              <BookmarkIcon className="size-4 text-primary" />
+              {t('Bookmarks')}
+            </AppLink>
+          </DropdownMenuItem>
+
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
             <AppLink intentPrefetch href="/settings" className="flex w-full items-center gap-1.5">
               <SettingsIcon className="size-4 text-orange-500" />
@@ -239,9 +421,16 @@ export default function HeaderDropdownUserMenuAuth() {
             </AppLink>
           </DropdownMenuItem>
 
+          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
+            <AppLink intentPrefetch href="/settings/affiliate" className="flex w-full items-center gap-1.5">
+              <BadgePercentIcon className="size-4 text-emerald-600" />
+              {t('Affiliate')}
+            </AppLink>
+          </DropdownMenuItem>
+
           {canShowInstallUi && (
             <DropdownMenuItem
-              className="py-2 text-sm font-semibold"
+              className="py-2 text-sm font-semibold cursor-pointer"
               onSelect={() => {
                 void handleInstallAction()
               }}
@@ -253,20 +442,6 @@ export default function HeaderDropdownUserMenuAuth() {
               </div>
             </DropdownMenuItem>
           )}
-
-          {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <AppLink intentPrefetch href="/leaderboard" className="flex w-full items-center gap-1.5">
-              <TrophyIcon className="size-4 text-amber-500" />
-              {t('Leaderboard')}
-            </AppLink>
-          </DropdownMenuItem> */}
-
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <AppLink intentPrefetch href="/settings/affiliate" className="flex w-full items-center gap-1.5">
-              <BadgePercentIcon className="size-4 text-emerald-600" />
-              {t('Affiliate')}
-            </AppLink>
-          </DropdownMenuItem>
 
           {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
             <AppLink
@@ -281,15 +456,6 @@ export default function HeaderDropdownUserMenuAuth() {
             </AppLink>
           </DropdownMenuItem> */}
 
-          {user.is_staff && (
-            <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-              <AppLink intentPrefetch href="/admin" className="flex w-full items-center gap-1.5">
-                <ShieldIcon className="size-4 text-current" />
-                {t('Admin')}
-              </AppLink>
-            </DropdownMenuItem>
-          )}
-
           <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm font-semibold">
             <span>{t('Dark Mode')}</span>
             <ThemeSelector />
@@ -299,9 +465,13 @@ export default function HeaderDropdownUserMenuAuth() {
             <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
               <div className="flex w-full items-center justify-between" onClickCapture={handleMenuClose}>
                 <AppLink href="/portfolio" className="flex items-center gap-1 text-base font-semibold text-yes">
-                  {isLoadingBalance || isLoadingPortfolio
+                  {isLoadingBalance
                     ? <div className="h-5 w-16 animate-pulse rounded-md bg-muted" />
-                    : <span>${Number.isFinite((positionsValue ?? 0) + (balance?.raw ?? 0)) ? ((positionsValue ?? 0) + (balance?.raw ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}</span>}
+                    : (
+                        <span>
+                          {formatMoney(Number.isFinite(balance?.raw) ? balance?.raw ?? 0 : 0)}
+                        </span>
+                      )}
                 </AppLink>
                 {startDepositFlow
                   ? (
@@ -321,6 +491,33 @@ export default function HeaderDropdownUserMenuAuth() {
           {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
             <AppLink intentPrefetch href="/docs" target="_blank" data-testid="header-docs-link">{t('Documentation')}</AppLink>
           </DropdownMenuItem> */}
+
+          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
+            <a href="https://whatsapp.com" target="_blank" rel="noreferrer" className="flex w-full items-center gap-1.5">
+              <MessageCircleIcon className="size-4" />
+              {t('WhatsApp group')}
+            </a>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="py-2 text-sm font-semibold cursor-pointer text-muted-foreground"
+            onSelect={() => {
+              handleMenuClose()
+              if (onHowItWorks) {
+                onHowItWorks()
+              } else {
+                const searchParams = new URLSearchParams(window.location.search)
+                searchParams.set('howItWorks', 'true')
+                window.history.pushState(null, '', `?${searchParams.toString()}`)
+                window.dispatchEvent(new Event('popstate'))
+              }
+            }}
+          >
+            <div className="flex w-full items-center gap-1.5">
+              <InfoIcon className="size-4" />
+              {t('How it works')}
+            </div>
+          </DropdownMenuItem>
 
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
             <AppLink intentPrefetch href="/tos" data-testid="header-terms-link">{t('Terms of Use')}</AppLink>

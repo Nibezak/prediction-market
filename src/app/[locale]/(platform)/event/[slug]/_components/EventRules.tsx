@@ -318,7 +318,9 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
     event.additional_context_updated_at ?? event.updated_at,
   )
 
-  const resolverDetails = (
+  const isZeroAddress = !resolverAddress || resolverAddress.replace(/^0x/, '').replace(/0/g, '').length === 0
+
+  const resolverDetails = isZeroAddress ? null : (
     <div className="flex min-w-0 items-start gap-3">
       <div
         className={cn(`size-10 ${resolverBadgeClassName}
@@ -379,18 +381,19 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
     )
   })()
 
-  const resolverBlock = (
+  const resolverBlock = (resolverDetails || resolverAction) ? (
     <div className="rounded-lg border p-3">
       <div className={cn(
         'flex items-center',
-        resolverAction && 'justify-between gap-3',
+        resolverDetails && resolverAction && 'justify-between gap-3',
+        !resolverDetails && resolverAction && 'justify-end',
       )}
       >
         {resolverDetails}
         {resolverAction}
       </div>
     </div>
-  )
+  ) : null
 
   const resolutionSourceBlock = hasResolutionSourceUrl
     ? (

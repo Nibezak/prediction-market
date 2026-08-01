@@ -21,7 +21,7 @@ import {
 import { db } from '@/lib/drizzle'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
-import { syncMarketToPlayMoney } from '@/lib/play-money-sync'
+import { syncMarketToSlimefishBackend } from '@/lib/slimefish-backend-sync'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
 import { slugifyText } from '@/lib/slug'
 import { uploadPublicAsset } from '@/lib/storage'
@@ -1386,8 +1386,8 @@ async function processMarketData(
   if (!marketAlreadyExists && metadata.outcomes?.length > 0) {
     await processOutcomes(market.id, metadata.outcomes)
 
-    // Mirror to Play Money AMM
-    await syncMarketToPlayMoney(market.id, String(metadata.name), metadata.outcomes)
+    // Mirror to Slimefish ledger AMM
+    await syncMarketToSlimefishBackend(market.id, String(metadata.name), metadata.outcomes)
   }
   if (market.resolved) {
     await syncMissingOnChainResolvedPayouts(market.id)

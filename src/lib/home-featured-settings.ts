@@ -29,6 +29,7 @@ export const HOME_FEATURED_SIDE_CARD_USE_IMAGE_KEY = 'side_card_use_image'
 export const HOME_FEATURED_SIDE_CARD_IMAGE_PATH_KEY = 'side_card_image_path'
 export const HOME_FEATURED_SIDE_CARD_SLIDES_KEY = 'side_card_slides_v1'
 export const HOME_FEATURED_SIDE_CARD_MAX_SLIDES = 8
+export const HOME_FEATURED_HOT_PICKS_TAGS_KEY = 'hot_picks_tags'
 
 const HOME_FEATURED_CONTEXT_MODES: HomeFeaturedContextMode[] = ['auto', 'news', 'comments', 'hidden']
 export const HOME_FEATURED_SIDE_CARD_ICONS: HomeFeaturedSideCardIcon[] = [
@@ -119,6 +120,7 @@ export const DEFAULT_HOME_FEATURED_SETTINGS: HomeFeaturedSettings = {
   minVolume24h: 0,
   includeSportsToday: true,
   includeNewEvents: true,
+  hotPicksTags: [],
   sideCard: {
     ...DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE,
     slides: [{ ...DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE }],
@@ -235,6 +237,9 @@ function parseSideCardVideoUrl(value: unknown) {
     else if (hostname === 'vimeo.com' || hostname === 'player.vimeo.com') {
       const id = url.pathname.split('/').filter(Boolean).findLast(segment => /^\d+$/.test(segment)) ?? ''
       if (id) embed = `https://player.vimeo.com/video/${id}`
+    }
+    else if (/\.(?:mp4|webm)$/i.test(url.pathname)) {
+      embed = url.toString()
     }
     return embed ? { videoUrl: normalized, videoEmbedUrl: embed } : { videoUrl: '', videoEmbedUrl: '' }
   }
@@ -355,6 +360,22 @@ function parseCommentBlacklist(value: string | undefined) {
   return parseCommentBlacklistInput(value)
 }
 
+export function parseHotPicksTags(value: string | undefined): string[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed)) {
+      return parsed.map(t => String(t).trim()).filter(Boolean).slice(0, 3)
+    }
+  }
+  catch {}
+  return value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 3)
+}
+
+export function serializeHotPicksTags(tags: string[]) {
+  return JSON.stringify(tags.map(t => t.trim()).filter(Boolean).slice(0, 3))
+}
+
 export function getHomeFeaturedSettingsFromSettings(allSettings?: SettingsMap): HomeFeaturedSettings {
   const settings = allSettings?.[HOME_FEATURED_SETTINGS_GROUP]
   const defaults = DEFAULT_HOME_FEATURED_SETTINGS
@@ -393,6 +414,7 @@ export function getHomeFeaturedSettingsFromSettings(allSettings?: SettingsMap): 
       settings?.[HOME_FEATURED_INCLUDE_NEW_EVENTS_KEY]?.value,
       defaults.includeNewEvents,
     ),
+    hotPicksTags: parseHotPicksTags(settings?.[HOME_FEATURED_HOT_PICKS_TAGS_KEY]?.value),
     sideCard: { ...primarySlide, slides },
   }
 }
@@ -407,6 +429,7 @@ export function validateHomeFeaturedSettingsInput(input: {
   minVolume24h: string
   includeSportsToday: string
   includeNewEvents: string
+  hotPicksTagsJson?: string
   sideCardTitle?: string
   sideCardText?: string
   sideCardCtaLabel?: string
@@ -446,6 +469,7 @@ export function validateHomeFeaturedSettingsInput(input: {
       minVolume24h,
       includeSportsToday: parseBoolean(input.includeSportsToday, true),
       includeNewEvents: parseBoolean(input.includeNewEvents, true),
+      hotPicksTags: parseHotPicksTags(input.hotPicksTagsJson),
       sideCard: { ...primarySlide, slides },
     },
     error: null,

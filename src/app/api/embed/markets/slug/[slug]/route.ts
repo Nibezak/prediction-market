@@ -38,7 +38,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ slug: stri
       return withEmbedCors(NextResponse.json({ error: 'Market not found' }, { status: 404 }))
     }
 
-    return withEmbedCors(NextResponse.json(buildEmbedMarket(market, event)))
+    return withEmbedCors(NextResponse.json({
+      ...buildEmbedMarket(market, event),
+      eventTitle: event.title,
+      eventMarkets: event.markets.map(item => buildEmbedMarket(item, event)),
+    }))
   }
   catch (error) {
     console.error('Embed market API error:', error)

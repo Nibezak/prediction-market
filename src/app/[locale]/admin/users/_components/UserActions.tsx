@@ -1,131 +1,146 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Ban, MoreHorizontal, ShieldCheck } from 'lucide-react'
-import { useExtracted } from 'next-intl'
-import { Button } from '@/components/ui/button'
-import AppLink from '@/components/AppLink'
-import { useUser } from '@/stores/useUser'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { toggleUserBlockedStatus, updateUserRole } from '@/app/[locale]/admin/users/_actions/update-user-status'
+import { Ban, MoreHorizontal, RotateCcw, ScanEye, ShieldCheck } from 'lucide-react'
+import { refundUserTrades } from '@/app/[locale]/admin/users/_actions/refund-user-trades'
 import { toast } from 'sonner'
+import { toggleUserBlockedStatus, updateUserRole } from '@/app/[locale]/admin/users/_actions/update-user-status'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getRolePermissionPreset, STAFF_PERMISSION_GROUPS } from '@/lib/staff-permissions'
+import { useUser } from '@/stores/useUser'
+
+const ROLES = ['USER', 'EDITOR', 'MODERATOR', 'RESOLVER', 'SUPPORT', 'FINANCE', 'ADMIN'] as const
+type Role = typeof ROLES[number]
 
 interface UserActionsProps {
-  user: {
-    id: string
-    username: string
-    email: string
-    is_blocked?: boolean
-    role?: string
-  }
+  user: { id: string, username: string, email: string, is_blocked?: boolean, role?: string, settings?: Record<string, unknown> }
 }
 
 export function UserActions({ user }: UserActionsProps) {
-  const t = useExtracted()
   const queryClient = useQueryClient()
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const isBlocked = !!user.is_blocked
   const currentUser = useUser()
-  const canManage = currentUser?.is_admin === true || currentUser?.role === 'ADMIN'
+  const isAdmin = currentUser?.is_admin === true || currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN'
+  const currentPermissions = Array.isArray(currentUser?.settings?.staff_permissions) ? currentUser.settings.staff_permissions as string[] : []
+  const canMirror = isAdmin || currentPermissions.includes('users.mirror')
+  const canManageRoles = isAdmin || currentPermissions.includes('users.roles.manage') || currentPermissions.includes('users.permissions.manage')
+  const canBlock = isAdmin || currentPermissions.includes('users.block') || currentPermissions.includes('users.unblock')
+  const canRefund = isAdmin || currentUser?.role === 'FINANCE' || currentPermissions.includes('users.balance.adjust')
+  const [dialog, setDialog] = useState<'role' | 'block' | 'mirror' | 'refund' | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [isBlocked, setIsBlocked] = useState(Boolean(user.is_blocked))
+  const [role, setRole] = useState<Role>((ROLES.includes(user.role as Role) ? user.role : 'USER') as Role)
+  const configured = user.settings?.staff_permissions
+  const [permissions, setPermissions] = useState<string[]>(Array.isArray(configured) ? configured as string[] : getRolePermissionPreset(role))
+  const [search, setSearch] = useState('')
+  const [refundMarketId, setRefundMarketId] = useState('')
+  const [refundEventId, setRefundEventId] = useState('')
+  const [refundFrom, setRefundFrom] = useState('')
+  const [refundTo, setRefundTo] = useState('')
+  const [refundReason, setRefundReason] = useState('')
+  const filteredGroups = useMemo(() => STAFF_PERMISSION_GROUPS.map(group => ({ ...group, permissions: group.permissions.filter(value => value.includes(search.trim().toLowerCase())) })).filter(group => group.permissions.length), [search])
 
-  const handleToggleBlock = async () => {
-    setIsLoading(true)
-    try {
-      const result = await toggleUserBlockedStatus(user.id, !isBlocked)
-      if (result.error) {
-        toast.error(t('Error'), {
-          description: result.error,
-        })
-      } else {
-        toast.success(t('Success'), {
-          description: isBlocked 
-            ? t('User has been unblocked.') 
-            : t('User has been blocked from trading.'),
-        })
-        setIsDialogOpen(false)
-        await queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-      }
-    } catch (error) {
-      toast.error(t('Error'), {
-        description: t('An unexpected error occurred.'),
-      })
-    } finally {
-      setIsLoading(false)
-    }
+  async function refresh() { await queryClient.invalidateQueries({ queryKey: ['admin-users'] }) }
+  async function saveRole() {
+    setLoading(true)
+    const result = await updateUserRole(user.id, role, permissions)
+    setLoading(false)
+    if (result.error) return toast.error('Could not update access', { description: result.error })
+    toast.success('Role and permissions updated')
+    setDialog(null)
+    await refresh()
+  }
+  async function toggleBlock() {
+    setLoading(true)
+    const nextBlockedState = !isBlocked
+    const result = await toggleUserBlockedStatus(user.id, nextBlockedState)
+    setLoading(false)
+    if (result.error) return toast.error('Could not update user', { description: result.error })
+    setIsBlocked(nextBlockedState)
+    toast.success(nextBlockedState ? 'User blocked' : 'User unblocked')
+    setDialog(null)
+    await refresh()
+  }
+  async function startMirror() {
+    setLoading(true)
+    const response = await fetch('/api/admin/mirror', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ targetUserId: user.id }) })
+    const result = await response.json().catch(() => null)
+    setLoading(false)
+    if (!response.ok) return toast.error('Could not mirror user', { description: result?.error || 'Request failed' })
+    window.location.assign('/')
+  }
+  async function refundTrades() {
+    setLoading(true)
+    const result = await refundUserTrades(user.id, {
+      marketId: refundMarketId.trim() || undefined,
+      eventId: refundEventId.trim() || undefined,
+      from: refundFrom || undefined,
+      to: refundTo || undefined,
+      reason: refundReason.trim() || undefined,
+    })
+    setLoading(false)
+    if (result.error) return toast.error('Could not refund trades', { description: result.error })
+    toast.success(`Refunded ${result.refundedCount ?? 0} trade${result.refundedCount === 1 ? '' : 's'}`)
+    setDialog(null)
+    await refresh()
   }
 
-  const handleRoleChange = async (role: 'USER' | 'EDITOR' | 'MODERATOR' | 'RESOLVER' | 'SUPPORT' | 'FINANCE') => {
-    setIsLoading(true)
-    const result = await updateUserRole(user.id, role)
-    setIsLoading(false)
-    if (result.error) {
-      toast.error(t('Error'), { description: result.error })
-      return
-    }
-    toast.success(t('Success'), { description: t('User role updated.') })
-    await queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-  }
-
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-8 w-8 p-0">
-            <span className="sr-only">{t('Open menu')}</span>
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem asChild>
-            <AppLink href={`/@${user.username}` as any}>View account</AppLink>
-          </DropdownMenuItem>
-          {canManage && (['USER', 'EDITOR', 'MODERATOR', 'RESOLVER', 'SUPPORT', 'FINANCE'] as const).map(role => (
-            <DropdownMenuItem key={role} disabled={isLoading || user.role === role} onSelect={() => void handleRoleChange(role)}>
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              {t('Set role: {role}', { role: role.toLowerCase() })}
-            </DropdownMenuItem>
-          ))}
-          {canManage && <DropdownMenuItem 
-            className="text-destructive cursor-pointer" 
-            onSelect={() => setIsDialogOpen(true)}
+  return <>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /><span className="sr-only">User actions</span></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canMirror && <DropdownMenuItem onSelect={() => setDialog('mirror')}><ScanEye className="mr-2 size-4" />Mirror user</DropdownMenuItem>}
+        {canManageRoles && <DropdownMenuItem onSelect={() => setDialog('role')}><ShieldCheck className="mr-2 size-4" />Roles and permissions</DropdownMenuItem>}
+        {canRefund && <DropdownMenuItem onSelect={() => setDialog('refund')}><RotateCcw className="mr-2 size-4" />Refund trades</DropdownMenuItem>}
+        {canBlock && (
+          <DropdownMenuItem
+            className={isBlocked ? "text-emerald-600 dark:text-emerald-400 focus:text-emerald-600 focus:bg-emerald-500/10 font-medium" : "text-destructive focus:text-destructive"}
+            onSelect={() => setDialog('block')}
           >
-            <Ban className="mr-2 h-4 w-4" />
-            {isBlocked ? t('Unblock User') : t('Block User')}
-          </DropdownMenuItem>}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <Ban className="mr-2 size-4" />
+            {isBlocked ? 'Unblock user' : 'Block user'}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{isBlocked ? t('Unblock User') : t('Block User')}</DialogTitle>
-            <DialogDescription>
-              {isBlocked 
-                ? t('Are you sure you want to unblock {user}? They will be able to trade again.', { user: user.username || user.email })
-                : t('Are you sure you want to block {user}? They will no longer be able to trade.', { user: user.username || user.email })
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isLoading}>
-              {t('Cancel')}
-            </Button>
-            <Button variant={isBlocked ? 'default' : 'destructive'} onClick={handleToggleBlock} disabled={isLoading}>
-              {isLoading ? t('Saving...') : (isBlocked ? t('Unblock') : t('Block'))}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
+    <Dialog open={dialog === 'role'} onOpenChange={open => !open && setDialog(null)}>
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogHeader><DialogTitle>Roles and permissions</DialogTitle><DialogDescription>Choose a preset, then tailor this user&apos;s access. Sensitive actions are verified again by the server.</DialogDescription></DialogHeader>
+        <div className="grid gap-4">
+          <div className="grid gap-2"><Label>Role preset</Label><Select value={role} onValueChange={value => { const next = value as Role; setRole(next); setPermissions(getRolePermissionPreset(next)) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ROLES.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search permissions" />
+          <div className="grid gap-5 md:grid-cols-2">{filteredGroups.map(group => <section key={group.label} className="min-w-0 space-y-2"><h3 className="font-medium">{group.label}</h3>{group.permissions.map(permission => <label key={permission} className="flex items-center gap-2 text-sm"><Checkbox checked={permissions.includes(permission)} onCheckedChange={checked => setPermissions(current => checked ? [...new Set([...current, permission])] : current.filter(value => value !== permission))} /><span className="break-all">{permission}</span></label>)}</section>)}</div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button onClick={saveRole} disabled={loading}>{loading ? 'Saving...' : 'Save access'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={dialog === 'mirror'} onOpenChange={open => !open && setDialog(null)}><DialogContent><DialogHeader><DialogTitle>Mirror {user.email}</DialogTitle><DialogDescription>This starts a 15-minute audited support session as this user.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button onClick={startMirror} disabled={loading}>{loading ? 'Starting...' : 'Mirror user'}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialog === 'refund'} onOpenChange={open => !open && setDialog(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Refund trades for {user.email}</DialogTitle>
+          <DialogDescription>Reverse this user&apos;s trade ledger entries. Use the optional filters to refund only a market, event, or time window.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-2"><Label htmlFor="refund-market">Market ID</Label><Input id="refund-market" value={refundMarketId} onChange={event => setRefundMarketId(event.target.value)} placeholder="Optional market ID" /></div>
+          <div className="grid gap-2"><Label htmlFor="refund-event">Event ID</Label><Input id="refund-event" value={refundEventId} onChange={event => setRefundEventId(event.target.value)} placeholder="Optional event ID" /></div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2"><Label htmlFor="refund-from">From</Label><Input id="refund-from" type="datetime-local" value={refundFrom} onChange={event => setRefundFrom(event.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="refund-to">To</Label><Input id="refund-to" type="datetime-local" value={refundTo} onChange={event => setRefundTo(event.target.value)} /></div>
+          </div>
+          <div className="grid gap-2"><Label htmlFor="refund-reason">Reason</Label><Input id="refund-reason" value={refundReason} onChange={event => setRefundReason(event.target.value)} placeholder="Market canceled, data issue, manual correction..." /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button variant="destructive" onClick={refundTrades} disabled={loading}>{loading ? 'Refunding...' : 'Refund matching trades'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={dialog === 'block'} onOpenChange={open => !open && setDialog(null)}><DialogContent><DialogHeader><DialogTitle>{isBlocked ? 'Unblock user' : 'Block user'}</DialogTitle><DialogDescription>{isBlocked ? 'Restore this user\'s platform access?' : 'Suspend trading, deposits, and withdrawals while this account is reviewed?'}</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button variant={isBlocked ? 'default' : 'destructive'} onClick={toggleBlock} disabled={loading}>{loading ? 'Saving...' : isBlocked ? 'Unblock' : 'Block'}</Button></DialogFooter></DialogContent></Dialog>
+  </>
 }

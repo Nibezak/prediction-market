@@ -9,6 +9,7 @@ import ProfileLink from '@/components/ProfileLink'
 import { buttonVariants } from '@/components/ui/button'
 import { saveRecentSearchEvent } from '@/hooks/useRecentSearchEvents'
 import { resolveEventPagePath } from '@/lib/events-routing'
+import { formatMarketChancePercent } from '@/lib/market-chance'
 import {
   buildSearchCategoryMatches,
   resolvePredictionResultsHref,
@@ -231,8 +232,7 @@ function EventResults({
 
             <div className="flex flex-col items-end text-right">
               <span className={cn('text-lg font-bold', isResolvedEvent ? 'text-muted-foreground' : 'text-foreground')}>
-                {result.markets[0].probability.toFixed(0)}
-                %
+                {formatMarketChancePercent(result.markets[0].probability)}
               </span>
             </div>
           </>

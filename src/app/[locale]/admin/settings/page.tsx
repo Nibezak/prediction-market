@@ -3,7 +3,7 @@ import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { connection } from 'next/server'
 import { Suspense } from 'react'
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/settings/_components/AdminGeneralSettingsForm'
-import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
+import { parseOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { fetchOpenRouterModels } from '@/lib/ai/openrouter'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
 import { SettingsRepository } from '@/lib/db/queries/settings'
@@ -30,11 +30,11 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
 
   const { data: allSettings } = await SettingsRepository.getSettings()
 
-  const parsedMarketContextSettings = parseMarketContextSettings(allSettings ?? undefined)
-  const defaultOpenRouterModel = parsedMarketContextSettings.model ?? ''
-  const apiKeyForModels = parsedMarketContextSettings.apiKey
+  const openRouterSettings = parseOpenRouterProviderSettings(allSettings ?? undefined)
+  const defaultOpenRouterModel = openRouterSettings.model ?? ''
+  const apiKeyForModels = openRouterSettings.apiKey
   const isOpenRouterApiKeyConfigured = Boolean(apiKeyForModels)
-  const isOpenRouterModelSelectEnabled = isOpenRouterApiKeyConfigured
+  const isOpenRouterModelSelectEnabled = openRouterSettings.enabled && isOpenRouterApiKeyConfigured
 
   let openRouterModelsError: string | undefined
   let openRouterModelOptions: Array<{ id: string, label: string, contextWindow?: number }> = []
@@ -96,6 +96,7 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
       initialHomeFeaturedSettings={initialHomeFeaturedSettingsWithImages}
       initialHomeFeaturedEvents={initialHomeFeaturedEvents ?? []}
       openRouterSettings={{
+        isEnabled: openRouterSettings.enabled,
         defaultModel: defaultOpenRouterModel,
         isApiKeyConfigured: isOpenRouterApiKeyConfigured,
         isModelSelectEnabled: isOpenRouterModelSelectEnabled,

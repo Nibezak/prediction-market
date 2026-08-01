@@ -419,7 +419,7 @@ export function createInitialForm(input?: {
     binaryQuestion: '',
     binaryOutcomeYes: 'Yes',
     binaryOutcomeNo: 'No',
-    initialLiquidity: '50',
+    initialLiquidity: '130',
     options: [createOption('opt-1'), createOption('opt-2')],
     resolutionSource: '',
     resolutionRules: '',

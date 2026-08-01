@@ -24,9 +24,29 @@ function useSyncViewerUserState() {
       return
     }
 
-    useUser.setState((previous) => {
-      return mergeSessionUserState(previous, session.user as unknown as User)
+    const controller = new AbortController()
+    void fetch('/api/viewer', {
+      cache: 'no-store',
+      credentials: 'include',
+      signal: controller.signal,
     })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Failed to load viewer')
+        return response.json() as Promise<{ user: User | null }>
+      })
+      .then(({ user }) => {
+        if (!user) {
+          useUser.setState(null)
+          return
+        }
+        useUser.setState(previous => mergeSessionUserState(previous, user))
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        useUser.setState(previous => mergeSessionUserState(previous, session.user as unknown as User))
+      })
+
+    return () => controller.abort()
   }, [isPending, session, session?.user])
 }
 

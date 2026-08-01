@@ -241,7 +241,13 @@ export function buildEventCreationPreparePayload(input: {
     throw new Error('Draft must have at least 4 sub categories.')
   }
 
-  const isSports = isSportsMainCategory(mainCategorySlug)
+  const snapshotSports = readObject(readSnapshot(record).sportsForm)
+  const hasConfiguredSportsForm = Boolean(
+    readString(snapshotSports.section, '')
+    && readString(snapshotSports.sportSlug, '')
+    && readString(snapshotSports.leagueSlug, ''),
+  )
+  const isSports = isSportsMainCategory(mainCategorySlug) || hasConfiguredSportsForm
   const marketMode = readString(snapshotForm.marketMode, record.marketMode ?? '') as MarketMode
   const resolutionSource = readString(snapshotForm.resolutionSource, record.resolutionSource ?? '')
   const rawResolutionRules = readString(snapshotForm.resolutionRules, record.resolutionRules ?? '')
@@ -258,7 +264,7 @@ export function buildEventCreationPreparePayload(input: {
     endDateIso: occurrenceDate.toISOString(),
     mainCategorySlug: slugifyEventCreationValue(mainCategorySlug),
     categories,
-    marketMode: isSports ? 'multi_multiple' : marketMode,
+    marketMode: isSports ? 'multi_unique' : marketMode,
     resolutionSource,
     resolutionRules,
   }

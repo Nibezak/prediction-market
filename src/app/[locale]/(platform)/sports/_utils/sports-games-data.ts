@@ -570,6 +570,20 @@ function toSportsTeams(event: Event) {
     })
     .filter((team): team is SportsGamesTeam => Boolean(team))
 
+  if (teams.length < 2 && event.title) {
+    const parts = event.title.split(/\s+v(?:s|\.)?\s+/i)
+    if (parts.length >= 2) {
+      const name1 = parts[0].trim()
+      const name2 = parts[1].replace(/\s*(game|match)$/i, '').trim()
+      if (name1 && name2) {
+        return [
+          { name: name1, abbreviation: buildFallbackAbbreviation(name1), record: null, color: null, logoUrl: logoUrls[0] || null, hostStatus: null },
+          { name: name2, abbreviation: buildFallbackAbbreviation(name2), record: null, color: null, logoUrl: logoUrls[1] || null, hostStatus: null },
+        ]
+      }
+    }
+  }
+
   return teams.sort((a, b) => {
     if (a.hostStatus === 'home' && b.hostStatus !== 'home') {
       return -1
@@ -1739,10 +1753,8 @@ function canRenderSportsGamesCard(
   teams: SportsGamesTeam[],
   eventHref: string,
 ) {
-  // Sports list pages should only render cards that can resolve back into sports routes.
-  return event.sports_section === 'games'
-    && (eventHref.startsWith('/sports/') || eventHref.startsWith('/esports/'))
-    && teams.length >= 2
+  const isGamesSection = !event.sports_section || event.sports_section === 'games'
+  return isGamesSection
 }
 
 function buildSportsGamesCard(

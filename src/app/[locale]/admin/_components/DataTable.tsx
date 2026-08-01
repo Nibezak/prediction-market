@@ -1,6 +1,6 @@
 'use client'
 
-import type { ColumnDef, SortingState, VisibilityState } from '@tanstack/react-table'
+import type { ColumnDef, OnChangeFn, RowSelectionState, SortingState, VisibilityState } from '@tanstack/react-table'
 import type { ReactNode } from 'react'
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { useExtracted } from 'next-intl'
@@ -25,6 +25,8 @@ interface DataTableProps<TData, TValue> {
   totalCount: number
   searchPlaceholder?: string
   enableSelection?: boolean
+  rowSelection?: RowSelectionState
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>
   enablePagination?: boolean
   enableColumnVisibility?: boolean
   isLoading?: boolean
@@ -57,6 +59,8 @@ function useDataTableState<TData, TValue>({
   onSortChange,
   pageIndex,
   pageSize,
+  rowSelection: externalRowSelection,
+  onRowSelectionChange: externalOnRowSelectionChange,
 }: {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -66,9 +70,14 @@ function useDataTableState<TData, TValue>({
   onSortChange: (column: string | null, order: 'asc' | 'desc' | null) => void
   pageIndex: number
   pageSize: number
+  rowSelection?: RowSelectionState
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>
 }) {
-  const [rowSelection, setRowSelection] = useState({})
+  const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({})
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+
+  const rowSelection = externalRowSelection ?? internalRowSelection
+  const onRowSelectionChange = externalOnRowSelectionChange ?? setInternalRowSelection
 
   const sorting: SortingState = useMemo(() => {
     const dbToColumnMapping: Record<string, string> = {
@@ -115,7 +124,7 @@ function useDataTableState<TData, TValue>({
     onSortingChange: handleSortingChange,
     getCoreRowModel: getCoreRowModel(),
     onColumnVisibilityChange: Array.isArray(columnVisibility) ? columnVisibility[1] : setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange,
     state: {
       sorting,
       columnVisibility: Array.isArray(columnVisibility) ? columnVisibility[0] : columnVisibility,
@@ -125,9 +134,7 @@ function useDataTableState<TData, TValue>({
         pageSize,
       },
     },
-    onPaginationChange: (updater) => {
-      // Allow manual state injection to fully control pagination
-    },
+    onPaginationChange: () => {},
   })
 
   return { table }
@@ -139,6 +146,8 @@ export function DataTable<TData, TValue>({
   totalCount,
   searchPlaceholder,
   enableSelection = false,
+  rowSelection,
+  onRowSelectionChange,
   enablePagination = true,
   enableColumnVisibility = true,
   isLoading = false,
@@ -174,6 +183,8 @@ export function DataTable<TData, TValue>({
     onSortChange,
     pageIndex,
     pageSize,
+    rowSelection,
+    onRowSelectionChange,
   })
 
   if (error) {
@@ -218,8 +229,6 @@ export function DataTable<TData, TValue>({
                 className={cn(`
                   inline-flex items-center rounded-md border border-transparent bg-primary px-4 py-2 text-sm font-medium
                   text-white shadow-sm
-                  hover:bg-primary/90
-                  focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:outline-none
                 `)}
               >
                 {t('Try again')}
@@ -245,14 +254,14 @@ export function DataTable<TData, TValue>({
         searchInputClassName={searchInputClassName}
         searchLeadingIcon={searchLeadingIcon}
       />
-      <div className="overflow-x-auto rounded-md border">
-        <Table className="w-full">
-          <TableHeader>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader className={tableHeaderClass}>
             {table.getHeaderGroups().map(headerGroup => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} colSpan={header.colSpan} className={cn(tableHeaderClass, 'px-1 sm:px-2')}>
+                    <TableHead key={header.id}>
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -268,11 +277,11 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {isLoading
               ? (
-                  Array.from({ length: 10 }).map((_, index) => (
-                    <TableRow key={`skeleton-${index}`}>
-                      {columns.map((_, colIndex) => (
-                        <TableCell key={`skeleton-${index}-${colIndex}`} className="px-1 sm:px-2">
-                          <Skeleton className="h-4 w-full" />
+                  Array.from({ length: pageSize }).map((_, index) => (
+                    <TableRow key={index}>
+                      {columns.map((column, colIndex) => (
+                        <TableCell key={colIndex}>
+                          <Skeleton className="h-6 w-full" />
                         </TableCell>
                       ))}
                     </TableRow>
@@ -286,11 +295,8 @@ export function DataTable<TData, TValue>({
                         data-state={row.getIsSelected() && 'selected'}
                       >
                         {row.getVisibleCells().map(cell => (
-                          <TableCell key={cell.id} className="px-1 sm:px-2">
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext(),
-                            )}
+                          <TableCell key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}
                       </TableRow>
@@ -298,57 +304,11 @@ export function DataTable<TData, TValue>({
                   )
                 : (
                     <TableRow>
-                      <TableCell
-                        colSpan={columns.length}
-                        className="h-24 text-center"
-                      >
-                        {totalCount === 0
-                          ? (
-                              <div className="flex flex-col items-center justify-center py-8">
-                                <div className="mb-2 text-muted-foreground">
-                                  <svg
-                                    className="mx-auto size-8"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    aria-hidden="true"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                                    />
-                                  </svg>
-                                </div>
-                                <h3 className="mb-1 text-sm font-medium text-foreground">{resolvedEmptyMessage}</h3>
-                                <p className="text-xs text-muted-foreground">{resolvedEmptyDescription}</p>
-                              </div>
-                            )
-                          : (
-                              <div className="flex flex-col items-center justify-center py-8">
-                                <div className="mb-2 text-muted-foreground">
-                                  <svg
-                                    className="mx-auto size-8"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    aria-hidden="true"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                                    />
-                                  </svg>
-                                </div>
-                                <h3 className="mb-1 text-sm font-medium text-foreground">{t('No results found')}</h3>
-                                <p className="text-xs text-muted-foreground">
-                                  {t('Try adjusting your search or filter to find what you\'re looking for.')}
-                                </p>
-                              </div>
-                            )}
+                      <TableCell colSpan={columns.length} className="h-32 text-center">
+                        <div className="flex flex-col items-center justify-center space-y-1">
+                          <p className="text-sm font-medium text-foreground">{resolvedEmptyMessage}</p>
+                          <p className="text-xs text-muted-foreground">{resolvedEmptyDescription}</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}
@@ -359,8 +319,6 @@ export function DataTable<TData, TValue>({
         <DataTablePagination
           table={table}
           totalCount={totalCount}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
         />
       )}
     </div>

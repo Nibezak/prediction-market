@@ -22,6 +22,7 @@ import { EventRepository } from '@/lib/db/queries/event'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { event_tags, events, markets, tag_translations, tags } from '@/lib/db/schema/events/tables'
+import { orders } from '@/lib/db/schema/orders/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
 import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
@@ -71,8 +72,8 @@ function resolveCardKind(event: Event): HomeFeaturedCardKind {
   return 'standard'
 }
 function resolveMarketChance(market: Market) {
-  if (typeof market.price === 'number' && Number.isFinite(market.price)) {
-    return Math.max(0, Math.min(100, market.price * 100))
+  if (typeof market.price === 'number' && Number.isFinite(market.price) && market.price > 0) {
+    return Math.max(0.1, Math.min(99.9, market.price * 100))
   }
   const yesOutcome = market.outcomes.find(outcome => outcome.outcome_index === OUTCOME_INDEX.YES)
   const noOutcome = market.outcomes.find(outcome => outcome.outcome_index === OUTCOME_INDEX.NO)
@@ -82,14 +83,17 @@ function resolveMarketChance(market: Market) {
     lastTrade: null,
   })
   if (yesDisplayPrice != null) {
-    return yesDisplayPrice * 100
+    return Math.max(0.1, Math.min(99.9, yesDisplayPrice * 100))
   }
   const noDisplayPrice = resolveDisplayPrice({
     bid: noOutcome?.sell_price ?? null,
     ask: noOutcome?.buy_price ?? null,
     lastTrade: null,
   })
-  return noDisplayPrice == null ? 0 : (1 - noDisplayPrice) * 100
+  if (noDisplayPrice != null) {
+    return Math.max(0.1, Math.min(99.9, (1 - noDisplayPrice) * 100))
+  }
+  return 50
 }
 function resolveOutcomeImageUrl(market: Market) {
   const metadata = market.metadata && typeof market.metadata === 'object'
@@ -277,6 +281,8 @@ export async function listHomeFeaturedHotTopics(
   cacheLife(FEATURED_HOT_TOPICS_CACHE_LIFE)
   cacheTag(cacheTags.eventsList)
   cacheTag(cacheTags.mainTags(locale))
+  const tradersCount = sql<number>`COUNT(DISTINCT ${orders.user_id})::double precision`
+  const eventsCount = sql<number>`COUNT(DISTINCT ${events.id})::double precision`
   const volume24h = sql<number>`COALESCE(SUM(${markets.volume_24h}), 0)::double precision`
   const fallbackVolume = sql<number>`
     COALESCE(
@@ -289,13 +295,16 @@ export async function listHomeFeaturedHotTopics(
   interface HotTopicVolumeRow {
     slug: string
     label: string
+    tradersCount: number
+    eventsCount: number
     volume24h: number
     fallbackVolume: number
   }
   function mergeHotTopicRows(rows: HotTopicVolumeRow[], includeFallbackVolume: boolean) {
-    const topicsBySlug = new Map<string, HomeFeaturedHotTopic & { score: number }>()
+    const topicsBySlug = new Map<string, HomeFeaturedHotTopic & { tradersCount: number, score: number }>()
     for (const row of rows) {
       const slug = row.slug.trim()
+      const rowTraders = Number(row.tradersCount ?? 0)
       const volume24hValue = Number(row.volume24h ?? 0)
       const fallbackVolumeValue = Number(row.fallbackVolume ?? 0)
       const topicScore = volume24hValue > 0
@@ -303,7 +312,7 @@ export async function listHomeFeaturedHotTopics(
         : includeFallbackVolume
           ? fallbackVolumeValue
           : 0
-      if (!slug || topicScore <= 0) {
+      if (!slug) {
         continue
       }
       const existing = topicsBySlug.get(slug)
@@ -312,13 +321,22 @@ export async function listHomeFeaturedHotTopics(
         slug,
         href: resolveHotTopicHref(slug),
         volume24h: (existing?.volume24h ?? 0) + Math.max(0, volume24hValue),
+        tradersCount: (existing?.tradersCount ?? 0) + rowTraders,
         score: (existing?.score ?? 0) + topicScore,
       })
     }
     return Array.from(topicsBySlug.values())
-      .sort((left, right) => right.score - left.score)
+      .sort((left, right) => {
+        if (left.tradersCount !== right.tradersCount) {
+          return right.tradersCount - left.tradersCount
+        }
+        if (left.score !== right.score) {
+          return right.score - left.score
+        }
+        return left.slug.localeCompare(right.slug)
+      })
       .slice(0, FEATURED_HOT_TOPICS_TARGET_COUNT)
-      .map(({ score: _score, ...topic }) => topic)
+      .map(({ score: _score, tradersCount: _traders, ...topic }) => topic)
   }
   function appendMissingHotTopics(
     primaryTopics: HomeFeaturedHotTopic[],
@@ -343,6 +361,8 @@ export async function listHomeFeaturedHotTopics(
       .select({
         slug: tags.slug,
         label: localizedName,
+        tradersCount,
+        eventsCount,
         volume24h,
         fallbackVolume,
       })
@@ -350,6 +370,7 @@ export async function listHomeFeaturedHotTopics(
       .innerJoin(event_tags, eq(event_tags.tag_id, tags.id))
       .innerJoin(events, eq(events.id, event_tags.event_id))
       .innerJoin(markets, eq(markets.event_id, events.id))
+      .leftJoin(orders, eq(orders.condition_id, markets.condition_id))
       .leftJoin(tag_translations, and(
         eq(tag_translations.tag_id, tags.id),
         eq(tag_translations.locale, locale),
@@ -364,12 +385,14 @@ export async function listHomeFeaturedHotTopics(
         buildPublicEventListVisibilityCondition(events.id),
       ))
       .groupBy(tags.id, tags.slug, tags.name, tag_translations.name)
-      .orderBy(desc(volume24h))
+      .orderBy(desc(tradersCount), desc(volume24h))
     async function listResolvedHotTopicRows(cutoff: Date) {
       return db
         .select({
           slug: tags.slug,
           label: localizedName,
+          tradersCount,
+          eventsCount,
           volume24h,
           fallbackVolume,
         })
@@ -377,6 +400,7 @@ export async function listHomeFeaturedHotTopics(
         .innerJoin(event_tags, eq(event_tags.tag_id, tags.id))
         .innerJoin(events, eq(events.id, event_tags.event_id))
         .innerJoin(markets, eq(markets.event_id, events.id))
+        .leftJoin(orders, eq(orders.condition_id, markets.condition_id))
         .leftJoin(tag_translations, and(
           eq(tag_translations.tag_id, tags.id),
           eq(tag_translations.locale, locale),
@@ -443,11 +467,39 @@ export async function listHomeFeaturedHotTopics(
       error: null,
     }
   })
-  if (error || !data) {
-    console.error('Failed to load home featured hot topics', error)
-    return []
+  const resultData = data ?? []
+  
+  const { data: settingsMap } = await SettingsRepository.getSettings().catch(() => ({ data: null, error: 'failed' }))
+  const featuredSettings = getHomeFeaturedSettingsFromSettings(settingsMap ?? undefined)
+  const configuredHotPicks = (featuredSettings.hotPicksTags ?? []).map(s => s.trim()).filter(Boolean)
+
+  if (configuredHotPicks.length > 0) {
+    const topicMap = new Map(resultData.map(t => [t.slug.toLowerCase(), t]))
+    const configuredTopics: HomeFeaturedHotTopic[] = configuredHotPicks.map((pick) => {
+      const slug = pick.toLowerCase()
+      const existing = topicMap.get(slug)
+      if (existing) return existing
+      const capitalized = pick.charAt(0).toUpperCase() + pick.slice(1)
+      return {
+        label: capitalized,
+        slug,
+        href: resolveHotTopicHref(slug),
+        volume24h: 0,
+      }
+    })
+
+    for (const topic of resultData) {
+      if (configuredTopics.length >= 3) break
+      if (!configuredTopics.some(t => t.slug.toLowerCase() === topic.slug.toLowerCase())) {
+        configuredTopics.push(topic)
+      }
+    }
+
+    return configuredTopics.slice(0, 3)
   }
-  return data
+
+  // Only return categories that have real activity — no static defaults
+  return resultData.slice(0, 3)
 }
 function buildHomeFeaturedSideCard(input: {
   configured: HomeFeaturedSideCardSettings

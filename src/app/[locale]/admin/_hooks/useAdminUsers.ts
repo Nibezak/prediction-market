@@ -12,6 +12,9 @@ interface AdminUserRow {
   referred_by_display?: string | null
   referred_by_profile_url?: string | null
   is_admin: boolean
+  is_blocked?: boolean
+  role?: string
+  settings?: Record<string, unknown>
   avatarUrl: string
   profileUrl: string
   created_at: string

@@ -2,48 +2,38 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { fetchUserPositionsForMarket } from '@/lib/data-api/user'
+import { useAmmLiveAccount } from '@/hooks/useAmmLiveAccount'
 
 type OrderPanelPosition = {
   market?: { condition_id?: string | null } | null
   outcome_index?: number | null
   outcome_text?: string | null
   total_shares?: number | null
+  total_position_cost?: number | null
+  option_id?: string | null
 }
 
 export function useEventOrderPanelPositions({
   makerAddress,
   conditionId,
+  eventConditionIds,
+  userId,
 }: {
   makerAddress: string | null
   conditionId: string | undefined
+  eventConditionIds?: string[]
+  userId?: string | null
 }) {
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const liveAccount = useAmmLiveAccount(isSlimefishBackendAmm && Boolean(userId), userId)
+  const eventConditionKey = [...new Set(eventConditionIds ?? [])].sort().join(',')
   const positionsQuery = useQuery({
-    queryKey: ['order-panel-user-positions', makerAddress, conditionId],
-    enabled: Boolean(conditionId && (isPlayMoneyAmm || makerAddress)),
-    staleTime: 1000 * 30,
+    queryKey: ['order-panel-user-positions', userId, makerAddress, eventConditionKey || conditionId],
+    enabled: Boolean(!isSlimefishBackendAmm && conditionId && makerAddress),
+    staleTime: 30_000,
     gcTime: 1000 * 60 * 5,
-    refetchInterval: conditionId ? 15_000 : false,
-    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: !isSlimefishBackendAmm,
     queryFn: async ({ signal }) => {
-      if (isPlayMoneyAmm) {
-        const response = await fetch('/api/amm/users/me/positions?status=active&limit=100', { signal })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.error || 'Failed to load positions')
-        }
-        const rows = Array.isArray(payload?.data) ? payload.data : []
-        return rows
-          .filter((position: any) => position.marketId === conditionId)
-          .map((position: any) => ({
-            market: { condition_id: position.marketId },
-            outcome_index: Array.isArray(position.market?.options)
-              ? Math.max(0, position.market.options.findIndex((option: any) => option.id === position.optionId))
-              : (String(position.option?.name).toLowerCase() === 'no' ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES),
-            outcome_text: position.option?.name,
-            total_shares: Number(position.quantity || 0),
-          }))
-      }
       return fetchUserPositionsForMarket({
         pageParam: 0,
         userAddress: makerAddress!,
@@ -54,8 +44,31 @@ export function useEventOrderPanelPositions({
     },
   })
 
+  const livePositions = useMemo<OrderPanelPosition[]>(() => {
+    if (!isSlimefishBackendAmm || !liveAccount) return []
+    const allowedConditionIds = new Set(eventConditionIds?.length ? eventConditionIds : conditionId ? [conditionId] : [])
+    return liveAccount.positions
+      .filter(position => allowedConditionIds.has(position.marketId) && position.quantity > 0)
+      .map(position => ({
+        market: { condition_id: position.marketId },
+        option_id: position.optionId,
+        outcome_index: position.outcomeIndex,
+        outcome_text: position.optionName,
+        total_shares: position.quantity,
+      }))
+  }, [conditionId, eventConditionIds, isSlimefishBackendAmm, liveAccount])
+
   const aggregatedPositionShares = useMemo(() => {
-    const positions = positionsQuery.data as OrderPanelPosition[] | undefined
+    const queriedPositions = positionsQuery.data as OrderPanelPosition[] | undefined
+    const allowedConditionIds = new Set(eventConditionIds?.length ? eventConditionIds : conditionId ? [conditionId] : [])
+    const byPosition = new Map<string, OrderPanelPosition>()
+    for (const position of queriedPositions ?? []) {
+      byPosition.set(`${position.market?.condition_id}:${position.option_id ?? position.outcome_index}`, position)
+    }
+    for (const position of livePositions) {
+      byPosition.set(`${position.market?.condition_id}:${position.option_id ?? position.outcome_index}`, position)
+    }
+    const positions = [...byPosition.values()]
     if (!positions?.length) {
       return null
     }
@@ -86,10 +99,20 @@ export function useEventOrderPanelPositions({
       acc[resolvedConditionId][bucket] += quantity
       return acc
     }, {})
-  }, [positionsQuery.data])
+  }, [conditionId, eventConditionIds, livePositions, positionsQuery.data])
+
+  const authoritativePositionsQuery = isSlimefishBackendAmm
+    ? {
+        ...positionsQuery,
+        data: livePositions,
+        isPending: Boolean(userId && !liveAccount),
+        isLoading: Boolean(userId && !liveAccount),
+        isFetching: false,
+      }
+    : positionsQuery
 
   return {
-    positionsQuery,
+    positionsQuery: authoritativePositionsQuery,
     aggregatedPositionShares,
   }
 }

@@ -12,6 +12,7 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   FileTextIcon,
+  GripVerticalIcon,
   ImageIcon,
   Loader2Icon,
   NewspaperIcon,
@@ -100,6 +101,8 @@ interface HomeFeaturedMarketsSectionProps {
   onIncludeNewEventsChange: (value: boolean) => void
   sideCard: HomeFeaturedSideCardSettings
   onSideCardChange: Dispatch<SetStateAction<HomeFeaturedSideCardSettings>>
+  hotPicksTags?: string[]
+  onHotPicksTagsChange?: (value: string[]) => void
   featuredEvents: HomeFeaturedEventAdminItem[]
   onFeaturedEventsChange: Dispatch<SetStateAction<HomeFeaturedEventAdminItem[]>>
 }
@@ -571,8 +574,20 @@ function HomeFeaturedSideCardDialog({
 }) {
   const t = useExtracted()
   const [selectedSlideId, setSelectedSlideId] = useState(sideCard.slides[0]?.id ?? '')
+  const [draggedSlideIndex, setDraggedSlideIndex] = useState<number | null>(null)
   const selectedIndex = Math.max(0, sideCard.slides.findIndex(slide => slide.id === selectedSlideId))
   const selectedSlide = sideCard.slides[selectedIndex] ?? sideCard
+
+  function handleDropSlide(targetIndex: number) {
+    if (draggedSlideIndex === null || draggedSlideIndex === targetIndex) return
+    onSideCardChange((previous) => {
+      const nextSlides = [...previous.slides]
+      const [moved] = nextSlides.splice(draggedSlideIndex, 1)
+      if (moved) nextSlides.splice(targetIndex, 0, moved)
+      return { ...previous, slides: nextSlides }
+    })
+    setDraggedSlideIndex(null)
+  }
 
   function updateSideCard(updates: Partial<HomeFeaturedSideCardSettings>) {
     onSideCardChange((previous) => {
@@ -628,26 +643,35 @@ function HomeFeaturedSideCardDialog({
           <div className="grid gap-3 md:grid-cols-[minmax(12rem,0.7fr)_minmax(0,1.3fr)]">
             <div className="grid content-start gap-2">
               {sideCard.slides.map((slide, index) => (
-                <button
+                <div
                   key={slide.id}
-                  type="button"
-                  onClick={() => setSelectedSlideId(slide.id)}
-                  className={cn(
-                    'flex min-w-0 items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/60',
-                    selectedSlide.id === slide.id && 'border-primary/45 bg-primary/10',
-                  )}
+                  draggable={!disabled}
+                  onDragStart={() => setDraggedSlideIndex(index)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => handleDropSlide(index)}
+                  className="flex min-w-0 items-center gap-1.5 cursor-grab active:cursor-grabbing"
                 >
-                  {slide.type === 'image'
-                    ? <ImageIcon className="size-4 shrink-0" />
-                    : slide.type === 'video'
-                      ? <VideoIcon className="size-4 shrink-0" />
-                      : <FileTextIcon className="size-4 shrink-0" />}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs text-muted-foreground">{`${t('Slide')} ${index + 1}`}</span>
-                    <span className="block truncate text-sm font-medium">{slide.title || slide.ctaLabel || t('Untitled slide')}</span>
-                  </span>
-                  <span className={cn('size-2 rounded-full', slide.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
-                </button>
+                  <GripVerticalIcon className="size-4 shrink-0 text-muted-foreground/60 hover:text-foreground" />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSlideId(slide.id)}
+                    className={cn(
+                      'flex min-w-0 flex-1 items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/60',
+                      selectedSlide.id === slide.id && 'border-primary/45 bg-primary/10',
+                    )}
+                  >
+                    {slide.type === 'image'
+                      ? <ImageIcon className="size-4 shrink-0" />
+                      : slide.type === 'video'
+                        ? <VideoIcon className="size-4 shrink-0" />
+                        : <FileTextIcon className="size-4 shrink-0" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs text-muted-foreground">{`${t('Slide')} ${index + 1}`}</span>
+                      <span className="block truncate text-sm font-medium">{slide.title || slide.ctaLabel || t('Untitled slide')}</span>
+                    </span>
+                    <span className={cn('size-2 rounded-full', slide.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
+                  </button>
+                </div>
               ))}
               <div className="grid grid-cols-3 gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => addSlide('text')} disabled={disabled || sideCard.slides.length >= HOME_FEATURED_SIDE_CARD_MAX_SLIDES} aria-label={t('Add text slide')}><FileTextIcon className="size-4" /></Button>
@@ -1040,6 +1064,9 @@ function FeaturedEventRow({
   onManageContext,
   onContextModeChange,
   onEnabledChange,
+  onDragStart,
+  onDragOver,
+  onDrop,
 }: {
   item: HomeFeaturedEventAdminItem
   index: number
@@ -1051,15 +1078,26 @@ function FeaturedEventRow({
   onManageContext: (index: number) => void
   onContextModeChange: (index: number, mode: HomeFeaturedContextMode) => void
   onEnabledChange: (index: number, enabled: boolean) => void
+  onDragStart: (e: React.DragEvent) => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: (e: React.DragEvent) => void
 }) {
   const t = useExtracted()
 
   return (
-    <div className="
-      grid min-w-0 gap-3 rounded-lg border p-3
-      md:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] md:items-center
-    "
+    <div
+      draggable={!disabled}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className="
+        grid min-w-0 gap-3 rounded-lg border p-3 bg-background transition-all hover:border-primary/40 cursor-grab active:cursor-grabbing
+        md:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto_auto] md:items-center
+      "
     >
+      <div className="hidden md:flex items-center text-muted-foreground/60 hover:text-foreground">
+        <GripVerticalIcon className="size-4" />
+      </div>
       <div className="size-10 overflow-hidden rounded-lg bg-muted">
         {item.iconUrl && (
           <Image
@@ -1186,6 +1224,8 @@ export default function HomeFeaturedMarketsSection({
   onIncludeNewEventsChange,
   sideCard,
   onSideCardChange,
+  hotPicksTags = [],
+  onHotPicksTagsChange,
   featuredEvents,
   onFeaturedEventsChange,
 }: HomeFeaturedMarketsSectionProps) {
@@ -1197,6 +1237,29 @@ export default function HomeFeaturedMarketsSection({
   const [isRegenerating, startRegenerating] = useTransition()
   const disabled = isPending || isRegenerating
   const manageContextItem = manageContextIndex == null ? null : featuredEvents[manageContextIndex] ?? null
+
+  const [draggedFeaturedIndex, setDraggedFeaturedIndex] = useState<number | null>(null)
+  const [draggedHotPickIndex, setDraggedHotPickIndex] = useState<number | null>(null)
+
+  function handleDropFeatured(targetIndex: number) {
+    if (draggedFeaturedIndex === null || draggedFeaturedIndex === targetIndex) return
+    onFeaturedEventsChange((previous) => {
+      const next = [...previous]
+      const [moved] = next.splice(draggedFeaturedIndex, 1)
+      if (moved) next.splice(targetIndex, 0, moved)
+      return next
+    })
+    setDraggedFeaturedIndex(null)
+  }
+
+  function handleDropHotPick(targetIndex: number) {
+    if (draggedHotPickIndex === null || draggedHotPickIndex === targetIndex) return
+    const next = [...hotPicksTags]
+    const [moved] = next.splice(draggedHotPickIndex, 1)
+    if (moved) next.splice(targetIndex, 0, moved)
+    onHotPicksTagsChange?.(next)
+    setDraggedHotPickIndex(null)
+  }
 
   function addCandidate(candidate: AdminEventCandidate) {
     onFeaturedEventsChange((previous) => {
@@ -1352,6 +1415,43 @@ export default function HomeFeaturedMarketsSection({
           </div>
         </div>
 
+        <div className="grid gap-3 rounded-lg border p-4">
+          <div>
+            <Label className="text-base font-semibold">{t('Hot Picks (Homepage Sidebar Topics)')}</Label>
+            <p className="text-xs text-muted-foreground">
+              {t('Choose which 3 topic tags to display in the Hot Picks section on the homepage. Leave blank to automatically feature top topics by active trader count.')}
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[0, 1, 2].map(index => (
+              <div
+                key={index}
+                draggable={!disabled}
+                onDragStart={() => setDraggedHotPickIndex(index)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => handleDropHotPick(index)}
+                className="grid gap-1.5 rounded-lg border p-2 bg-background hover:border-primary/40 cursor-grab active:cursor-grabbing transition-colors"
+              >
+                <Label htmlFor={`hot-pick-input-${index}`} className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  <GripVerticalIcon className="size-3 text-muted-foreground/60" />
+                  {t('Pick {number}', { number: String(index + 1) })}
+                </Label>
+                <Input
+                  id={`hot-pick-input-${index}`}
+                  value={hotPicksTags[index] ?? ''}
+                  onChange={(e) => {
+                    const next = [...hotPicksTags]
+                    next[index] = e.target.value
+                    onHotPicksTagsChange?.(next)
+                  }}
+                  placeholder={index === 0 ? 'politics' : index === 1 ? 'sports' : 'crypto'}
+                  disabled={disabled}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1403,6 +1503,9 @@ export default function HomeFeaturedMarketsSection({
                       onManageContext={setManageContextIndex}
                       onContextModeChange={(targetIndex, mode) => updateItem(targetIndex, current => ({ ...current, contextMode: mode }))}
                       onEnabledChange={(targetIndex, nextEnabled) => updateItem(targetIndex, current => ({ ...current, enabled: nextEnabled }))}
+                      onDragStart={() => setDraggedFeaturedIndex(index)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={() => handleDropFeatured(index)}
                     />
                   ))}
                 </div>

@@ -6,7 +6,7 @@ export const payment_intents = pgTable('payment_intents', {
   user_id: text().notNull(),
   direction: text().notNull(),
   status: text().notNull().default('created'),
-  settlement_adapter: text().notNull().default('play_money'),
+  settlement_adapter: text().notNull().default('slimefish_backend'),
   source_currency: text().notNull(),
   destination_currency: text().notNull(),
   gross_amount: numeric({ precision: 20, scale: 2 }).notNull(),
@@ -40,16 +40,52 @@ export const payment_events = pgTable('payment_events', {
   occurred_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 }, table => ({ intentIdx: index('idx_payment_events_intent').on(table.payment_intent_id, table.occurred_at) }))
 
+export const provider_webhook_events = pgTable('provider_webhook_events', {
+  id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
+  provider: text().notNull(),
+  provider_event_id: text().notNull(),
+  event_type: text().notNull(),
+  payment_intent_id: char('payment_intent_id', { length: 26 }).references(() => payment_intents.id, { onDelete: 'restrict' }),
+  payload_hash: text().notNull(),
+  signature_digest: text().notNull(),
+  status: text().notNull().default('received'),
+  failure_message: text(),
+  received_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  processed_at: timestamp({ withTimezone: true }),
+}, table => ({
+  providerEventIdx: uniqueIndex('idx_provider_webhook_event').on(table.provider, table.provider_event_id),
+  intentIdx: index('idx_provider_webhook_intent').on(table.payment_intent_id, table.received_at),
+}))
+
+export const payment_disputes = pgTable('payment_disputes', {
+  id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
+  payment_intent_id: char('payment_intent_id', { length: 26 }).notNull().references(() => payment_intents.id, { onDelete: 'restrict' }),
+  provider: text().notNull(),
+  provider_dispute_id: text().notNull(),
+  status: text().notNull().default('open'),
+  amount: numeric({ precision: 20, scale: 2 }).notNull(),
+  reason: text(),
+  evidence: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  opened_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  closed_at: timestamp({ withTimezone: true }),
+}, table => ({
+  providerDisputeIdx: uniqueIndex('idx_payment_disputes_provider').on(table.provider, table.provider_dispute_id),
+  intentIdx: index('idx_payment_disputes_intent').on(table.payment_intent_id, table.opened_at),
+}))
+
 export const reconciliation_runs = pgTable('reconciliation_runs', {
   id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),
   adapter: text().notNull(),
+  provider_report_id: text(),
+  report_hash: text(),
   status: text().notNull().default('running'),
   checked_count: integer().notNull().default(0),
   mismatch_count: integer().notNull().default(0),
   details: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   started_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   completed_at: timestamp({ withTimezone: true }),
-})
+}, table => ({ providerReportIdx: uniqueIndex('idx_reconciliation_provider_report').on(table.adapter, table.provider_report_id) }))
 
 export const sanctions_screenings = pgTable('sanctions_screenings', {
   id: char('id', { length: 26 }).primaryKey().default(sql`generate_ulid()`),

@@ -90,7 +90,7 @@ export async function fetchBatchPriceHistoryByTokenIds(
   const historyByChunk = await Promise.all(
     tokenIdChunks.map(async (tokenIdChunk) => {
       try {
-        const response = await fetch(`/api/playmoney/market-stats`, {
+        const response = await fetch(`/api/slimefish-backend/market-stats`, {
           method: 'POST',
           headers: {
             'Accept': 'application/json',

@@ -17,7 +17,7 @@ export default function ResponsiveAdminLayout({
 }: ResponsiveAdminLayoutProps) {
   // We're moving away from replacing strings and using standard conditional logic
   return (
-    <div className={cn('relative lg:min-h-[calc(100vh-4.25rem)]', heightClass)}>
+    <div className={cn('relative max-w-full overflow-x-clip lg:min-h-[calc(100vh-4.25rem)]', heightClass)}>
       {/* Sidebar container */}
       <aside
         className={cn(`
@@ -32,8 +32,8 @@ export default function ResponsiveAdminLayout({
       </aside>
 
       {/* Main content panel */}
-      <div className={cn('flex min-w-0 flex-col bg-muted/10 lg:pl-[240px] lg:min-h-[calc(100vh-4.25rem)]', heightClass)}>
-        <div className="flex w-full flex-1 flex-col space-y-8 px-4 py-6 md:px-8 lg:px-12">
+      <div className={cn('flex min-w-0 max-w-full flex-col bg-muted/10 lg:ml-[240px] lg:w-[calc(100%-240px)] lg:min-h-[calc(100vh-4.25rem)]', heightClass)}>
+        <div className="flex w-full min-w-0 max-w-full flex-1 flex-col space-y-8 overflow-x-clip px-4 py-6 md:px-8 lg:px-12">
           {children}
         </div>
       </div>

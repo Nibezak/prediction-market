@@ -10,6 +10,8 @@ const staticTarget = resolve(standaloneRoot, '.next', 'static')
 const publicSource = resolve(projectRoot, 'public')
 const publicTarget = resolve(standaloneRoot, 'public')
 
+process.env.SKIP_STARTUP_WARMUP ??= 'true'
+
 if (!existsSync(serverPath)) {
   throw new Error('Standalone build not found. Run `npm run build` before `npm start`.')
 }
@@ -26,7 +28,7 @@ process.chdir(standaloneRoot)
 await import(pathToFileURL(serverPath).href)
 
 async function warmPublicCache() {
-  if (process.env.SKIP_STARTUP_WARMUP === 'true') {
+  if (process.env.STARTUP_WARMUP !== 'true') {
     return
   }
 
@@ -35,7 +37,6 @@ async function warmPublicCache() {
   const routes = [
     '/api/events?status=active&offset=0&locale=en&includeBookmarkState=false',
     '/en/sports/live',
-    '/en/sports/world-cup/games',
     '/en',
   ]
 

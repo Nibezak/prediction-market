@@ -33,6 +33,12 @@ vi.mock('@/components/PwaInstallIosInstructions', () => ({
   default: () => <div data-testid="pwa-ios-instructions" />,
 }))
 
+vi.mock('@/components/HeaderDropdownUserMenuAuth', () => ({
+  default: function MockAuthenticatedUserMenu({ displayMode }: { displayMode?: string }) {
+    return displayMode === 'mobile-drawer' ? <button type="button" aria-label="Profile">Profile</button> : null
+  },
+}))
+
 vi.mock('@/components/ThemeSelector', () => ({
   default: () => <div data-testid="theme-selector" />,
 }))
@@ -116,12 +122,13 @@ describe('mobileBottomNav', () => {
     expect(screen.queryByRole('link', { name: 'Portfolio' })).not.toBeInTheDocument()
   })
 
-  it('shows the portfolio tab after hydration for authenticated users', () => {
+  it('shows the profile drawer trigger after hydration for authenticated users', () => {
     mocks.useHasHydrated.mockReturnValue(true)
 
     render(<MobileBottomNav />)
 
-    expect(screen.getByRole('link', { name: 'Portfolio' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Profile' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Portfolio' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
   })
 })

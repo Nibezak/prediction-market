@@ -1,12 +1,13 @@
 import type { Instrumentation } from 'next'
-import * as Sentry from '@sentry/nextjs'
 import { isNextNotFoundError } from '@/lib/next-http-fallback'
 
 export async function register() {
-  await import('../sentry.server.config')
+  if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
+    await import('../sentry.server.config')
+  }
 }
 
-export function onRequestError(
+export async function onRequestError(
   error: Parameters<Instrumentation.onRequestError>[0],
   request: Parameters<Instrumentation.onRequestError>[1],
   context: Parameters<Instrumentation.onRequestError>[2],
@@ -15,5 +16,6 @@ export function onRequestError(
     return
   }
 
+  const Sentry = await import('@sentry/nextjs')
   Sentry.captureRequestError(error, request, context)
 }

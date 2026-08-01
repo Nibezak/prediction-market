@@ -43,11 +43,13 @@ export function useSportsGameGraphChartSettings() {
 export function useSportsGameGraphChartDimensions({
   containerWidth,
   chartHeightOffset = 0,
+  minimumChartHeight = 260,
   windowWidth,
   variant,
 }: {
   containerWidth?: number | null
   chartHeightOffset?: number
+  minimumChartHeight?: number
   windowWidth: number | undefined
   variant: SportsGameGraphVariant
 }) {
@@ -57,7 +59,7 @@ export function useSportsGameGraphChartDimensions({
     ? SPORTS_EVENT_HERO_POSITIONED_LEGEND_LAYOUT
     : SPORTS_CARD_POSITIONED_LEGEND_LAYOUT
   const baseChartHeight = isSportsEventHeroVariant ? 332 : 300
-  const chartHeight = Math.max(260, baseChartHeight - Math.max(0, chartHeightOffset))
+  const chartHeight = Math.max(minimumChartHeight, baseChartHeight - Math.max(0, chartHeightOffset))
   const positionedLegendChartTopMargin = isSportsEventHeroVariant ? 30 : 22
   const chartMargin = usesPositionedSeriesLegend
     ? { top: positionedLegendChartTopMargin, right: 46, bottom: 40, left: 0 }

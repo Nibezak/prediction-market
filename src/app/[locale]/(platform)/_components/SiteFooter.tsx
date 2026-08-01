@@ -29,6 +29,7 @@ export default async function SiteFooter() {
         </div>
 
         <nav aria-label="Footer" className="flex items-center justify-self-end gap-5 text-sm text-muted-foreground">
+          <Link href="/how-it-works" className="transition-colors hover:text-foreground">How it works</Link>
           <Link href="/tos" className="transition-colors hover:text-foreground">Terms of Use</Link>
           <Link href="/settings" className="transition-colors hover:text-foreground">Settings</Link>
         </nav>

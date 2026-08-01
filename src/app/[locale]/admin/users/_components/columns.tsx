@@ -27,6 +27,7 @@ interface AdminUserRow {
   search_text: string
   is_blocked?: boolean
   role?: string
+  settings?: Record<string, unknown>
 }
 
 export function useAdminUsersColumns(): ColumnDef<AdminUserRow>[] {
@@ -110,7 +111,7 @@ export function useAdminUsersColumns(): ColumnDef<AdminUserRow>[] {
       cell: ({ row }) => {
         const user = row.original
         return (
-          <div className="min-w-0 text-xs text-muted-foreground">
+          <div className="min-w-48 text-xs text-muted-foreground">
             {user.email
               ? (
                   <a
@@ -121,10 +122,7 @@ export function useAdminUsersColumns(): ColumnDef<AdminUserRow>[] {
                     `)}
                   >
                     <MailIcon className="size-4 shrink-0" />
-                    <span className="sr-only">
-                      {t('Email')}
-                      {user.email}
-                    </span>
+                    <span>{user.email}</span>
                   </a>
                 )
               : (

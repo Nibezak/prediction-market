@@ -1,6 +1,7 @@
 import type { MarketTokenTarget } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 
 const LAST_TRADE_REFRESH_INTERVAL_MS = 60_000
 
@@ -42,6 +43,7 @@ async function fetchLastTradesByMarket(targets: MarketTokenTarget[]) {
 }
 
 export function useEventLastTrades(targets: MarketTokenTarget[]) {
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const tokenSignature = useMemo(
     () => targets.map(target => `${target.conditionId}:${target.tokenId}`).sort().join(','),
     [targets],
@@ -50,13 +52,24 @@ export function useEventLastTrades(targets: MarketTokenTarget[]) {
   const { data } = useQuery({
     queryKey: ['event-last-trades', tokenSignature],
     queryFn: () => fetchLastTradesByMarket(targets),
-    enabled: targets.length > 0,
+    enabled: targets.length > 0 && !isSlimefishBackendAmm,
     staleTime: 'static',
     gcTime: LAST_TRADE_REFRESH_INTERVAL_MS,
-    refetchInterval: LAST_TRADE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    refetchInterval: isSlimefishBackendAmm ? false : LAST_TRADE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: !isSlimefishBackendAmm,
     placeholderData: keepPreviousData,
   })
 
-  return data ?? {}
+  const liveSnapshots = useAmmLiveMarkets(
+    targets.map(target => target.conditionId),
+    isSlimefishBackendAmm,
+  )
+  return useMemo(() => {
+    if (!isSlimefishBackendAmm) return data ?? {}
+    return targets.reduce<Record<string, number>>((acc, target) => {
+      const option = liveSnapshots[target.conditionId]?.options.find(item => item.id === target.tokenId)
+      if (option) acc[target.conditionId] = option.probability
+      return acc
+    }, {})
+  }, [data, isSlimefishBackendAmm, liveSnapshots, targets])
 }

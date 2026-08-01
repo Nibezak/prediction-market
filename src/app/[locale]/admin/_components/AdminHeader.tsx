@@ -1,4 +1,5 @@
 import AdminHeaderActions from '@/app/[locale]/admin/_components/AdminHeaderActions'
+import AdminGlobalSearch from '@/app/[locale]/admin/_components/AdminGlobalSearch'
 import HeaderLogo from '@/components/HeaderLogo'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +14,7 @@ export default async function AdminHeader() {
         `)}
       >
         <HeaderLogo labelSuffix="Admin" />
+        <AdminGlobalSearch />
         <AdminHeaderActions />
       </div>
     </header>

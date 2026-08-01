@@ -11,6 +11,7 @@ interface SettingsMap {
 export interface OpenRouterProviderSettings {
   model?: string
   apiKey?: string
+  enabled: boolean
   configured: boolean
   allSettings?: SettingsMap
   aiSettings?: SettingsGroup
@@ -50,11 +51,13 @@ function parseOpenRouterProviderSettingsFromMap(allSettings?: SettingsMap): Open
   const encryptedApiKey = aiSettings?.openrouter_api_key?.value
   const decryptedApiKey = encryptedApiKey ? decryptSecret(encryptedApiKey) : ''
   const apiKey = decryptedApiKey.trim() || undefined
-  const configured = Boolean(apiKey)
+  const enabled = normalizeBoolean(aiSettings?.openrouter_enabled?.value, false)
+  const configured = enabled && Boolean(apiKey)
 
   return {
     model,
     apiKey,
+    enabled,
     configured,
     allSettings,
     aiSettings,
@@ -67,7 +70,7 @@ function parseMarketContextSettingsFromMap(allSettings?: SettingsMap): MarketCon
 
   const prompt = aiSettings?.market_context_prompt?.value?.trim() || MARKET_CONTEXT_PROMPT_DEFAULT
 
-  const enabled = normalizeBoolean(
+  const marketContextEnabled = normalizeBoolean(
     aiSettings?.market_context_enabled?.value,
     true,
   )
@@ -76,7 +79,7 @@ function parseMarketContextSettingsFromMap(allSettings?: SettingsMap): MarketCon
     prompt,
     model: openRouter.model,
     apiKey: openRouter.apiKey,
-    enabled,
+    enabled: openRouter.enabled && marketContextEnabled,
     allSettings,
     aiSettings,
   }

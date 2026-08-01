@@ -1,17 +1,19 @@
 'use client'
 
 import type { DepositWalletStatus } from '@/types'
+import type { WalletOnrampProgress } from '@/app/[locale]/(platform)/_components/wallet-modal/WalletOnrampForm'
 import { useExtracted } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { WalletDepositModal, WalletWithdrawModal } from '@/app/[locale]/(platform)/_components/WalletModal'
 import { useBalance } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { useLiFiWalletUsdBalance } from '@/hooks/useLiFiWalletUsdBalance'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { MAX_AMOUNT_INPUT } from '@/lib/amount-input'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { formatAmountInputValue } from '@/lib/formatters'
+import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
 
 type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
 
@@ -27,6 +29,7 @@ interface WalletFlowProps {
     deposit_wallet_status?: DepositWalletStatus | null
   } | null
   meldUrl: string | null
+  defaultPhoneNumber?: string
 }
 
 interface WalletSendMessages {
@@ -51,19 +54,19 @@ function useDepositViewState(onDepositOpenChange: (open: boolean) => void) {
   return { depositView, setDepositView, handleDepositModalChange }
 }
 
-function useWithdrawFormState(onWithdrawOpenChange: (open: boolean) => void) {
+function useWithdrawFormState(onWithdrawOpenChange: (open: boolean) => void, defaultPhoneNumber: string) {
   const [walletSendTo, setWalletSendTo] = useState('')
   const [walletSendAmount, setWalletSendAmount] = useState('')
   const [isWalletSending, setIsWalletSending] = useState(false)
+  const [walletSendSubmitted, setWalletSendSubmitted] = useState(false)
+  const [walletSendError, setWalletSendError] = useState('')
 
   const handleWithdrawModalChange = useCallback((next: boolean) => {
     onWithdrawOpenChange(next)
-    if (!next) {
-      setIsWalletSending(false)
-      setWalletSendTo('')
-      setWalletSendAmount('')
+    if (next) {
+      setWalletSendTo(defaultPhoneNumber)
     }
-  }, [onWithdrawOpenChange])
+  }, [defaultPhoneNumber, onWithdrawOpenChange])
 
   return {
     walletSendTo,
@@ -72,6 +75,10 @@ function useWithdrawFormState(onWithdrawOpenChange: (open: boolean) => void) {
     setWalletSendAmount,
     isWalletSending,
     setIsWalletSending,
+    walletSendSubmitted,
+    setWalletSendSubmitted,
+    walletSendError,
+    setWalletSendError,
     handleWithdrawModalChange,
   }
 }
@@ -83,27 +90,24 @@ function useHasDeployedDepositWallet(user: WalletFlowProps['user']) {
 }
 
 function useWalletSendHandler({
-  user,
   walletSendTo,
   walletSendAmount,
   setIsWalletSending,
-  setWalletSendTo,
-  setWalletSendAmount,
-  handleWithdrawModalChange,
+  setWalletSendSubmitted,
+  setWalletSendError,
   messages,
 }: {
-  user: WalletFlowProps['user']
   walletSendTo: string
   walletSendAmount: string
   setIsWalletSending: (value: boolean) => void
-  setWalletSendTo: (value: string) => void
-  setWalletSendAmount: (value: string) => void
-  handleWithdrawModalChange: (next: boolean) => void
+  setWalletSendSubmitted: (value: boolean) => void
+  setWalletSendError: (value: string) => void
   messages: WalletSendMessages
 }) {
   return useCallback(async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
-    if (!walletSendTo.trim()) {
+    const normalizedPhone = normalizeKenyanPhone(walletSendTo)
+    if (!normalizedPhone) {
       toast.error(messages.invalidRecipient)
       return
     }
@@ -114,10 +118,12 @@ function useWalletSendHandler({
     }
 
     setIsWalletSending(true)
+    setWalletSendError('')
+    setWalletSendSubmitted(false)
     try {
       const response = await fetch('/api/withdrawals', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountNumber, destination: walletSendTo.trim(), idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ amount: amountNumber, amountCurrency: 'KES', destination: normalizedPhone, idempotencyKey: crypto.randomUUID() }),
       })
       const result = await response.json().catch(() => null)
       if (!response.ok) throw new Error(result?.error || DEFAULT_ERROR_MESSAGE)
@@ -125,24 +131,21 @@ function useWalletSendHandler({
       toast.success(messages.withdrawalSubmitted, {
         description: result?.data?.message || messages.withdrawalSubmittedDescription,
       })
-      setWalletSendTo('')
-      setWalletSendAmount('')
-      handleWithdrawModalChange(false)
+      setWalletSendSubmitted(true)
     }
     catch (error) {
       const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE
+      setWalletSendError(message)
       toast.error(message)
     }
     finally {
       setIsWalletSending(false)
     }
   }, [
-    handleWithdrawModalChange,
     messages,
     setIsWalletSending,
-    setWalletSendAmount,
-    setWalletSendTo,
-    user,
+    setWalletSendError,
+    setWalletSendSubmitted,
     walletSendAmount,
     walletSendTo,
   ])
@@ -212,10 +215,12 @@ export function WalletFlow({
   onWithdrawOpenChange,
   user,
   meldUrl,
+  defaultPhoneNumber = '',
 }: WalletFlowProps) {
   const isMobile = useIsMobile()
   const t = useExtracted()
   const { depositView, setDepositView, handleDepositModalChange } = useDepositViewState(onDepositOpenChange)
+  const [onrampProgress, setOnrampProgress] = useState<WalletOnrampProgress | null>(null)
   const {
     walletSendTo,
     setWalletSendTo,
@@ -223,16 +228,17 @@ export function WalletFlow({
     setWalletSendAmount,
     isWalletSending,
     setIsWalletSending,
+    walletSendSubmitted,
+    setWalletSendSubmitted,
+    walletSendError,
+    setWalletSendError,
     handleWithdrawModalChange,
-  } = useWithdrawFormState(onWithdrawOpenChange)
+  } = useWithdrawFormState(onWithdrawOpenChange, defaultPhoneNumber)
   const hasDeployedDepositWallet = useHasDeployedDepositWallet(user)
   const depositWalletAddress = user?.deposit_wallet_address ?? null
   const { balance, isLoadingBalance } = useBalance({ depositWalletAddress })
-  const {
-    formattedUsdBalance: formattedConnectedWalletUsdBalance,
-    isLoadingUsdBalance: isLoadingConnectedWalletUsdBalance,
-  } = useLiFiWalletUsdBalance(user?.address, { enabled: depositOpen })
   const site = useSiteIdentity()
+  const { kesPerUsdc } = useDisplayCurrency()
   const connectedWalletAddress = user?.address ?? null
 
   const walletSendMessages = useMemo<WalletSendMessages>(() => ({
@@ -245,19 +251,17 @@ export function WalletFlow({
   }), [t])
 
   const handleWalletSend = useWalletSendHandler({
-    user,
     walletSendTo,
     walletSendAmount,
     setIsWalletSending,
-    setWalletSendTo,
-    setWalletSendAmount,
-    handleWithdrawModalChange,
+    setWalletSendSubmitted,
+    setWalletSendError,
     messages: walletSendMessages,
   })
 
   const handleBuy = useBuyHandler({ meldUrl, handleDepositModalChange })
   const handleUseConnectedWallet = useUseConnectedWalletHandler({ connectedWalletAddress, setWalletSendTo })
-  const handleSetMaxAmount = useSetMaxAmountHandler({ balanceRaw: balance.raw, setWalletSendAmount })
+  const handleSetMaxAmount = useSetMaxAmountHandler({ balanceRaw: balance.raw * kesPerUsdc, setWalletSendAmount })
 
   return (
     <>
@@ -266,7 +270,6 @@ export function WalletFlow({
         onOpenChange={handleDepositModalChange}
         isMobile={isMobile}
         walletAddress={depositWalletAddress}
-        walletEoaAddress={user?.address ?? null}
         siteName={site.name}
         meldUrl={meldUrl}
         hasDeployedDepositWallet={hasDeployedDepositWallet}
@@ -275,8 +278,9 @@ export function WalletFlow({
         onBuy={handleBuy}
         depositWalletBalance={balance.text}
         isDepositWalletBalanceLoading={isLoadingBalance}
-        walletBalance={formattedConnectedWalletUsdBalance}
-        isBalanceLoading={isLoadingConnectedWalletUsdBalance}
+        defaultPhoneNumber={defaultPhoneNumber}
+        onrampProgress={onrampProgress}
+        onOnrampProgressChange={setOnrampProgress}
       />
       <WalletWithdrawModal
         open={withdrawOpen}
@@ -288,12 +292,19 @@ export function WalletFlow({
         sendAmount={walletSendAmount}
         onChangeSendAmount={setWalletSendAmount}
         isSending={isWalletSending}
+        isSubmitted={walletSendSubmitted}
+        error={walletSendError}
+        onRetrySend={() => {
+          setWalletSendError('')
+          setWalletSendSubmitted(false)
+        }}
         onSubmitSend={handleWalletSend}
         connectedWalletAddress={connectedWalletAddress}
         onUseConnectedWallet={handleUseConnectedWallet}
-        availableBalance={balance.raw}
+        availableBalance={balance.raw * kesPerUsdc}
         onMax={handleSetMaxAmount}
         isBalanceLoading={isLoadingBalance}
+        defaultPhoneNumber={defaultPhoneNumber}
       />
     </>
   )

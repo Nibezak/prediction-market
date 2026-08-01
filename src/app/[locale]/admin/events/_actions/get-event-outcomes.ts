@@ -10,7 +10,7 @@ export async function getEventOutcomesAction(eventId: string) {
   try {
     const currentUser = await UserRepository.getCurrentUser({ minimal: true })
     const role = getUserPlatformRole(currentUser)
-    if (!currentUser || !['ADMIN', 'RESOLVER', 'MODERATOR'].includes(role)) {
+    if (!currentUser || !['SUPER_ADMIN', 'ADMIN', 'RESOLVER', 'MODERATOR'].includes(role)) {
       return { success: false, error: 'Resolution access required.' }
     }
 

@@ -42,7 +42,11 @@ const RANGE_WINDOW_SECONDS: Record<Exclude<TimeRange, 'ALL'>, number> = {
 }
 
 export const TIME_RANGES: TimeRange[] = ['1H', '6H', '1D', '1W', '1M', 'ALL']
-const PRICE_REFRESH_INTERVAL_MS = 60_000
+// History is a baseline. Current prices are appended from the canonical AMM live
+// stream, so polling history here creates duplicate work and can overwrite newer
+// snapshots with a slower response.
+const PRICE_HISTORY_STALE_MS = 5 * 60_000
+const PRICE_HISTORY_GC_MS = 30 * 60_000
 
 function parseResolvedAtSeconds(resolvedAt?: string | null) {
   if (!resolvedAt) {
@@ -273,7 +277,7 @@ export function useEventPriceHistory({
   eventCreatedAt,
   eventResolvedAt,
   enabled = true,
-  refetchIntervalMs = PRICE_REFRESH_INTERVAL_MS,
+  refetchIntervalMs = false,
 }: UseEventPriceHistoryParams) {
   const { clobUrl } = usePublicRuntimeConfig()
   const tokenSignature = useMemo(
@@ -285,8 +289,8 @@ export function useEventPriceHistory({
     queryKey: ['event-price-history', eventId, range, tokenSignature, eventResolvedAt ?? ''],
     queryFn: () => fetchEventPriceHistory(targets, range, eventCreatedAt, clobUrl, eventResolvedAt),
     enabled: enabled && targets.length > 0,
-    staleTime: PRICE_REFRESH_INTERVAL_MS,
-    gcTime: PRICE_REFRESH_INTERVAL_MS,
+    staleTime: PRICE_HISTORY_STALE_MS,
+    gcTime: PRICE_HISTORY_GC_MS,
     refetchInterval: refetchIntervalMs,
     refetchIntervalInBackground: refetchIntervalMs !== false,
     placeholderData: keepPreviousData,

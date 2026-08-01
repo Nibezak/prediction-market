@@ -321,12 +321,13 @@ function useEventUserPositionsData({
 }) {
   const t = useExtracted()
   const { data: userPositions } = useQuery<UserPosition[]>({
-    queryKey: ['event-user-positions', ownerAddress, event.id],
+    queryKey: ['event-user-positions', userId, ownerAddress, event.id],
     enabled: Boolean(ownerAddress),
     staleTime: 1000 * 30,
     gcTime: 1000 * 60 * 10,
-    refetchInterval: ownerAddress ? 15_000 : false,
-    refetchIntervalInBackground: true,
+    refetchInterval: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? false : (ownerAddress ? 15_000 : false),
+    refetchIntervalInBackground: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'true',
+    refetchOnWindowFocus: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'true',
     queryFn: ({ signal }) =>
       fetchUserPositionsForMarket({
         pageParam: 0,
@@ -541,10 +542,12 @@ function useMarketRowsByResolution({
       yesPriceValue: resolveOutcomeUnitPrice(row.market, OUTCOME_INDEX.YES, {
         orderBookSummaries,
         side: ORDER_SIDE.BUY,
+        fallbackUnitPrice: row.yesPriceValue,
       }),
       noPriceValue: resolveOutcomeUnitPrice(row.market, OUTCOME_INDEX.NO, {
         orderBookSummaries,
         side: ORDER_SIDE.BUY,
+        fallbackUnitPrice: row.noPriceValue,
       }),
     }))
   }, [marketRows, orderBookSummaries])
@@ -801,6 +804,19 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
   const primaryMarketRows = showResolvedInline ? sortedResolvedDisplayRows : activeDisplayRows
   const shouldShowActiveSection = primaryMarketRows.length > 0 || shouldShowOtherRow
   const shouldShowResolvedSection = !showResolvedInline && sortedResolvedDisplayRows.length > 0
+  const expandedPrimaryRow = primaryMarketRows.find(row => row.market.condition_id === expandedMarketId)
+  const expandedPrimaryMarket = expandedPrimaryRow?.market
+  const expandedPrimaryOutcome = expandedPrimaryMarket
+    ? (selectedOutcome?.condition_id === expandedPrimaryMarket.condition_id
+        ? selectedOutcome
+        : expandedPrimaryMarket.outcomes[0])
+    : undefined
+  const expandedPrimaryIsResolved = Boolean(
+    expandedPrimaryMarket && (showResolvedInline || isMarketResolved(expandedPrimaryMarket)),
+  )
+  const expandedPrimaryResolvedOutcomeIndex = expandedPrimaryMarket && expandedPrimaryIsResolved
+    ? resolveResolvedOutcomeIndex(expandedPrimaryMarket)
+    : null
 
   if (isSingleMarket) {
     return null
@@ -815,9 +831,6 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
             const { market } = row
             const resolvedRow = applyCachedChartDeltaToEventMarketRow(row, stableRowChartDeltaYesByMarket)
             const isExpanded = expandedMarketId === market.condition_id
-            const activeOutcomeForMarket = selectedOutcome && selectedOutcome.condition_id === market.condition_id
-              ? selectedOutcome
-              : market.outcomes[0]
             const chanceHighlightKey = `${market.condition_id}-${event.id}-${chanceHighlightVersion}`
             const activeOutcomeIndex = selectedOutcome && selectedOutcome.condition_id === market.condition_id
               ? selectedOutcome.outcome_index
@@ -859,41 +872,6 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
                       />
                     )}
 
-                <div
-                  className={cn(
-                    'overflow-hidden transition-all duration-500 ease-in-out',
-                    isExpanded
-                      ? 'max-h-160 translate-y-0 opacity-100'
-                      : 'pointer-events-none max-h-0 -translate-y-2 opacity-0',
-                  )}
-                  aria-hidden={!isExpanded}
-                >
-                  <MarketDetailTabs
-                    currentTimestamp={currentTimestamp}
-                    market={market}
-                    event={event}
-                    isMobile={isMobile}
-                    isNegRiskEnabled={isNegRiskEnabled}
-                    isNegRiskAugmented={isNegRiskAugmented}
-                    variant={isResolvedInlineRow ? 'resolved' : undefined}
-                    resolvedOutcomeIndexOverride={resolvedOutcomeIndexOverride}
-                    convertOptions={convertOptions}
-                    eventOutcomes={eventOutcomes}
-                    activeOutcomeForMarket={activeOutcomeForMarket}
-                    tabController={{
-                      selected: getSelectedDetailTab(market.condition_id),
-                      select: tabId => selectDetailTab(market.condition_id, tabId),
-                    }}
-                    orderBookData={{
-                      summaries: orderBookSummaries,
-                      isLoading: shouldShowOrderBookLoader,
-                      refetch: orderBookQuery.refetch,
-                      isRefetching: orderBookQuery.isRefetching,
-                    }}
-                    sharesByCondition={sharesByCondition || {}}
-                  />
-                </div>
-
                 {shouldShowSeparator && <div className="mr-2 ml-4 border-b border-border lg:mx-0" />}
               </div>
             )
@@ -901,6 +879,34 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
         {shouldShowOtherRow && (
           <div className="transition-colors">
             <OtherOutcomeRow shares={otherShares} showMarketIcon={Boolean(event.show_market_icons)} />
+          </div>
+        )}
+        {expandedPrimaryMarket && expandedPrimaryOutcome && (
+          <div className="border-t border-border">
+            <MarketDetailTabs
+              currentTimestamp={currentTimestamp}
+              market={expandedPrimaryMarket}
+              event={event}
+              isMobile={isMobile}
+              isNegRiskEnabled={isNegRiskEnabled}
+              isNegRiskAugmented={isNegRiskAugmented}
+              variant={expandedPrimaryIsResolved ? 'resolved' : undefined}
+              resolvedOutcomeIndexOverride={expandedPrimaryResolvedOutcomeIndex}
+              convertOptions={convertOptions}
+              eventOutcomes={eventOutcomes}
+              activeOutcomeForMarket={expandedPrimaryOutcome}
+              tabController={{
+                selected: getSelectedDetailTab(expandedPrimaryMarket.condition_id),
+                select: tabId => selectDetailTab(expandedPrimaryMarket.condition_id, tabId),
+              }}
+              orderBookData={{
+                summaries: orderBookSummaries,
+                isLoading: shouldShowOrderBookLoader,
+                refetch: orderBookQuery.refetch,
+                isRefetching: orderBookQuery.isRefetching,
+              }}
+              sharesByCondition={sharesByCondition || {}}
+            />
           </div>
         )}
         {shouldShowActiveSection && (

@@ -8,6 +8,7 @@ import { resolveEventOrderBootstrapSelection } from '@/app/[locale]/(platform)/e
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
 import { formatAmountInputValue } from '@/lib/formatters'
+import { resolveDefaultEventMarket } from '@/lib/event-market-selection'
 import { useOrder, useSyncLimitPriceWithOutcome } from '@/stores/useOrder'
 
 interface EventOrderStateSyncProps {
@@ -28,16 +29,6 @@ interface ResolvedEventOrderQueryState {
   normalizedSide: string | undefined
   normalizedOrderType: string | undefined
   sharesValue: string | null
-}
-
-function isMarketResolved(market: Event['markets'][number] | null | undefined) {
-  return Boolean(market?.is_resolved || market?.condition?.resolved)
-}
-
-function resolveDefaultMarket(markets: Event['markets']) {
-  return markets.find(market => market.is_active && !isMarketResolved(market))
-    ?? markets.find(market => !isMarketResolved(market))
-    ?? markets[0]
 }
 
 function resolveEventOrderQueryState(
@@ -64,7 +55,7 @@ function resolveEventOrderQueryState(
     ? event.markets.find(item => item.condition_id === conditionIdParam)
     : marketSlug
       ? event.markets.find(item => item.slug === marketSlug)
-      : resolveDefaultMarket(event.markets)
+      : resolveDefaultEventMarket(event.markets)
   if (!market) {
     return null
   }
@@ -100,7 +91,7 @@ function resolveBootstrapTargetMarket(event: Event, marketSlug?: string) {
     return event.markets.find(market => market.slug === marketSlug) ?? null
   }
 
-  return resolveDefaultMarket(event.markets) ?? null
+  return resolveDefaultEventMarket(event.markets) ?? null
 }
 
 interface ApplyOrderBootstrapMarketSelectionParams {

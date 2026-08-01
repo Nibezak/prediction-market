@@ -1,12 +1,16 @@
 import type { Route } from 'next'
 import type { AdminWorkspaceId } from '@/lib/staff-role'
-import { and, count, desc, eq, inArray, lt, sql } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
+import { and, count, desc, eq, gte, ilike, inArray, lt, lte, or, sql } from 'drizzle-orm'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import AppLink from '@/components/AppLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { UserRepository } from '@/lib/db/queries/user'
 import {
@@ -24,12 +28,8 @@ import {
   withdrawal_requests,
 } from '@/lib/db/schema'
 import { db, pmSql } from '@/lib/drizzle'
-import {
-  ADMIN_WORKSPACES_BY_ROLE,
-
-  canAccessAdminWorkspace,
-  getUserPlatformRole,
-} from '@/lib/staff-role'
+import { ADMIN_WORKSPACES_BY_ROLE, getUserPlatformRole } from '@/lib/staff-role'
+import { canAccessWorkspaceWithPermissions } from '@/lib/staff-permissions'
 import { claimRiskCaseAction, completeRiskReviewAction, requeueJobAction, reviewWithdrawalAction } from './actions'
 
 const WORKSPACE_COPY: Record<AdminWorkspaceId, { title: string, description: string }> = {
@@ -91,7 +91,14 @@ function readSetting(settings: Record<string, unknown> | null | undefined, key: 
   return settings?.[key] === true || settings?.[key] === 'true'
 }
 
-async function loadWorkspaceData(auditPage = 1) {
+type AuditFilters = {
+  query: string
+  outcome: string
+  from: string
+  to: string
+}
+
+async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { query: '', outcome: 'all', from: '', to: '' }) {
   const auditPageSize = 100
   const safeAuditPage = Math.max(1, Math.floor(auditPage))
   const [
@@ -109,7 +116,7 @@ async function loadWorkspaceData(auditPage = 1) {
     overdueEvents,
   ] = await Promise.all([
     db.select({ value: count() }).from(users),
-    db.select({ value: count() }).from(events).where(eq(events.status, 'active')),
+    db.select({ value: count() }).from(markets).leftJoin(events, eq(events.id, markets.event_id)).where(and(eq(markets.is_active, true), eq(markets.is_resolved, false), eq(events.is_hidden, false))),
     db.select({ value: count() }).from(event_creations).where(inArray(event_creations.status, ['draft', 'pending'])),
     db.select({ value: count() }).from(jobs).where(eq(jobs.status, 'failed')),
     db.select({ value: count() }).from(sessions),
@@ -177,9 +184,42 @@ async function loadWorkspaceData(auditPage = 1) {
     || readSetting(user.settings, 'suspicious'),
   )
 
+  const auditConditions: SQL[] = []
+  const auditSearch = auditFilters.query.trim()
+  if (auditSearch) {
+    const pattern = `%${auditSearch}%`
+    const matchingUsers = await db.select({ id: users.id }).from(users).where(or(
+      ilike(users.username, pattern),
+      ilike(users.email, pattern),
+    )).limit(500)
+    const matchingUserIds = matchingUsers.map(row => row.id)
+    const searchCondition = or(
+      ilike(audit_events.action, pattern),
+      ilike(audit_events.event_type, pattern),
+      ilike(audit_events.ip_address, pattern),
+      ilike(audit_events.request_id, pattern),
+      ...(matchingUserIds.length > 0
+        ? [inArray(audit_events.actor_user_id, matchingUserIds), inArray(audit_events.subject_user_id, matchingUserIds)]
+        : []),
+    )
+    if (searchCondition) auditConditions.push(searchCondition)
+  }
+  if (auditFilters.outcome !== 'all') {
+    auditConditions.push(eq(audit_events.outcome, auditFilters.outcome))
+  }
+  const fromDate = auditFilters.from ? new Date(auditFilters.from) : null
+  if (fromDate && !Number.isNaN(fromDate.getTime())) {
+    auditConditions.push(gte(audit_events.occurred_at, fromDate))
+  }
+  const toDate = auditFilters.to ? new Date(auditFilters.to) : null
+  if (toDate && !Number.isNaN(toDate.getTime())) {
+    auditConditions.push(lte(audit_events.occurred_at, toDate))
+  }
+  const auditWhere = auditConditions.length > 0 ? and(...auditConditions) : undefined
+
   const [recentAuditEvents, auditEventCountRows, openRiskCases, recentRiskSignals, recentWithdrawals] = await Promise.all([
-    db.select().from(audit_events).orderBy(desc(audit_events.occurred_at)).limit(auditPageSize).offset((safeAuditPage - 1) * auditPageSize),
-    db.select({ value: count() }).from(audit_events),
+    db.select().from(audit_events).where(auditWhere).orderBy(desc(audit_events.occurred_at)).limit(auditPageSize).offset((safeAuditPage - 1) * auditPageSize),
+    db.select({ value: count() }).from(audit_events).where(auditWhere),
     db.select({
       id: risk_cases.id,
       userId: risk_cases.user_id,
@@ -204,7 +244,24 @@ async function loadWorkspaceData(auditPage = 1) {
     db.select().from(withdrawal_requests).orderBy(desc(withdrawal_requests.requested_at)).limit(100),
   ])
 
+  const auditUserIds = Array.from(new Set(recentAuditEvents.flatMap(row => [
+    row.actor_user_id,
+    row.subject_user_id,
+  ]).filter((value): value is string => Boolean(value))))
+  const auditUserRows = auditUserIds.length > 0
+    ? await db.select({ id: users.id, username: users.username, email: users.email })
+        .from(users)
+        .where(inArray(users.id, auditUserIds))
+    : []
+  const auditUsersById = new Map(auditUserRows.map(user => [user.id, user]))
+  const enrichedAuditEvents = recentAuditEvents.map(row => ({
+    ...row,
+    actorUser: row.actor_user_id ? auditUsersById.get(row.actor_user_id) ?? null : null,
+    subjectUser: row.subject_user_id ? auditUsersById.get(row.subject_user_id) ?? null : null,
+  }))
+
   let recentTrades: Array<Record<string, unknown>> = []
+  let ledgerRiskRows: Array<Record<string, unknown>> = []
   let ledgerStatus: 'operational' | 'unavailable' = 'operational'
   let ledgerError: string | null = null
   const ledgerStartedAt = Date.now()
@@ -221,6 +278,32 @@ async function loadWorkspaceData(auditPage = 1) {
       ORDER BY t."createdAt" DESC LIMIT 25
     `
     recentTrades = rows.map(row => ({ ...row }))
+    ledgerRiskRows = (await pmSql`
+      SELECT u.id AS "userId", u.username, u.email,
+        COALESCE(b.total, 0)::text AS cash,
+        CASE
+          WHEN COALESCE((u.settings->>'is_blocked')::boolean, false) THEN 'Account blocked'
+          WHEN COALESCE((u.settings->>'tradingBlocked')::boolean, false) THEN 'Trading suspended'
+          WHEN COALESCE((u.settings->>'suspicious')::boolean, false) THEN 'Flagged for review'
+          WHEN COALESCE(b.total, 0) < 0 THEN 'Negative cash balance'
+          ELSE 'Review requested'
+        END AS signal,
+        u.settings AS settings,
+        u."updatedAt" AS "updatedAt"
+      FROM "User" u
+      LEFT JOIN "Balance" b ON b."accountId" = u."primaryAccountId"
+        AND b."assetType" = 'CURRENCY' AND b."assetId" = 'PRIMARY' AND b."marketId" IS NULL
+      WHERE lower(COALESCE(u.email, '')) <> 'treasury@slimefish.local'
+        AND lower(COALESCE(u.username, '')) <> 'house'
+        AND (
+          COALESCE((u.settings->>'is_blocked')::boolean, false)
+          OR COALESCE((u.settings->>'tradingBlocked')::boolean, false)
+          OR COALESCE((u.settings->>'suspicious')::boolean, false)
+          OR COALESCE(b.total, 0) < 0
+        )
+      ORDER BY u."updatedAt" DESC
+      LIMIT 100
+    `).map(row => ({ ...row }))
   }
   catch (error) {
     ledgerStatus = 'unavailable'
@@ -245,8 +328,41 @@ async function loadWorkspaceData(auditPage = 1) {
   catch (error) {
     apiLatencyMs = Date.now() - apiStartedAt
     apiStatus = 'unavailable'
-    apiError = error instanceof Error ? error.message : 'Play Money API probe failed.'
+    apiError = error instanceof Error ? error.message : 'Slimefish ledger API probe failed.'
   }
+
+  const ledgerRiskCases = ledgerRiskRows.map((row) => {
+    const userId = String(row.userId)
+    const signal = String(row.signal || 'Ledger account review')
+    return {
+      id: `ledger:${userId}`,
+      userId,
+      username: row.username ? String(row.username) : null,
+      email: row.email ? String(row.email) : null,
+      source: 'ledger',
+      status: 'open',
+      severity: signal === 'Negative cash balance' ? 'critical' : 'high',
+      score: signal === 'Negative cash balance' ? '100' : '80',
+      title: signal,
+      summary: `The internal ledger restricted this account. Cash balance: $${Number(row.cash || 0).toFixed(2)}.`,
+      heldAmount: '0',
+      assignedTo: null,
+      createdAt: row.updatedAt ? new Date(String(row.updatedAt)) : new Date(),
+      signalCount: 1,
+    }
+  })
+  const ledgerSignals = ledgerRiskRows.map((row) => ({
+    id: `ledger-signal:${String(row.userId)}`,
+    case_id: `ledger:${String(row.userId)}`,
+    rule_id: 'LEDGER_ACCOUNT_RESTRICTION',
+    title: String(row.signal || 'Ledger account review'),
+    description: 'The internal ledger account controls require staff review before access can be restored.',
+    score: String(row.signal) === 'Negative cash balance' ? '100' : '80',
+    observed_value: { cash: Number(row.cash || 0), settings: row.settings },
+    threshold: { restricted: true },
+    evidence: { source: 'slimefish-ledger' },
+    created_at: row.updatedAt ? new Date(String(row.updatedAt)) : new Date(),
+  }))
 
   return {
     metrics: {
@@ -264,21 +380,22 @@ async function loadWorkspaceData(auditPage = 1) {
     recentAudits,
     recentJobs,
     recentNotifications,
-    recentAuditEvents,
+    recentAuditEvents: enrichedAuditEvents,
     auditPagination: {
       page: safeAuditPage,
       pageSize: auditPageSize,
       total: Number(auditEventCountRows[0]?.value || 0),
     },
-    openRiskCases,
-    recentRiskSignals,
+    auditFilters,
+    openRiskCases: [...ledgerRiskCases, ...openRiskCases],
+    recentRiskSignals: [...ledgerSignals, ...recentRiskSignals],
     recentWithdrawals,
     overdueEvents,
     recentTrades,
     health: {
       tellwiseDatabase: { status: 'operational' as const, latencyMs: Date.now() - tellwiseStartedAt, detail: 'Primary application database accepted a live query.' },
-      playMoneyDatabase: { status: ledgerStatus, latencyMs: Date.now() - ledgerStartedAt, detail: ledgerError || 'Internal ledger database accepted a live query.' },
-      playMoneyApi: { status: apiStatus, latencyMs: apiLatencyMs, detail: apiError || 'AMM API accepted a live request.' },
+      slimefishBackendDatabase: { status: ledgerStatus, latencyMs: Date.now() - ledgerStartedAt, detail: ledgerError || 'Internal ledger database accepted a live query.' },
+      slimefishBackendApi: { status: apiStatus, latencyMs: apiLatencyMs, detail: apiError || 'AMM API accepted a live request.' },
       workerQueue: {
         status: Number(failedJobCountRows[0]?.value || 0) > 0 ? 'degraded' as const : 'operational' as const,
         latencyMs: null,
@@ -342,6 +459,51 @@ function UserQueue({ users: rows, emptyLabel }: {
         ))}
       </TableBody>
     </Table>
+  )
+}
+
+function filterSupportUsers(rows: Awaited<ReturnType<typeof loadWorkspaceData>>['recentUsers'], query: string) {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return rows
+  return rows.filter(user => [
+    user.id,
+    user.username,
+    user.email,
+  ].some(value => String(value || '').toLowerCase().includes(normalized)))
+}
+
+function SupportConsole({ users: rows, query }: {
+  users: Awaited<ReturnType<typeof loadWorkspaceData>>['recentUsers']
+  query: string
+}) {
+  const filteredRows = filterSupportUsers(rows, query)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>User support</CardTitle>
+        <CardDescription>Search for a user, inspect their account, and continue support from the user profile.</CardDescription>
+        <form method="get" className="flex flex-col gap-2 pt-2 sm:flex-row">
+          <Input
+            name="supportQuery"
+            defaultValue={query}
+            placeholder="Search by username, email, or user ID"
+            aria-label="Search support users"
+            className="sm:max-w-md"
+          />
+          <div className="flex gap-2">
+            <Button type="submit">Search</Button>
+            {query && (
+              <Button variant="outline" asChild>
+                <AppLink href="/admin/support">Clear</AppLink>
+              </Button>
+            )}
+          </div>
+        </form>
+      </CardHeader>
+      <CardContent className="p-0">
+        <UserQueue users={filteredRows} emptyLabel={query ? 'No users match that search.' : 'No users found.'} />
+      </CardContent>
+    </Card>
   )
 }
 
@@ -591,6 +753,15 @@ function SystemConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspace
 
 function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceData>> }) {
   const totalPages = Math.max(1, Math.ceil(data.auditPagination.total / data.auditPagination.pageSize))
+  const auditPageHref = (page: number) => {
+    const params = new URLSearchParams()
+    params.set('auditPage', String(page))
+    if (data.auditFilters.query) params.set('auditQuery', data.auditFilters.query)
+    if (data.auditFilters.outcome !== 'all') params.set('auditOutcome', data.auditFilters.outcome)
+    if (data.auditFilters.from) params.set('auditFrom', data.auditFilters.from)
+    if (data.auditFilters.to) params.set('auditTo', data.auditFilters.to)
+    return `?${params.toString()}` as Route
+  }
   return (
     <div className="grid gap-5">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -628,23 +799,48 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
             {' '}
             actions).
           </CardDescription>
+          <form method="get" className="grid gap-3 pt-3 lg:grid-cols-[minmax(15rem,1fr)_11rem_13rem_13rem_auto]">
+            <Input
+              name="auditQuery"
+              defaultValue={data.auditFilters.query}
+              placeholder="Name, email, IP address, action..."
+              aria-label="Search audit log"
+            />
+            <Select name="auditOutcome" defaultValue={data.auditFilters.outcome}>
+              <SelectTrigger aria-label="Filter by result"><SelectValue placeholder="All results" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All results</SelectItem>
+                <SelectItem value="success">Succeeded</SelectItem>
+                <SelectItem value="failure">Failed</SelectItem>
+                <SelectItem value="denied">Denied</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input name="auditFrom" type="datetime-local" defaultValue={data.auditFilters.from} aria-label="From date and time" />
+            <Input name="auditTo" type="datetime-local" defaultValue={data.auditFilters.to} aria-label="To date and time" />
+            <div className="flex gap-2">
+              <Button type="submit">Filter</Button>
+              <Button variant="outline" asChild><AppLink href="?">Clear</AppLink></Button>
+            </div>
+          </form>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead className="w-40">Time</TableHead>
+                <TableHead className="w-52">Action</TableHead>
                 <TableHead>Actor / subject</TableHead>
-                <TableHead>Result</TableHead>
-                <TableHead>Evidence</TableHead>
+                <TableHead className="w-36">IP address</TableHead>
+                <TableHead className="w-24">Result</TableHead>
+                <TableHead className="w-24">Evidence</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.recentAuditEvents.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="h-20 text-center text-muted-foreground"
                   >
                     No platform actions have been recorded since the audit ledger was enabled.
@@ -654,33 +850,46 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
               {data.recentAuditEvents.map(row => (
                 <TableRow key={row.id}>
                   <TableCell className="whitespace-nowrap">{formatDate(row.occurred_at)}</TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-normal">
                     <div className="font-medium">{row.action}</div>
                     <div className="text-xs text-muted-foreground">
                       {row.event_type}
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    <div>{row.actor_user_id || 'system'}</div>
-                    <div className="text-muted-foreground">
-                      {row.subject_user_id || 'no subject'}
-                    </div>
+                  <TableCell className="min-w-0 text-xs whitespace-normal">
+                    <div className="font-medium">{row.actorUser?.username || row.actorUser?.email || (row.actor_user_id ? 'Unknown actor' : 'System')}</div>
+                    {row.actorUser?.username && <div className="text-muted-foreground">{row.actorUser.email}</div>}
+                    {row.subject_user_id && (
+                      <div className="mt-1 border-t pt-1 text-muted-foreground">
+                        Affected:
+                        {' '}
+                        {row.subjectUser?.username || row.subjectUser?.email || 'Unknown user'}
+                        {row.subjectUser?.username && ` (${row.subjectUser.email})`}
+                      </div>
+                    )}
                   </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-nowrap">{row.ip_address || 'Server / unavailable'}</TableCell>
                   <TableCell><Badge variant={row.outcome === 'failure' || row.outcome === 'denied' ? 'destructive' : row.outcome === 'pending' ? 'secondary' : 'outline'}>{row.outcome}</Badge></TableCell>
-                  <TableCell className="max-w-lg">
-                    <details>
-                      <summary className="cursor-pointer text-sm font-medium">Inspect timestamp and evidence</summary>
-                      <pre className="mt-2 max-h-64 overflow-auto border p-2 text-xs whitespace-pre-wrap">
-                        {JSON.stringify({ id: row.id, occurredAt: row.occurred_at, severity: row.severity, actorRole: row.actor_role, entity: [row.entity_type, row.entity_id], requestId: row.request_id, riskScore: row.risk_score, metadata: row.metadata, before: row.before_values, after: row.after_values }, null, 2)}
-                      </pre>
-                    </details>
+                  <TableCell>
+                    <Dialog>
+                      <DialogTrigger asChild><Button size="sm" variant="outline">Inspect</Button></DialogTrigger>
+                      <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-3xl">
+                        <DialogHeader>
+                          <DialogTitle>Audit evidence</DialogTitle>
+                          <DialogDescription>{formatDate(row.occurred_at)} · {row.action}</DialogDescription>
+                        </DialogHeader>
+                        <pre className="max-h-[65vh] max-w-full overflow-auto rounded-md border bg-muted/30 p-4 text-xs whitespace-pre-wrap break-all">
+                          {JSON.stringify({ id: row.id, occurredAt: row.occurred_at, severity: row.severity, actor: { id: row.actor_user_id, username: row.actorUser?.username, email: row.actorUser?.email, role: row.actor_role }, subject: { id: row.subject_user_id, username: row.subjectUser?.username, email: row.subjectUser?.email }, ipAddress: row.ip_address, userAgent: row.user_agent, entity: [row.entity_type, row.entity_id], requestId: row.request_id, riskScore: row.risk_score, metadata: row.metadata, before: row.before_values, after: row.after_values }, null, 2)}
+                        </pre>
+                      </DialogContent>
+                    </Dialog>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
           <div className="flex items-center justify-between gap-2 border-t p-3">
-            <Button variant="outline" size="sm" asChild disabled={data.auditPagination.page <= 1}><AppLink href={`?auditPage=${Math.max(1, data.auditPagination.page - 1)}` as Route}>Previous 100</AppLink></Button>
+            <Button variant="outline" size="sm" asChild disabled={data.auditPagination.page <= 1}><AppLink href={auditPageHref(Math.max(1, data.auditPagination.page - 1))}>Previous 100</AppLink></Button>
             <span className="text-xs text-muted-foreground">
               Records
               {data.auditPagination.total === 0 ? 0 : (data.auditPagination.page - 1) * data.auditPagination.pageSize + 1}
@@ -690,7 +899,7 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
               of
               {data.auditPagination.total}
             </span>
-            <Button variant="outline" size="sm" asChild disabled={data.auditPagination.page >= totalPages}><AppLink href={`?auditPage=${Math.min(totalPages, data.auditPagination.page + 1)}` as Route}>Next 100</AppLink></Button>
+            <Button variant="outline" size="sm" asChild disabled={data.auditPagination.page >= totalPages}><AppLink href={auditPageHref(Math.min(totalPages, data.auditPagination.page + 1))}>Next 100</AppLink></Button>
           </div>
         </CardContent>
       </Card>
@@ -843,31 +1052,9 @@ function RiskConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceDa
                   <TableCell>{formatDate(row.createdAt)}</TableCell>
                   <TableCell>
                     <div className="font-medium">{row.title}</div>
-                    <div className="max-w-md text-xs text-muted-foreground">
+                    <div className="max-w-md text-xs text-muted-foreground truncate">
                       {row.summary}
                     </div>
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-xs font-medium">
-                        Inspect
-                        {row.signalCount}
-                        {' '}
-                        signals
-                      </summary>
-                      <div className="mt-2 grid gap-2">
-                        {data.recentRiskSignals.filter(signal => signal.case_id === row.id).map(signal => (
-                          <div
-key={signal.id} className="border p-2 text-xs">
-                            <div className="flex items-center justify-between gap-2">
-<strong>{signal.rule_id} · {signal.title}</strong><Badge variant="outline">
-+{signal.score}</Badge></div>
-<div className="
-  text-muted-foreground
-">{signal.description}</div>
-                            <pre className="mt-1 overflow-auto whitespace-pre-wrap">{JSON.stringify({ observed: signal.observed_value, threshold: signal.threshold, evidence: signal.evidence }, null, 2)}</pre>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
                   </TableCell>
                   <TableCell>
                     <AppLink href={`/@${row.username || row.userId}` as Route} className="font-medium hover:underline">
@@ -895,21 +1082,64 @@ key={signal.id} className="border p-2 text-xs">
                     <div className="text-xs text-muted-foreground">{row.status}</div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <form action={claimRiskCaseAction}>
+                    <div className="flex justify-end gap-1.5">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline">Inspect</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-3xl">
+                          <DialogHeader>
+                            <DialogTitle>Risk Case Evidence & Signals</DialogTitle>
+                            <DialogDescription>{formatDate(row.createdAt)} · {row.title}</DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-3 max-h-[65vh] overflow-y-auto pr-1">
+                            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+                              <div className="font-semibold text-foreground">{row.title}</div>
+                              <div className="mt-1 text-muted-foreground">{row.summary}</div>
+                              <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
+                                <span>User: {row.username ? `@${row.username}` : row.userId}</span>
+                                <span>Email: {row.email || 'None'}</span>
+                                <span>Score: {row.score}</span>
+                                <span>Severity: {row.severity}</span>
+                                <span>Held: ${Number(row.heldAmount || 0).toFixed(2)}</span>
+                              </div>
+                            </div>
+                            <div className="font-medium text-xs text-foreground">Triggered Signals ({data.recentRiskSignals.filter(s => s.case_id === row.id).length})</div>
+                            {data.recentRiskSignals.filter(signal => signal.case_id === row.id).map(signal => (
+                              <div key={signal.id} className="rounded-md border p-3 text-xs space-y-1.5 bg-background">
+                                <div className="flex items-center justify-between font-semibold">
+                                  <span>{signal.rule_id} · {signal.title}</span>
+                                  <Badge variant="outline">+{signal.score}</Badge>
+                                </div>
+                                <div className="text-muted-foreground">{signal.description}</div>
+                                <pre className="mt-2 max-h-48 overflow-auto rounded border bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
+                                  {JSON.stringify({ observed: signal.observed_value, threshold: signal.threshold, evidence: signal.evidence }, null, 2)}
+                                </pre>
+                              </div>
+                            ))}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      {row.source === 'ledger'
+                        ? (
+                            <Button variant="outline" size="sm" asChild>
+                              <AppLink href={`/admin/users?userId=${encodeURIComponent(row.userId)}` as Route}>Open account</AppLink>
+                            </Button>
+                          )
+                        : <form action={claimRiskCaseAction}>
                         <input type="hidden" name="caseId" value={row.id} />
                         <Button variant="outline" size="sm" type="submit">Claim</Button>
-                      </form>
-                      <form action={completeRiskReviewAction}>
+                          </form>}
+                      {row.source !== 'ledger' && <form action={completeRiskReviewAction}>
                         <input type="hidden" name="caseId" value={row.id} />
                         <input type="hidden" name="disposition" value="cleared" />
                         <Button variant="outline" size="sm" type="submit">Clear</Button>
-                      </form>
-                      <form action={completeRiskReviewAction}>
+                      </form>}
+                      {row.source !== 'ledger' && <form action={completeRiskReviewAction}>
                         <input type="hidden" name="caseId" value={row.id} />
                         <input type="hidden" name="disposition" value="confirmed" />
                         <Button variant="destructive" size="sm" type="submit">Confirm</Button>
-                      </form>
+                      </form>}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1026,10 +1256,11 @@ Case{row.risk_case_id}</div>
   )
 }
 
-function WorkspaceBody({ workspace, data, role }: {
+function WorkspaceBody({ workspace, data, role, supportQuery }: {
   workspace: AdminWorkspaceId
   data: Awaited<ReturnType<typeof loadWorkspaceData>>
   role: ReturnType<typeof getUserPlatformRole>
+  supportQuery: string
 }) {
   if (workspace === 'operations') {
     return <OperationsConsole data={data} />
@@ -1044,7 +1275,7 @@ function WorkspaceBody({ workspace, data, role }: {
     return <FinanceConsole data={data} />
   }
   if (workspace === 'support') {
-    return <UserQueue users={data.recentUsers} emptyLabel="No users found." />
+    return <SupportConsole users={data.recentUsers} query={supportQuery} />
   }
   if (workspace === 'approvals') {
     return (
@@ -1137,21 +1368,37 @@ export default async function AdminWorkspacePage({
   searchParams,
 }: {
   params: Promise<{ locale: string, workspace: string }>
-  searchParams: Promise<{ auditPage?: string }>
+  searchParams: Promise<{
+    auditPage?: string
+    auditQuery?: string
+    auditOutcome?: string
+    auditFrom?: string
+    auditTo?: string
+    supportQuery?: string
+  }>
 }) {
   const { locale, workspace } = await params
   setRequestLocale(locale)
   const currentUser = await UserRepository.getCurrentUser({ minimal: true })
   const role = getUserPlatformRole(currentUser)
-  if (!canAccessAdminWorkspace(role, workspace)) {
+  if (!canAccessWorkspaceWithPermissions(currentUser, workspace)) {
     notFound()
   }
 
   const query = await searchParams
+  const supportQuery = query.supportQuery?.slice(0, 200) || ''
   const requestedAuditPage = Number.parseInt(query.auditPage || '1', 10)
-  const data = await loadWorkspaceData(Number.isFinite(requestedAuditPage) ? requestedAuditPage : 1)
+  const data = await loadWorkspaceData(
+    Number.isFinite(requestedAuditPage) ? requestedAuditPage : 1,
+    {
+      query: query.auditQuery?.slice(0, 200) || '',
+      outcome: ['all', 'success', 'failure', 'denied', 'pending'].includes(query.auditOutcome || '') ? query.auditOutcome! : 'all',
+      from: query.auditFrom || '',
+      to: query.auditTo || '',
+    },
+  )
   const copy = WORKSPACE_COPY[workspace]
-  const workspaceTabs = ADMIN_WORKSPACES_BY_ROLE[role]
+  const workspaceTabs = (Object.keys(WORKSPACE_COPY) as AdminWorkspaceId[]).filter(tab => canAccessWorkspaceWithPermissions(currentUser, tab))
   return (
     <section className="mx-auto w-full max-w-7xl space-y-6 p-6 lg:p-10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1180,7 +1427,7 @@ export default async function AdminWorkspacePage({
         </nav>
         <div className="px-4 pt-4 pb-6 sm:px-6">
           {workspace === 'operations' && <div className="mb-6"><MetricCards metrics={data.metrics} /></div>}
-          <WorkspaceBody workspace={workspace} data={data} role={role} />
+          <WorkspaceBody workspace={workspace} data={data} role={role} supportQuery={supportQuery} />
         </div>
       </div>
     </section>

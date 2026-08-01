@@ -53,8 +53,8 @@ function usePnlSeries({
   })
 
   useEffect(function fetchPnlSeriesEffect() {
-    const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-    if (!pnlAddress || (!isPlayMoneyAmm && !pnlBaseUrl)) {
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    if (!pnlAddress || (!isSlimefishBackendAmm && !pnlBaseUrl)) {
       return
     }
 
@@ -71,9 +71,9 @@ function usePnlSeries({
       interval,
       fidelity,
     })
-    const endpoint = isPlayMoneyAmm ? '/api/amm/users/me/graph' : new URL('/user-pnl', pnlBaseUrl).toString()
+    const endpoint = isSlimefishBackendAmm ? '/api/amm/users/me/graph' : new URL('/user-pnl', pnlBaseUrl).toString()
 
-    fetch(isPlayMoneyAmm ? endpoint : `${endpoint}?${params.toString()}`, {
+    fetch(isSlimefishBackendAmm ? endpoint : `${endpoint}?${params.toString()}`, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -83,22 +83,22 @@ function usePnlSeries({
         return await response.json()
       })
       .then((data) => {
-        const rows = isPlayMoneyAmm && Array.isArray(data?.data) ? data.data : data
+        const rows = isSlimefishBackendAmm && Array.isArray(data?.data) ? data.data : data
         if (!Array.isArray(rows)) {
           setPnlSeriesState({ key: pnlSeriesKey, series: [] })
           return
         }
 
-        const firstAmmValue = isPlayMoneyAmm && rows.length
+        const firstAmmValue = isSlimefishBackendAmm && rows.length
           ? Number(rows[0]?.balance || 0) + Number(rows[0]?.liquidity || 0) + Number(rows[0]?.markets || 0)
           : 0
         const cutoffMs = Date.now() - ({ '1D': 86_400_000, '1W': 604_800_000, '1M': 2_592_000_000, 'ALL': Number.POSITIVE_INFINITY } as const)[activeTimeframe]
         const normalized = rows
           .map((point: { t?: number, p?: number, startAt?: string, balance?: number, liquidity?: number, markets?: number }) => ({
-            date: isPlayMoneyAmm
+            date: isSlimefishBackendAmm
               ? (point.startAt ? new Date(point.startAt) : null)
               : (typeof point.t === 'number' ? new Date(point.t * 1000) : null),
-            value: isPlayMoneyAmm
+            value: isSlimefishBackendAmm
               ? Number(point.balance || 0) + Number(point.liquidity || 0) + Number(point.markets || 0) - firstAmmValue
               : (typeof point.p === 'number' ? point.p : null),
           }))

@@ -3,19 +3,11 @@
 import type { WalletDepositModalProps, WalletWithdrawModalProps } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
 import { ChevronLeftIcon } from 'lucide-react'
 import { useState } from 'react'
-import CountdownBadge from '@/app/[locale]/(platform)/_components/wallet-modal/CountdownBadge'
-import { getSelectedWalletTokenId } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
-import WalletAmountStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletAmountStep'
-import WalletConfirmStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletConfirmStep'
 import WalletFundMenu from '@/app/[locale]/(platform)/_components/wallet-modal/WalletFundMenu'
 import WalletReceiveView from '@/app/[locale]/(platform)/_components/wallet-modal/WalletReceiveView'
 import WalletSendForm from '@/app/[locale]/(platform)/_components/wallet-modal/WalletSendForm'
-import WalletSuccessStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletSuccessStep'
-import WalletTokenList from '@/app/[locale]/(platform)/_components/wallet-modal/WalletTokenList'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import { useLiFiQuote } from '@/hooks/useLiFiQuote'
-import { useLiFiWalletTokens } from '@/hooks/useLiFiWalletTokens'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { cn } from '@/lib/utils'
 
@@ -27,7 +19,6 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     onOpenChange,
     isMobile,
     walletAddress,
-    walletEoaAddress,
     siteName,
     meldUrl,
     hasDeployedDepositWallet,
@@ -36,18 +27,13 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     onBuy,
     depositWalletBalance,
     isDepositWalletBalanceLoading = false,
-    walletBalance,
-    isBalanceLoading = false,
+    defaultPhoneNumber,
+    onrampProgress,
+    onOnrampProgressChange,
   } = props
 
   const [copied, setCopied] = useState(false)
   const site = useSiteIdentity()
-  const siteLabel = siteName ?? site.name
-  const tokensQueryEnabled = open && (view === 'wallets' || view === 'amount' || view === 'confirm')
-  const { items: walletTokenItems, isLoadingTokens } = useLiFiWalletTokens(walletEoaAddress, { enabled: tokensQueryEnabled })
-  const [preferredSelectedTokenId, setPreferredSelectedTokenId] = useState('')
-  const [amountValue, setAmountValue] = useState('')
-  const [confirmRefreshIndex, setConfirmRefreshIndex] = useState(0)
   const formattedDepositWalletBalance = depositWalletBalance && depositWalletBalance !== ''
     ? depositWalletBalance
     : '0.00'
@@ -64,16 +50,6 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         </>
       )
 
-  const selectedTokenId = getSelectedWalletTokenId(walletTokenItems, preferredSelectedTokenId)
-  const selectedToken = walletTokenItems.find(item => item.id === selectedTokenId) ?? null
-  const { quote } = useLiFiQuote({
-    fromToken: selectedToken,
-    amountValue,
-    fromAddress: walletEoaAddress,
-    toAddress: walletAddress,
-    refreshIndex: confirmRefreshIndex,
-  })
-
   const content = view === 'fund'
     ? (
         <WalletFundMenu
@@ -81,69 +57,38 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
             onBuy(url)
           }}
           onReceive={() => onViewChange('receive')}
-          onWallet={() => onViewChange('wallets')}
+          onWallet={() => onViewChange('fund')}
           disabledBuy={!meldUrl}
           disabledReceive={!hasDeployedDepositWallet}
           meldUrl={meldUrl}
           walletAddress={walletAddress}
-          walletEoaAddress={walletEoaAddress}
-          walletBalance={walletBalance}
-          isBalanceLoading={isBalanceLoading}
+          defaultPhoneNumber={defaultPhoneNumber}
+          onrampProgress={onrampProgress}
+          onOnrampProgressChange={onOnrampProgressChange}
         />
       )
-    : view === 'receive'
-      ? (
-          <WalletReceiveView
-            walletAddress={walletAddress}
-            onCopy={handleCopy}
-            copied={copied}
-          />
-        )
-      : view === 'wallets'
+      : view === 'receive'
         ? (
-            <WalletTokenList
-              onContinue={() => onViewChange('amount')}
-              items={walletTokenItems}
-              isLoadingTokens={isLoadingTokens}
-              selectedId={selectedTokenId}
-              onSelect={setPreferredSelectedTokenId}
+            <WalletReceiveView
+              walletAddress={walletAddress}
+              onCopy={handleCopy}
+              copied={copied}
             />
           )
-        : view === 'amount'
-          ? (
-              <WalletAmountStep
-                onContinue={() => onViewChange('confirm')}
-                selectedTokenSymbol={selectedToken?.symbol ?? null}
-                availableTokenAmount={selectedToken?.balanceRaw ?? null}
-                amountValue={amountValue}
-                onAmountChange={setAmountValue}
-              />
-            )
-          : view === 'confirm'
-            ? (
-                <WalletConfirmStep
-                  walletEoaAddress={walletEoaAddress}
-                  walletAddress={walletAddress}
-                  siteLabel={siteLabel}
-                  onComplete={() => onViewChange('success')}
-                  amountValue={amountValue}
-                  selectedToken={selectedToken}
-                  quote={quote}
-                  refreshIndex={confirmRefreshIndex}
-                />
-              )
-            : (
-                <WalletSuccessStep
-                  walletEoaAddress={walletEoaAddress}
-                  walletAddress={walletAddress}
-                  siteLabel={siteLabel}
-                  amountValue={amountValue}
-                  selectedToken={selectedToken}
-                  quote={quote}
-                  onClose={() => onOpenChange(false)}
-                  onNewDeposit={() => onViewChange('fund')}
-                />
-              )
+        : (
+            <WalletFundMenu
+              onBuy={onBuy}
+              onReceive={() => onViewChange('receive')}
+              onWallet={() => onViewChange('fund')}
+              disabledBuy={!meldUrl}
+              disabledReceive={!hasDeployedDepositWallet}
+              meldUrl={meldUrl}
+              walletAddress={walletAddress}
+              defaultPhoneNumber={defaultPhoneNumber}
+              onrampProgress={onrampProgress}
+              onOnrampProgressChange={onOnrampProgressChange}
+            />
+          )
 
   async function handleCopy() {
     if (!walletAddress) {
@@ -171,7 +116,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         <DrawerContent className="max-h-[90vh] w-full bg-background px-0">
           <DrawerHeader className="gap-1 px-4 pt-3 pb-2">
             <div className="flex items-center">
-              {view !== 'fund' && view !== 'success'
+              {view !== 'fund'
                 ? (
                     <button
                       type="button"
@@ -195,8 +140,6 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
               <span className="size-8" aria-hidden="true" />
             </div>
             <DrawerDescription className="text-center text-xs text-muted-foreground">
-              {siteLabel}
-              {' '}
               Balance:
               {' '}
               {balanceDisplay}
@@ -223,16 +166,11 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     >
       <DialogContent
         className="max-w-md border bg-background pt-4 sm:max-w-md"
-        showCloseButton={view !== 'confirm'}
+        showCloseButton
       >
-        {view === 'confirm' && (
-          <CountdownBadge
-            onReset={() => setConfirmRefreshIndex(current => current + 1)}
-          />
-        )}
         <DialogHeader className="gap-1">
           <div className="flex items-center">
-            {view !== 'fund' && view !== 'success'
+            {view !== 'fund'
               ? (
                   <button
                     type="button"
@@ -256,8 +194,6 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
             <span className="size-8" aria-hidden="true" />
           </div>
           <DialogDescription className="text-center text-xs text-muted-foreground">
-            {siteLabel}
-            {' '}
             Balance:
             {' '}
             {balanceDisplay}
@@ -275,21 +211,22 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
     open,
     onOpenChange,
     isMobile,
-    siteName,
     sendTo,
     onChangeSendTo,
     sendAmount,
     onChangeSendAmount,
     isSending,
+    isSubmitted,
+    error,
+    onRetrySend,
     onSubmitSend,
     connectedWalletAddress,
     onUseConnectedWallet,
     availableBalance,
     onMax,
     isBalanceLoading,
+    defaultPhoneNumber,
   } = props
-  const site = useSiteIdentity()
-  const siteLabel = siteName ?? site.name
 
   const content = (
     <WalletSendForm
@@ -298,12 +235,16 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
       sendAmount={sendAmount}
       onChangeSendAmount={onChangeSendAmount}
       isSending={isSending}
+      isSubmitted={isSubmitted}
+      error={error}
+      onRetrySend={onRetrySend}
       onSubmitSend={onSubmitSend}
       connectedWalletAddress={connectedWalletAddress}
       onUseConnectedWallet={onUseConnectedWallet}
       availableBalance={availableBalance}
       onMax={onMax}
       isBalanceLoading={isBalanceLoading}
+      defaultPhoneNumber={defaultPhoneNumber}
     />
   )
 
@@ -313,9 +254,7 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
         <DrawerContent className="max-h-[90vh] w-full bg-background px-0">
           <DrawerHeader className="px-4 pt-4 pb-2">
             <DrawerTitle className="text-center text-foreground">
-              Withdraw from
-              {' '}
-              {siteLabel}
+              Withdraw
             </DrawerTitle>
           </DrawerHeader>
           <div className="w-full px-4 pb-4">
@@ -330,12 +269,10 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-xl border bg-background">
+      <DialogContent className="w-full max-w-md border bg-background">
         <DialogHeader>
           <DialogTitle className="text-center text-foreground">
-            Withdraw from
-            {' '}
-            {siteLabel}
+            Withdraw
           </DialogTitle>
         </DialogHeader>
         {content}

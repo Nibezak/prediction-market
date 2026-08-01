@@ -17,6 +17,8 @@ interface BrandIdentitySectionProps {
   onToggleSection: (value: string) => void
   siteName: string
   setSiteName: Dispatch<SetStateAction<string>>
+  mobileAppName: string
+  setMobileAppName: Dispatch<SetStateAction<string>>
   siteDescription: string
   setSiteDescription: Dispatch<SetStateAction<string>>
   logoMode: ThemeSiteLogoMode
@@ -47,6 +49,8 @@ function BrandIdentitySection({
   onToggleSection,
   siteName,
   setSiteName,
+  mobileAppName,
+  setMobileAppName,
   siteDescription,
   setSiteDescription,
   logoMode: _logoMode,
@@ -226,6 +230,19 @@ function BrandIdentitySection({
                 onChange={event => setSiteName(event.target.value)}
                 disabled={isPending}
                 placeholder={t('Your company name')}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="theme-mobile-app-name">{t('Mobile app name')}</Label>
+              <Input
+                id="theme-mobile-app-name"
+                name="mobile_app_name"
+                maxLength={32}
+                value={mobileAppName}
+                onChange={event => setMobileAppName(event.target.value)}
+                disabled={isPending}
+                placeholder={t('Short home screen name')}
               />
             </div>
 

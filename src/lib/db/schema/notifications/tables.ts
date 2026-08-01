@@ -8,7 +8,7 @@ export const notifications = pgTable(
     id: char('id', { length: 26 })
       .primaryKey()
       .default(sql`generate_ulid()`),
-    user_id: char({ length: 26 })
+    user_id: text()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
     category: text()
@@ -30,5 +30,6 @@ export const notifications = pgTable(
     created_at: timestamp({ withTimezone: true })
       .notNull()
       .defaultNow(),
+    read_at: timestamp({ withTimezone: true }),
   },
 )

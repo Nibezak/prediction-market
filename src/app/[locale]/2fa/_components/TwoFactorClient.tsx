@@ -79,11 +79,12 @@ export default function TwoFactorClient({ next }: { next?: string | null }) {
     setIsVerifying(true)
 
     try {
-      const { error } = await authClient.twoFactor.verifyTotp({
-        code,
+      const response = await fetch('/api/auth/firebase/verify-two-factor', {
+        method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
       })
 
-      if (error) {
+      if (!response.ok) {
         toast.error(t('Invalid code. Please try again.'))
         setCode('')
         setIsVerifying(false)

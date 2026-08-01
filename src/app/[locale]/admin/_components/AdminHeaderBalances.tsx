@@ -30,7 +30,7 @@ function formatAdminBalance(value: number | null | undefined, decimals = 2) {
 export default function AdminHeaderBalances() {
   const t = useExtracted()
   const user = useUser()
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const { polygonRpcUrl } = usePublicRuntimeConfig()
   const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const { address: connectedAddress } = useAppKitAccount()
@@ -50,12 +50,12 @@ export default function AdminHeaderBalances() {
     [eoaAddress],
   )
   const { balance: usdcBalance, isLoadingBalance: isLoadingUsdcBalance } = useBalance({
-    enabled: isPlayMoneyAmm || Boolean(normalizedEoaAddress),
-    depositWalletAddress: isPlayMoneyAmm ? null : normalizedEoaAddress,
+    enabled: isSlimefishBackendAmm || Boolean(normalizedEoaAddress),
+    depositWalletAddress: isSlimefishBackendAmm ? null : normalizedEoaAddress,
   })
   const { data: polBalance, isLoading: isLoadingPolBalance } = useQuery({
     queryKey: [ADMIN_POL_BALANCE_QUERY_KEY, normalizedEoaAddress],
-    enabled: Boolean(!isPlayMoneyAmm && publicClient && normalizedEoaAddress),
+    enabled: Boolean(!isSlimefishBackendAmm && publicClient && normalizedEoaAddress),
     staleTime: 10_000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: 10_000,
@@ -85,7 +85,7 @@ export default function AdminHeaderBalances() {
     }
   }, [normalizedEoaAddress, t])
 
-  if (isPlayMoneyAmm) {
+  if (isSlimefishBackendAmm) {
     return (
       <div className="grid grid-cols-1 gap-x-1">
         <Button type="button" variant="ghost" size="header" className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-[6px] px-2.5 py-1">

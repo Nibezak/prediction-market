@@ -108,6 +108,7 @@ interface EventLiveSeriesChartProps {
   config: EventLiveChartConfig
   chartWidth?: number
   chartHeightOffset?: number
+  minimumChartHeight?: number
   showSeriesControls?: boolean
 }
 
@@ -118,6 +119,7 @@ export default function EventLiveSeriesChart({
   config,
   chartWidth,
   chartHeightOffset = 0,
+  minimumChartHeight = 260,
   showSeriesControls = true,
 }: EventLiveSeriesChartProps) {
   const subscriptionSymbol = useMemo(
@@ -136,6 +138,7 @@ export default function EventLiveSeriesChart({
       subscriptionSymbol={subscriptionSymbol}
       chartWidth={chartWidth}
       chartHeightOffset={chartHeightOffset}
+      minimumChartHeight={minimumChartHeight}
       showSeriesControls={showSeriesControls}
     />
   )
@@ -149,6 +152,7 @@ interface EventLiveSeriesChartContentProps {
   subscriptionSymbol: string
   chartWidth?: number
   chartHeightOffset: number
+  minimumChartHeight: number
   showSeriesControls: boolean
 }
 
@@ -160,12 +164,13 @@ function EventLiveSeriesChartContent({
   subscriptionSymbol,
   chartWidth: providedChartWidth,
   chartHeightOffset,
+  minimumChartHeight,
   showSeriesControls,
 }: EventLiveSeriesChartContentProps) {
   const site = useSiteIdentity()
   const { width: windowWidth } = useWindowSize()
   const liveColor = config.line_color || '#F59E0B'
-  const chartHeight = Math.max(260, LIVE_CHART_HEIGHT - Math.max(0, chartHeightOffset))
+  const chartHeight = Math.max(minimumChartHeight, LIVE_CHART_HEIGHT - Math.max(0, chartHeightOffset))
   const [activeView, setActiveView] = useState<'live' | 'market'>('live')
   const isLiveView = activeView === 'live'
   const startTimestamp = useMemo(() => parseUtcDate(event.start_date ?? null), [event.start_date])

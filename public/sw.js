@@ -1,9 +1,15 @@
 globalThis.addEventListener('install', () => {
-  globalThis.skipWaiting()
+  // Wait for the app shell to ask before replacing an active PWA session.
 })
 
 globalThis.addEventListener('activate', (event) => {
   event.waitUntil(globalThis.clients.claim())
+})
+
+globalThis.addEventListener('message', (event) => {
+  if (event.data?.type === 'SLIMEFISH_SKIP_WAITING') {
+    globalThis.skipWaiting()
+  }
 })
 
 function resolveSafeNotificationUrl(rawUrl) {

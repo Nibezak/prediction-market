@@ -492,9 +492,9 @@ export default function AllowedMarketCreatorsManager({
             <Drawer open={Boolean(itemPendingRemoval)} onOpenChange={handleRemoveSourceDialogOpenChange}>
               <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
                 <DrawerHeader className="space-y-2 p-0 text-left">
-                  <DrawerTitle>{t('Remove demo.kuest.com?')}</DrawerTitle>
+                  <DrawerTitle>{t('Remove mirrored market source?')}</DrawerTitle>
                   <DrawerDescription>
-                    {t('Are you sure? You will stop receiving mirrored markets from Polymarket.')}
+                    {t('Are you sure? You will stop receiving markets from this source.')}
                   </DrawerDescription>
                 </DrawerHeader>
 
@@ -519,9 +519,9 @@ export default function AllowedMarketCreatorsManager({
             <Dialog open={Boolean(itemPendingRemoval)} onOpenChange={handleRemoveSourceDialogOpenChange}>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle>{t('Remove demo.kuest.com?')}</DialogTitle>
+                  <DialogTitle>{t('Remove mirrored market source?')}</DialogTitle>
                   <DialogDescription>
-                    {t('Are you sure? You will stop receiving mirrored markets from Polymarket.')}
+                    {t('Are you sure? You will stop receiving markets from this source.')}
                   </DialogDescription>
                 </DialogHeader>
 

@@ -14,7 +14,9 @@ import {
   createDepositWalletAction,
   enableTradingAuthAction,
   markAutoRedeemApprovalCompletedAction,
+  updateOnboardingDepositPromptAction,
   updateOnboardingEmailAction,
+  updateOnboardingPhoneAction,
   updateOnboardingUsernameAction,
 } from '@/app/[locale]/(platform)/_actions/deposit-wallet'
 import TradingOnboardingDialogs from '@/app/[locale]/(platform)/_components/TradingOnboardingDialogs'
@@ -71,7 +73,7 @@ import {
 } from '@/lib/wallet/transactions'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
-type OnboardingModal = 'username' | 'email' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
+type OnboardingModal = 'username' | 'phone' | 'email' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
 type EnableTradingStep = 'idle' | 'enabling' | 'deploying' | 'completed'
 type ApprovalsStep = 'idle' | 'signing' | 'completed'
 interface OpenNextRequirementOptions {
@@ -124,6 +126,12 @@ function hasUserProvidedUsername(user: User) {
   )
 }
 
+function getUserPhoneNumber(user: User | null) {
+  return user?.settings?.profile?.phoneNumber
+    || user?.settings?.onboarding?.phoneNumber
+    || ''
+}
+
 function getUsernameDefaultValue(user: User | null) {
   if (!user?.username) {
     return ''
@@ -132,6 +140,14 @@ function getUsernameDefaultValue(user: User | null) {
     return ''
   }
   return user.username
+}
+
+function hasDepositPromptBeenHandled(user: User | null) {
+  const onboardingSettings = (user?.settings?.onboarding ?? {}) as {
+    depositPromptShownAt?: string
+    depositPromptSkippedAt?: string
+  }
+  return Boolean(onboardingSettings.depositPromptShownAt || onboardingSettings.depositPromptSkippedAt)
 }
 
 function syncDepositWalletDeployingState() {
@@ -179,6 +195,10 @@ function mergeUserSettings(previous: User, settingsPatch?: Record<string, any>) 
       ...(previous.settings?.onboarding ?? {}),
       ...(settingsPatch.onboarding ?? {}),
     },
+    profile: {
+      ...(previous.settings?.profile ?? {}),
+      ...(settingsPatch.profile ?? {}),
+    },
     tradingAuth: {
       ...(previous.settings?.tradingAuth ?? {}),
       ...(settingsPatch.tradingAuth ?? {}),
@@ -186,35 +206,37 @@ function mergeUserSettings(previous: User, settingsPatch?: Record<string, any>) 
   }
 }
 
-function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: boolean, isPlayMoneyAmm: boolean) {
+function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: boolean, isSlimefishBackendAmm: boolean) {
   return useMemo(() => {
     const onboardingSettings = user?.settings?.onboarding ?? {}
     const tradingAuthSettings = user?.settings?.tradingAuth ?? null
     const hasUsername = Boolean(user && hasUserProvidedUsername(user))
     const needsUsername = Boolean(user && !hasUsername)
+    const needsPhone = Boolean(user && !getUserPhoneNumber(user))
     const needsEmail = Boolean(
       user
       && !hasUsableUserEmail(user.email)
       && !onboardingSettings.emailSkippedAt
       && !onboardingSettings.emailCompletedAt,
     )
-    const hasDepositWalletAddress = isPlayMoneyAmm || Boolean(user?.deposit_wallet_address)
-    const hasDeployedDepositWallet = isPlayMoneyAmm || Boolean(user?.deposit_wallet_address && user?.deposit_wallet_status === 'deployed')
+    const hasDepositWalletAddress = isSlimefishBackendAmm || Boolean(user?.deposit_wallet_address)
+    const hasDeployedDepositWallet = isSlimefishBackendAmm || Boolean(user?.deposit_wallet_address && user?.deposit_wallet_status === 'deployed')
     const isDepositWalletDeploying = Boolean(
       user?.deposit_wallet_address
       && (user.deposit_wallet_status === 'deploying' || user.deposit_wallet_status === 'signed'),
     )
-    const hasTradingAuth = isPlayMoneyAmm || Boolean(
+    const hasTradingAuth = isSlimefishBackendAmm || Boolean(
       tradingAuthSettings?.relayer?.enabled
       && tradingAuthSettings?.clob?.enabled
       && !requiresTradingAuthRefresh,
     )
-    const hasTokenApprovals = isPlayMoneyAmm || Boolean(tradingAuthSettings?.approvals?.enabled)
-    const hasAutoRedeemApproval = isPlayMoneyAmm || Boolean(tradingAuthSettings?.autoRedeem?.enabled)
+    const hasTokenApprovals = isSlimefishBackendAmm || Boolean(tradingAuthSettings?.approvals?.enabled)
+    const hasAutoRedeemApproval = isSlimefishBackendAmm || Boolean(tradingAuthSettings?.autoRedeem?.enabled)
     const tradingReady = hasDeployedDepositWallet && hasTradingAuth && hasTokenApprovals
 
     return {
       needsUsername,
+      needsPhone,
       needsEmail,
       hasDepositWalletAddress,
       hasDeployedDepositWallet,
@@ -224,12 +246,13 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
       hasAutoRedeemApproval,
       tradingReady,
     }
-  }, [isPlayMoneyAmm, requiresTradingAuthRefresh, user])
+  }, [isSlimefishBackendAmm, requiresTradingAuthRefresh, user])
 }
 
 function resolveNextOnboardingModal({
   needsUsername,
   needsEmail,
+  needsPhone,
   hasDeployedDepositWallet,
   hasTradingAuth,
   hasTokenApprovals,
@@ -237,6 +260,7 @@ function resolveNextOnboardingModal({
 }: {
   needsUsername: boolean
   needsEmail: boolean
+  needsPhone: boolean
   hasDeployedDepositWallet: boolean
   hasTradingAuth: boolean
   hasTokenApprovals: boolean
@@ -244,6 +268,9 @@ function resolveNextOnboardingModal({
 }): Exclude<OnboardingModal, null> | null {
   if (needsUsername) {
     return 'username'
+  }
+  if (needsPhone) {
+    return 'phone'
   }
   if (needsEmail) {
     return 'email'
@@ -354,7 +381,7 @@ function TradingOnboardingProviderContent({
   children,
   user,
 }: TradingOnboardingProviderContentProps) {
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
   const [dismissedModal, setDismissedModalState] = useState<OnboardingModal>(null)
 
@@ -384,11 +411,13 @@ function TradingOnboardingProviderContent({
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
   const [usernameError, setUsernameError] = useState<string | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
+  const [phoneError, setPhoneError] = useState<string | null>(null)
   const [enableTradingError, setEnableTradingError] = useState<string | null>(null)
   const [tokenApprovalError, setTokenApprovalError] = useState<string | null>(null)
   const [autoRedeemError, setAutoRedeemError] = useState<string | null>(null)
   const [isUsernameSubmitting, setIsUsernameSubmitting] = useState(false)
   const [isEmailSubmitting, setIsEmailSubmitting] = useState(false)
+  const [isPhoneSubmitting, setIsPhoneSubmitting] = useState(false)
   const [enableTradingStep, setEnableTradingStep] = useState<EnableTradingStep>('idle')
   const [approvalsStep, setApprovalsStep] = useState<ApprovalsStep>('idle')
   const [autoRedeemStep, setAutoRedeemStep] = useState<ApprovalsStep>('idle')
@@ -434,7 +463,7 @@ function TradingOnboardingProviderContent({
     setError(DEFAULT_ERROR_MESSAGE)
   }, [openAppKit, signatureRejectedMessage, walletConnectorReconnectMessage])
 
-  const status = useOnboardingStatus(user, requiresTradingAuthRefresh, isPlayMoneyAmm)
+  const status = useOnboardingStatus(user, requiresTradingAuthRefresh, isSlimefishBackendAmm)
   const normalizedUserAddress = user?.address?.trim().toLowerCase() ?? ''
   const hasMatchingCommunityUsernameHint = Boolean(
     communityUsernameHint
@@ -548,6 +577,7 @@ function TradingOnboardingProviderContent({
     setDismissedModal(null)
     setUsernameError(null)
     setEmailError(null)
+    setPhoneError(null)
     setEnableTradingError(null)
     setTokenApprovalError(null)
     setAutoRedeemError(null)
@@ -601,6 +631,21 @@ function TradingOnboardingProviderContent({
       setActiveModal('email')
       return
     }
+    if (modal === 'phone' && status.needsPhone) {
+      setDismissedModal('phone')
+      setActiveModal(null)
+      if (!hasDepositPromptBeenHandled(user)) {
+        setDepositModalOpen(true)
+        void updateOnboardingDepositPromptAction({ action: 'shown' }).then((result) => {
+          if (result.data?.settings) {
+            useUser.setState((previous) => previous
+              ? { ...previous, settings: mergeUserSettings(previous, result.data.settings) }
+              : previous)
+          }
+        })
+      }
+      return
+    }
     if ((modal === 'enable' || modal === 'enable-status') && !enableTradingError) {
       setDismissedModal(modal)
       setActiveModal(null)
@@ -626,8 +671,10 @@ function TradingOnboardingProviderContent({
     enableTradingError,
     openFundModalIfBalanceEmpty,
     status.needsEmail,
+    status.needsPhone,
     status.needsUsername,
     tokenApprovalError,
+    user,
   ])
 
   const handleUsernameSubmit = useCallback(async (username: string, termsAccepted: boolean) => {
@@ -671,7 +718,9 @@ function TradingOnboardingProviderContent({
       void refreshSessionUserState()
       setDismissedModal(null)
       const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || isEventRoute
-      const nextModal = status.needsEmail
+      const nextModal = status.needsPhone
+        ? 'phone'
+        : status.needsEmail
         ? 'email'
         : resolveNextOnboardingModal({
             ...status,
@@ -703,6 +752,58 @@ function TradingOnboardingProviderContent({
     user?.deposit_wallet_address,
     isEventRoute,
   ])
+
+  const handlePhoneSubmit = useCallback(async (phoneNumber: string) => {
+    if (isPhoneSubmitting) {
+      return
+    }
+    setIsPhoneSubmitting(true)
+    setPhoneError(null)
+    try {
+      const result = await updateOnboardingPhoneAction({ phoneNumber })
+      if (result.error || !result.data) {
+        setPhoneError(result.error ?? DEFAULT_ERROR_MESSAGE)
+        return
+      }
+      const data = result.data
+      useUser.setState((previous) => {
+        if (!previous) {
+          return previous
+        }
+        return {
+          ...previous,
+          settings: mergeUserSettings(previous, data.settings),
+        }
+      })
+      void refreshSessionUserState()
+      setDismissedModal(null)
+      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || isEventRoute
+      const nextModal = status.needsEmail
+        ? 'email'
+        : resolveNextOnboardingModal({
+            ...status,
+            needsPhone: false,
+            allowTradingAuthPrompt,
+          })
+      setActiveModal(nextModal)
+      if (!nextModal && !hasDepositPromptBeenHandled(user)) {
+        setDepositModalOpen(true)
+        void updateOnboardingDepositPromptAction({ action: 'shown' }).then((result) => {
+          if (result.data?.settings) {
+            useUser.setState((previous) => previous
+              ? { ...previous, settings: mergeUserSettings(previous, result.data.settings) }
+              : previous)
+          }
+        })
+      }
+      if (!nextModal) {
+        setShouldContinueTradingAuthPrompt(false)
+      }
+    }
+    finally {
+      setIsPhoneSubmitting(false)
+    }
+  }, [isEventRoute, isPhoneSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, user])
 
   const handleEmailSubmit = useCallback(async (email: string) => {
     if (isEmailSubmitting) {
@@ -736,6 +837,16 @@ function TradingOnboardingProviderContent({
         allowTradingAuthPrompt,
       })
       setActiveModal(nextModal)
+      if (!nextModal && !hasDepositPromptBeenHandled(user)) {
+        setDepositModalOpen(true)
+        void updateOnboardingDepositPromptAction({ action: 'shown' }).then((result) => {
+          if (result.data?.settings) {
+            useUser.setState((previous) => previous
+              ? { ...previous, settings: mergeUserSettings(previous, result.data.settings) }
+              : previous)
+          }
+        })
+      }
       if (!nextModal) {
         setShouldContinueTradingAuthPrompt(false)
       }
@@ -743,7 +854,7 @@ function TradingOnboardingProviderContent({
     finally {
       setIsEmailSubmitting(false)
     }
-  }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute])
+  }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute, user])
 
   const handleEmailSkip = useCallback(async () => {
     if (isEmailSubmitting) {
@@ -776,6 +887,16 @@ function TradingOnboardingProviderContent({
         allowTradingAuthPrompt,
       })
       setActiveModal(nextModal)
+      if (!nextModal && !hasDepositPromptBeenHandled(user)) {
+        setDepositModalOpen(true)
+        void updateOnboardingDepositPromptAction({ action: 'shown' }).then((result) => {
+          if (result.data?.settings) {
+            useUser.setState((previous) => previous
+              ? { ...previous, settings: mergeUserSettings(previous, result.data.settings) }
+              : previous)
+          }
+        })
+      }
       if (!nextModal) {
         setShouldContinueTradingAuthPrompt(false)
       }
@@ -783,7 +904,7 @@ function TradingOnboardingProviderContent({
     finally {
       setIsEmailSubmitting(false)
     }
-  }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute])
+  }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute, user])
 
   const enableTradingAuthForCurrentUser = useCallback(async () => {
     if (!user?.address) {
@@ -1221,7 +1342,7 @@ function TradingOnboardingProviderContent({
   ])
 
   const ensureTradingReady = useCallback(() => {
-    if (isPlayMoneyAmm) {
+    if (isSlimefishBackendAmm) {
       return true
     }
 
@@ -1236,7 +1357,7 @@ function TradingOnboardingProviderContent({
 
     openNextRequirement({ allowTradingAuthPrompt: true })
     return false
-  }, [isPlayMoneyAmm, openAppKit, openNextRequirement, status.tradingReady, user])
+  }, [isSlimefishBackendAmm, openAppKit, openNextRequirement, status.tradingReady, user])
 
   const openTradeRequirements = useCallback((options?: { forceTradingAuth?: boolean }) => {
     openNextRequirement({
@@ -1298,12 +1419,12 @@ function TradingOnboardingProviderContent({
       void openAppKit()
       return
     }
-    if (!status.hasDeployedDepositWallet) {
-      openNextRequirement()
+    if (isSlimefishBackendAmm || status.hasDeployedDepositWallet) {
+      setDepositModalOpen(true)
       return
     }
-    setDepositModalOpen(true)
-  }, [openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
+    openNextRequirement()
+  }, [isSlimefishBackendAmm, openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
 
   const startDepositFlow = useCallback(() => {
     if (!user) {
@@ -1311,14 +1432,14 @@ function TradingOnboardingProviderContent({
       return
     }
 
-    if (status.hasDeployedDepositWallet) {
+    if (isSlimefishBackendAmm || status.hasDeployedDepositWallet) {
       setDepositModalOpen(true)
       return
     }
 
     setShouldShowFundAfterTradingReady(true)
     openNextRequirement()
-  }, [openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
+  }, [isSlimefishBackendAmm, openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
 
   const startWithdrawFlow = useCallback(() => {
     if (!user) {
@@ -1326,13 +1447,13 @@ function TradingOnboardingProviderContent({
       return
     }
 
-    if (!status.hasDeployedDepositWallet) {
-      openNextRequirement()
+    if (isSlimefishBackendAmm || status.hasDeployedDepositWallet) {
+      setWithdrawModalOpen(true)
       return
     }
 
-    setWithdrawModalOpen(true)
-  }, [openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
+    openNextRequirement()
+  }, [isSlimefishBackendAmm, openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
 
   const closeFundModal = useCallback((nextOpen: boolean) => {
     setFundModalOpen(nextOpen)
@@ -1340,6 +1461,19 @@ function TradingOnboardingProviderContent({
       setShouldShowFundAfterTradingReady(false)
     }
   }, [])
+
+  const handleDepositModalOpenChange = useCallback((nextOpen: boolean) => {
+    setDepositModalOpen(nextOpen)
+    if (!nextOpen && user && !hasDepositPromptBeenHandled(user)) {
+      void updateOnboardingDepositPromptAction({ action: 'skipped' }).then((result) => {
+        if (result.data?.settings) {
+          useUser.setState((previous) => previous
+            ? { ...previous, settings: mergeUserSettings(previous, result.data.settings) }
+            : previous)
+        }
+      })
+    }
+  }, [user])
 
   const contextValue: TradingOnboardingContextValue = useMemo(() => ({
     startDepositFlow,
@@ -1381,12 +1515,16 @@ function TradingOnboardingProviderContent({
         usernameError={usernameError}
         isUsernameSubmitting={isUsernameSubmitting}
         onUsernameSubmit={handleUsernameSubmit}
-        onUsernameSkip={() => {}}
+        onUsernameSkip={() => setActiveModal(null)}
         emailDefaultValue={hasUsableUserEmail(user?.email) ? user?.email ?? '' : ''}
         emailError={emailError}
         isEmailSubmitting={isEmailSubmitting}
         onEmailSubmit={handleEmailSubmit}
         onEmailSkip={handleEmailSkip}
+        phoneDefaultValue={getUserPhoneNumber(user)}
+        phoneError={phoneError}
+        isPhoneSubmitting={isPhoneSubmitting}
+        onPhoneSubmit={handlePhoneSubmit}
         enableTradingStep={status.isDepositWalletDeploying ? 'deploying' : enableTradingStep}
         enableTradingError={enableTradingError}
         onCreateDepositWallet={handleCreateDepositWallet}
@@ -1407,11 +1545,12 @@ function TradingOnboardingProviderContent({
           openWalletModal()
         }}
         depositModalOpen={depositModalOpen}
-        onDepositOpenChange={setDepositModalOpen}
+        onDepositOpenChange={handleDepositModalOpenChange}
         withdrawModalOpen={withdrawModalOpen}
         onWithdrawOpenChange={setWithdrawModalOpen}
         user={user}
         meldUrl={meldUrl}
+        defaultPhoneNumber={getUserPhoneNumber(user)}
       />
     </TradingOnboardingContext>
   )

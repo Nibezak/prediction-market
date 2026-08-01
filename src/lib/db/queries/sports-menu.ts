@@ -184,13 +184,13 @@ const getCachedActiveSportsCountRows = unstable_cache(
   async (): Promise<SportsMenuActiveCountRow[]> => {
     const rows = await db
       .select({
-        slug: event_sports.sports_sport_slug,
+        slug: sql<string | null>`COALESCE(NULLIF(TRIM(${event_sports.sports_sport_slug}), ''), 'sports')`,
         series_slug: event_sports.sports_series_slug,
         event_slug: events.slug,
         sports_event_id: event_sports.sports_event_id,
         sports_event_slug: event_sports.sports_event_slug,
         parent_event_id: event_sports.sports_parent_event_id,
-        tags: event_sports.sports_tags,
+        tags: sql<unknown>`COALESCE(${event_sports.sports_tags}, '[]'::jsonb)`,
         is_hidden: events.is_hidden,
         sports_live: event_sports.sports_live,
         sports_ended: event_sports.sports_ended,
@@ -198,8 +198,8 @@ const getCachedActiveSportsCountRows = unstable_cache(
         start_date: events.start_date,
         end_date: events.end_date,
       })
-      .from(event_sports)
-      .innerJoin(events, eq(event_sports.event_id, events.id))
+      .from(events)
+      .leftJoin(event_sports, eq(event_sports.event_id, events.id))
       .where(and(
         eq(events.status, 'active'),
         eq(events.is_hidden, false),
@@ -209,12 +209,17 @@ const getCachedActiveSportsCountRows = unstable_cache(
           sql`TRIM(COALESCE(${event_sports.sports_sport_slug}, '')) <> ''`,
           sql`TRIM(COALESCE(${event_sports.sports_series_slug}, '')) <> ''`,
           sql`jsonb_array_length(COALESCE(${event_sports.sports_tags}, '[]'::jsonb)) > 0`,
+          sql`EXISTS (
+            SELECT 1 FROM event_tags et
+            JOIN tags t ON et.tag_id = t.id
+            WHERE et.event_id = ${events.id} AND (LOWER(t.slug) LIKE '%sport%' OR LOWER(t.name) LIKE '%sport%')
+          )`
         ),
       ))
 
     return rows
   },
-  ['sports-menu-active-count-rows-v4'],
+  ['sports-menu-active-count-rows-v6'],
   {
     revalidate: 900,
     tags: [cacheTags.sportsMenu],

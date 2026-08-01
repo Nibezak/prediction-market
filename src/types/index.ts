@@ -478,6 +478,8 @@ export interface HomeFeaturedSettings {
 
   sideCard: HomeFeaturedSideCardSettings
 
+  hotPicksTags?: string[]
+
 }
 
 
@@ -744,6 +746,19 @@ interface UserSettings {
 
   }
 
+  profile?: {
+    phoneNumber?: string
+  }
+
+  onboarding?: {
+    phoneNumber?: string
+    phoneCompletedAt?: string
+    usernameCompletedAt?: string
+    termsAcceptedAt?: string
+    emailSkippedAt?: string
+    emailCompletedAt?: string
+  }
+
   trading?: {
 
     market_order_type?: ClobOrderType
@@ -796,7 +811,7 @@ export interface User {
 
   is_admin: boolean
 
-  role?: 'USER' | 'EDITOR' | 'MODERATOR' | 'RESOLVER' | 'SUPPORT' | 'FINANCE' | 'ADMIN'
+  role?: 'USER' | 'EDITOR' | 'MODERATOR' | 'RESOLVER' | 'SUPPORT' | 'FINANCE' | 'ADMIN' | 'SUPER_ADMIN'
 
   is_staff?: boolean
 
@@ -898,7 +913,7 @@ export interface Comment {
 
 
 
-type NotificationCategory = 'trade' | 'system' | 'general'
+type NotificationCategory = 'trade' | 'system' | 'general' | 'account' | 'finance'
 
 
 
@@ -933,6 +948,8 @@ export interface Notification {
   description: string
 
   created_at: string
+
+  read_at?: string | null
 
   user_avatar?: string | null
 

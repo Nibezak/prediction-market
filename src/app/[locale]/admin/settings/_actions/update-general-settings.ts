@@ -32,7 +32,7 @@ import {
 import { reportOperatorDomainSnapshot } from '@/lib/operator-domain-register'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import resolveSiteUrl from '@/lib/site-url'
-import { uploadPublicAsset } from '@/lib/storage'
+import { getPublicAssetUrl, uploadPublicAsset } from '@/lib/storage'
 import { normalizeTermsOfServicePdfPath, TERMS_OF_SERVICE_PDF_PATH_KEY } from '@/lib/terms-of-service'
 import { validateThemeSiteSettingsInput } from '@/lib/theme-settings'
 
@@ -43,6 +43,8 @@ const ACCEPTED_PWA_ICON_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/
 const MAX_TERMS_OF_SERVICE_PDF_FILE_SIZE = 2 * 1024 * 1024
 const MAX_SIDE_CARD_IMAGE_FILE_SIZE = 2 * 1024 * 1024
 const ACCEPTED_SIDE_CARD_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+const MAX_SIDE_CARD_VIDEO_FILE_SIZE = 20 * 1024 * 1024
+const ACCEPTED_SIDE_CARD_VIDEO_TYPES = ['video/mp4', 'video/webm']
 export interface GeneralSettingsActionState {
   error: string | null
 }
@@ -60,6 +62,12 @@ function buildTermsOfServicePdfPath() {
 function buildSideCardImagePath() {
   const random = Math.random().toString(36).slice(2, 10)
   return `home-featured/side-card-${Date.now()}-${random}.webp`
+}
+
+function buildSideCardVideoPath(contentType: string) {
+  const random = Math.random().toString(36).slice(2, 10)
+  const extension = contentType === 'video/webm' ? 'webm' : 'mp4'
+  return `home-featured/side-card-${Date.now()}-${random}.${extension}`
 }
 
 async function processSideCardImageFile(file: File) {
@@ -88,6 +96,31 @@ async function processSideCardImageFile(file: File) {
   }
   catch {
     return { path: null as string | null, error: 'Side card image could not be processed.' }
+  }
+}
+
+async function processSideCardVideoFile(file: File) {
+  if (!ACCEPTED_SIDE_CARD_VIDEO_TYPES.includes(file.type)) {
+    return { url: null as string | null, error: 'Side card video must be MP4 or WebM.' }
+  }
+  if (file.size > MAX_SIDE_CARD_VIDEO_FILE_SIZE) {
+    return { url: null as string | null, error: 'Side card video must be 20MB or smaller.' }
+  }
+
+  try {
+    const path = buildSideCardVideoPath(file.type)
+    const body = Buffer.from(await file.arrayBuffer())
+    const { error } = await uploadPublicAsset(path, body, {
+      contentType: file.type,
+      cacheControl: '31536000',
+    })
+    const url = getPublicAssetUrl(path)
+    return error || !url
+      ? { url: null as string | null, error: DEFAULT_ERROR_MESSAGE }
+      : { url, error: null as string | null }
+  }
+  catch {
+    return { url: null as string | null, error: 'Side card video could not be processed.' }
   }
 }
 
@@ -251,6 +284,7 @@ export async function updateGeneralSettingsAction(
   }
 
   const siteNameRaw = formData.get('site_name')
+  const mobileAppNameRaw = formData.get('mobile_app_name')
   const siteDescriptionRaw = formData.get('site_description')
   const logoModeRaw = formData.get('logo_mode')
   const logoSvgRaw = formData.get('logo_svg')
@@ -280,6 +314,7 @@ export async function updateGeneralSettingsAction(
   const lifiApiKeyRaw = formData.get('lifi_api_key')
   const openRouterModelRaw = formData.get('openrouter_model')
   const openRouterApiKeyRaw = formData.get('openrouter_api_key')
+  const openRouterEnabledRaw = formData.get('openrouter_enabled')
   const blockedCountriesRaw = formData.get('blocked_countries')
   const homeFeaturedEnabledRaw = formData.get('home_featured_enabled')
   const homeFeaturedUseAiRaw = formData.get('home_featured_use_ai')
@@ -299,11 +334,13 @@ export async function updateGeneralSettingsAction(
   const homeFeaturedSideCardUseImageRaw = formData.get('home_featured_side_card_use_image')
   const homeFeaturedSideCardImagePathRaw = formData.get('home_featured_side_card_image_path')
   const homeFeaturedSideCardSlidesJsonRaw = formData.get('home_featured_side_card_slides_json')
+  const homeFeaturedHotPicksTagsJsonRaw = formData.get('home_featured_hot_picks_tags_json')
   const homeFeaturedEventsJsonRaw = formData.get('home_featured_events_json')
   const hasHomeFeaturedSettingsPayload = typeof homeFeaturedEnabledRaw === 'string'
   const hasHomeFeaturedEventsPayload = typeof homeFeaturedEventsJsonRaw === 'string'
 
   const siteName = typeof siteNameRaw === 'string' ? siteNameRaw : ''
+  const mobileAppName = typeof mobileAppNameRaw === 'string' ? mobileAppNameRaw : ''
   const siteDescription = typeof siteDescriptionRaw === 'string' ? siteDescriptionRaw : ''
   let logoMode = typeof logoModeRaw === 'string' ? logoModeRaw : ''
   let logoSvg = typeof logoSvgRaw === 'string' ? logoSvgRaw : ''
@@ -333,6 +370,7 @@ export async function updateGeneralSettingsAction(
   const lifiApiKey = typeof lifiApiKeyRaw === 'string' ? lifiApiKeyRaw : ''
   const openRouterModel = typeof openRouterModelRaw === 'string' ? openRouterModelRaw.trim() : ''
   const openRouterApiKey = typeof openRouterApiKeyRaw === 'string' ? openRouterApiKeyRaw.trim() : ''
+  const openRouterEnabled = openRouterEnabledRaw === 'true'
   const blockedCountriesInput = typeof blockedCountriesRaw === 'string' ? blockedCountriesRaw : ''
   const homeFeaturedEventsJson = typeof homeFeaturedEventsJsonRaw === 'string' ? homeFeaturedEventsJsonRaw : ''
 
@@ -380,6 +418,7 @@ export async function updateGeneralSettingsAction(
       sideCardUseImage: typeof homeFeaturedSideCardUseImageRaw === 'string' ? homeFeaturedSideCardUseImageRaw : '',
       sideCardImagePath: typeof homeFeaturedSideCardImagePathRaw === 'string' ? homeFeaturedSideCardImagePathRaw : '',
       sideCardSlidesJson: typeof homeFeaturedSideCardSlidesJsonRaw === 'string' ? homeFeaturedSideCardSlidesJsonRaw : '',
+      hotPicksTagsJson: typeof homeFeaturedHotPicksTagsJsonRaw === 'string' ? homeFeaturedHotPicksTagsJsonRaw : '',
     })
     if (!validatedHomeFeatured.data) {
       return { error: validatedHomeFeatured.error ?? 'Invalid featured markets settings.' }
@@ -447,11 +486,21 @@ export async function updateGeneralSettingsAction(
   if (validatedHomeFeaturedData) {
     const nextSlides = []
     for (const slide of validatedHomeFeaturedData.sideCard.slides) {
-      const file = formData.get(`home_featured_side_card_image_${slide.id}`)
-      if (slide.type === 'image' && file instanceof File && file.size > 0) {
-        const processed = await processSideCardImageFile(file)
-        if (!processed.path) return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
+      const imageFile = formData.get(`home_featured_side_card_image_${slide.id}`)
+      const videoFile = formData.get(`home_featured_side_card_video_${slide.id}`)
+      if (slide.type === 'image' && imageFile instanceof File && imageFile.size > 0) {
+        const processed = await processSideCardImageFile(imageFile)
+        if (!processed.path) {
+          return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
+        }
         nextSlides.push({ ...slide, imagePath: processed.path })
+      }
+      else if (slide.type === 'video' && videoFile instanceof File && videoFile.size > 0) {
+        const processed = await processSideCardVideoFile(videoFile)
+        if (!processed.url) {
+          return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
+        }
+        nextSlides.push({ ...slide, videoUrl: processed.url, videoEmbedUrl: processed.url })
       }
       else {
         nextSlides.push(slide)
@@ -466,6 +515,7 @@ export async function updateGeneralSettingsAction(
 
   const validated = validateThemeSiteSettingsInput({
     siteName,
+    mobileAppName,
     siteDescription,
     logoMode,
     logoSvg,
@@ -515,6 +565,7 @@ export async function updateGeneralSettingsAction(
 
   const settingsToUpdate = [
     { group: 'general', key: 'site_name', value: validated.data.siteNameValue },
+    { group: 'general', key: 'mobile_app_name', value: validated.data.mobileAppNameValue },
     { group: 'general', key: 'site_description', value: validated.data.siteDescriptionValue },
     { group: 'general', key: 'site_logo_mode', value: validated.data.logoModeValue },
     { group: 'general', key: 'site_logo_svg', value: validated.data.logoSvgValue },
@@ -541,6 +592,7 @@ export async function updateGeneralSettingsAction(
     { group: 'general', key: 'lifi_api_key', value: encryptedLiFiApiKey },
     { group: 'ai', key: 'openrouter_model', value: openRouterModel },
     { group: 'ai', key: 'openrouter_api_key', value: encryptedOpenRouterApiKey },
+    { group: 'ai', key: 'openrouter_enabled', value: String(openRouterEnabled) },
     ...(validatedHomeFeaturedData ? buildHomeFeaturedSettingsUpdateRows(validatedHomeFeaturedData) : []),
   ]
 
@@ -562,7 +614,7 @@ export async function updateGeneralSettingsAction(
     }
   }
 
-  if (validatedHomeFeaturedData?.useAi) {
+  if (openRouterEnabled && validatedHomeFeaturedData?.useAi) {
     const locale = await resolveCurrentLocale()
     const { regenerateHomeFeaturedEvents } = await import('@/lib/home-featured-ai')
     const regenerateResult = await regenerateHomeFeaturedEvents(locale, {

@@ -6,6 +6,7 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { isStaffUser } from '@/lib/staff-role'
 
 type AdminEventsSortBy = 'title' | 'status' | 'volume' | 'volume_24h' | 'created_at' | 'updated_at' | 'end_date'
+type AdminEventsView = 'all' | 'upcoming' | 'active' | 'ending-today' | 'ending-soon' | 'closed' | 'resolved'
 
 const VALID_SORT_FIELDS: AdminEventsSortBy[] = [
   'title',
@@ -16,6 +17,7 @@ const VALID_SORT_FIELDS: AdminEventsSortBy[] = [
   'updated_at',
   'end_date',
 ]
+const VALID_VIEWS: AdminEventsView[] = ['all', 'upcoming', 'active', 'ending-today', 'ending-soon', 'closed', 'resolved']
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,6 +41,8 @@ export async function GET(request: NextRequest) {
     const creator = searchParams.get('creator')?.trim() || undefined
     const seriesSlug = searchParams.get('seriesSlug')?.trim() || undefined
     const activeOnly = searchParams.get('activeOnly') === '1'
+    const viewParam = searchParams.get('view')
+    const view = VALID_VIEWS.includes(viewParam as AdminEventsView) ? viewParam as AdminEventsView : 'all'
 
     const sortBy = VALID_SORT_FIELDS.includes(sortByParam as AdminEventsSortBy)
       ? sortByParam as AdminEventsSortBy
@@ -57,6 +61,7 @@ export async function GET(request: NextRequest) {
       creator,
       seriesSlug,
       activeOnly,
+      view,
     })
 
     if (error) {

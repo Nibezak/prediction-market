@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS payment_intents (
   id char(26) PRIMARY KEY DEFAULT generate_ulid(), user_id text NOT NULL,
   direction text NOT NULL CHECK (direction IN ('deposit','withdrawal','refund','adjustment')),
   status text NOT NULL DEFAULT 'created' CHECK (status IN ('created','pending','processing','succeeded','failed','expired','reversed','refunded','held','cancelled')),
-  settlement_adapter text NOT NULL DEFAULT 'play_money', source_currency text NOT NULL, destination_currency text NOT NULL,
+  settlement_adapter text NOT NULL DEFAULT 'slimefish_backend', source_currency text NOT NULL, destination_currency text NOT NULL,
   gross_amount numeric(20,2) NOT NULL CHECK (gross_amount > 0), provider_fee numeric(20,2) NOT NULL DEFAULT 0 CHECK (provider_fee >= 0),
   platform_fee numeric(20,2) NOT NULL DEFAULT 0 CHECK (platform_fee >= 0), net_amount numeric(20,2) NOT NULL CHECK (net_amount >= 0),
   idempotency_key text NOT NULL UNIQUE, external_reference text, ledger_transaction_id text, failure_code text, failure_message text,

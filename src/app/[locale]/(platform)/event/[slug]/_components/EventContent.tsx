@@ -20,6 +20,7 @@ import {
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventResolvedOutcome'
 import { shouldDisplayResolutionTimeline } from '@/app/[locale]/(platform)/event/[slug]/_utils/resolution-timeline-builder'
 import { cn } from '@/lib/utils'
+import { resolveDefaultEventMarket } from '@/lib/event-market-selection'
 
 interface EventContentProps {
   event: Event
@@ -34,17 +35,11 @@ function isMarketResolved(market: Event['markets'][number] | null | undefined) {
   return Boolean(market?.is_resolved || market?.condition?.resolved)
 }
 
-function resolveDefaultMarket(markets: Event['markets']) {
-  return markets.find(market => market.is_active && !isMarketResolved(market))
-    ?? markets.find(market => !isMarketResolved(market))
-    ?? markets[0]
-}
-
 function resolveInitialMarket(event: Event, marketSlug?: string) {
   if (marketSlug) {
-    return event.markets.find(market => market.slug === marketSlug) ?? resolveDefaultMarket(event.markets) ?? null
+    return event.markets.find(market => market.slug === marketSlug) ?? resolveDefaultEventMarket(event.markets) ?? null
   }
-  return resolveDefaultMarket(event.markets) ?? null
+  return resolveDefaultEventMarket(event.markets) ?? null
 }
 
 function resolveTimelineOutcome(event: Event, market: Event['markets'][number] | null | undefined) {
@@ -66,8 +61,7 @@ export default function EventContent({
   const singleMarket = event.markets[0]
   const initialMarket = resolveInitialMarket(event, marketSlug)
   const initialOutcome = initialMarket?.outcomes[0] ?? null
-  const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
-  const shouldHideChart = event.total_markets_count > 1 && !isNegRiskEnabled
+  const shouldHideChart = event.markets.length === 0
   const selectedMarketTimelineOutcome = resolveTimelineOutcome(event, singleMarket)
 
   return (

@@ -10,7 +10,7 @@ const globalForDb = globalThis as unknown as {
   db: DrizzleDb | undefined
 }
 
-export const pmSql = postgres(process.env.PLAY_MONEY_POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5434/playmoney', {
+export const pmSql = postgres(process.env.SLIMEFISH_BACKEND_POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5434/slimefish-backend', {
   max: 10,
   idle_timeout: 20,
 })

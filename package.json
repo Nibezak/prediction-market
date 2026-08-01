@@ -1,8 +1,8 @@
 {
-  "name": "kuest-prediction-market",
+  "name": "slimefish",
   "type": "module",
   "private": true,
-  "description": "Launch Your Own Decentralized Prediction Market in Minutes.",
+  "description": "Slimefish prediction market UI and admin console.",
   "repository": {
     "type": "git",
     "url": "https://github.com/kuestcom/prediction-market.git"
@@ -12,7 +12,7 @@
   },
   "scripts": {
     "dev": "node --max-old-space-size=6144 ./node_modules/next/dist/bin/next dev",
-    "build": "next build",
+    "build": "node scripts/build-standalone.mjs",
     "start": "node scripts/start-standalone.mjs",
     "knip": "knip --fix --no-config-hints",
     "lint": "eslint . --fix",
@@ -59,11 +59,14 @@
     "clsx": "2.1.1",
     "d3-array": "3.2.4",
     "drizzle-orm": "0.45.2",
+    "firebase": "^12.16.0",
     "fumadocs-core": "16.9.3",
     "fumadocs-mdx": "15.0.11",
     "fumadocs-openapi": "10.10.0",
     "fumadocs-ui": "16.9.3",
     "input-otp": "1.4.2",
+    "ioredis": "^5.11.1",
+    "jose": "^6.2.3",
     "lucide-react": "1.18.0",
     "next": "16.2.7",
     "next-intl": "4.12.0",

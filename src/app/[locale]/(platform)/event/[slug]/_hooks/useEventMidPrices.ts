@@ -20,7 +20,7 @@ export interface MarketQuote {
 
 export type MarketQuotesByMarket = Record<string, MarketQuote>
 
-const PRICE_REFRESH_INTERVAL_MS = 60_000
+const PRICE_REFRESH_INTERVAL_MS = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? 3_000 : 60_000
 
 function normalizePrice(value: string | number | undefined | null) {
   return normalizeClobMarketPrice(value)
@@ -121,7 +121,7 @@ export function useEventMarketQuotes(
   options: UseEventMarketQuotesOptions = {},
 ) {
   const { clobUrl } = usePublicRuntimeConfig()
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const { enabled = true, refetchIntervalMs = PRICE_REFRESH_INTERVAL_MS } = options
   const tokenSignature = useMemo(
     () => targets.map(target => `${target.conditionId}:${target.tokenId}`).sort().join(','),
@@ -131,7 +131,7 @@ export function useEventMarketQuotes(
   const { data } = useQuery({
     queryKey: ['event-market-quotes', clobUrl, tokenSignature],
     queryFn: () => fetchQuotesByMarket(targets, clobUrl),
-    enabled: !isPlayMoneyAmm && enabled && targets.length > 0 && Boolean(clobUrl),
+    enabled: !isSlimefishBackendAmm && enabled && targets.length > 0 && Boolean(clobUrl),
     staleTime: 'static',
     gcTime: PRICE_REFRESH_INTERVAL_MS,
     refetchInterval: refetchIntervalMs,

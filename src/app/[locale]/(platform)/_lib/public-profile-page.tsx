@@ -6,7 +6,6 @@ import PublicProfileHeroCards from '@/app/[locale]/(platform)/profile/_component
 import PublicProfileTabs from '@/app/[locale]/(platform)/profile/_components/PublicProfileTabs'
 import PortfolioTabs from '@/app/[locale]/(platform)/portfolio/_components/PortfolioTabs'
 import { UserActions } from '@/app/[locale]/admin/users/_components/UserActions'
-import StaffBalanceActions from '@/app/[locale]/admin/users/_components/StaffBalanceActions'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import {
   COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS,
@@ -266,8 +265,8 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
     )
   }
 
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
-  const userAddress = isPlayMoneyAmm ? profile.id : profile.deposit_wallet_address!
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const userAddress = isSlimefishBackendAmm ? profile.id : profile.deposit_wallet_address!
   const snapshot = await fetchPortfolioSnapshot(userAddress)
   const fallbackChartEndDate = buildFallbackChartEndDate()
 
@@ -281,24 +280,18 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
           portfolioAddress: userAddress,
         }}
         snapshot={snapshot}
-        actions={canViewUserAccounts(viewer)
-          ? (
-              <div className="flex items-center gap-2">
-                <StaffBalanceActions userId={profile.id} username={profile.username ?? 'user'} />
-                {canManageUsers(viewer) && (
-              <UserActions user={{
-                id: profile.id,
-                username: profile.username ?? '',
-                email: profile.email ?? '',
-                is_blocked: profile.settings?.is_blocked === true || profile.settings?.is_blocked === 'true',
-                role: profile.settings?.staff_role ?? 'USER',
-              }} />)}
-              </div>
-            )
+        actions={canManageUsers(viewer)
+          ? <UserActions user={{
+              id: profile.id,
+              username: profile.username ?? '',
+              email: profile.email ?? '',
+              is_blocked: profile.settings?.is_blocked === true || profile.settings?.is_blocked === 'true',
+              role: profile.settings?.staff_role ?? 'USER',
+            }} />
           : undefined}
         fallbackChartEndDate={fallbackChartEndDate}
       />
-      {isPlayMoneyAmm
+      {isSlimefishBackendAmm
         ? <PortfolioTabs userAddress={userAddress} />
         : <PublicProfileTabs userAddress={userAddress} />}
     </>

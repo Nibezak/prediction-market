@@ -18,6 +18,7 @@ import {
 } from '@/app/[locale]/(platform)/(home)/_utils/homeCardMarketDisplay'
 import { useXTrackerTweetCount } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useXTrackerTweetCount'
 import { Card, CardContent } from '@/components/ui/card'
+import { NewBadge } from '@/components/ui/new-badge'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { shouldShowEventNewBadge } from '@/lib/event-new-badge'
 import { formatDate } from '@/lib/formatters'
@@ -34,6 +35,15 @@ const EventCardSportsMoneyline = dynamic<EventCardSportsMoneylineProps>(
 
 function isMarketResolved(market: Market) {
   return Boolean(market.is_resolved || market.condition?.resolved)
+}
+
+function shouldShowEndingSoonBadge(event: Event): boolean {
+  const targetDate = event.end_date
+  if (!targetDate) return false
+  const endMs = new Date(targetDate).getTime()
+  const nowMs = Date.now()
+  const twelveHoursMs = 12 * 60 * 60 * 1000
+  return endMs > nowMs && (endMs - nowMs) <= twelveHoursMs
 }
 
 function useCanUseXTrackerResolvedOutcomes(event: EventCardProps['event']) {
@@ -153,16 +163,27 @@ export default function EventCard({
   return (
     <Card
       className={cn(`
-        group flex h-45 flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all
+        group relative flex h-[195px] flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all
         hover:-translate-y-0.5 hover:shadow-black/8
         dark:hover:bg-secondary
       `)}
     >
+      {shouldShowNewBadge && (
+        <div className="absolute top-2.5 right-2.5 z-10">
+          <NewBadge />
+        </div>
+      )}
+      {!shouldShowNewBadge && shouldShowEndingSoonBadge(event) && (
+        <div className="absolute top-2.5 right-2.5 z-10">
+          <span className="inline-flex items-center bg-transparent px-1 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">
+            Ending soon
+          </span>
+        </div>
+      )}
       <CardContent
         className={
           cn(`
-            flex h-full flex-col px-3 pt-3
-            ${isResolvedEvent ? 'pb-3' : 'pb-3 md:pb-1'}
+            flex h-full flex-col justify-between px-3 pt-3 pb-3
           `)
         }
       >
@@ -172,6 +193,7 @@ export default function EventCard({
           isSingleMarket={isSingleMarket}
           primaryMarket={primaryMarket}
           roundedPrimaryDisplayChance={roundedPrimaryDisplayChance}
+          shouldShowNewBadge={shouldShowNewBadge}
         />
 
         <div className="flex flex-1 flex-col">

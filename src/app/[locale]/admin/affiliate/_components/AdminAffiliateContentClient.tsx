@@ -10,13 +10,8 @@ import { cn } from '@/lib/utils'
 
 interface AdminAffiliateContentClientProps {
   builderTakerFeeBps: number
-  builderMakerFeeBps: number
   affiliateShareBps: number
   initialFeeRecipientWallet: string
-  kuestFeeSettings: {
-    takerFeeBps: number | null
-    makerFeeBps: number | null
-  } | null
   updatedAtLabel?: string
   aggregate: {
     totalVolume: number
@@ -27,10 +22,8 @@ interface AdminAffiliateContentClientProps {
 
 export default function AdminAffiliateContentClient({
   builderTakerFeeBps,
-  builderMakerFeeBps,
   affiliateShareBps,
   initialFeeRecipientWallet,
-  kuestFeeSettings,
   updatedAtLabel,
   aggregate,
 }: AdminAffiliateContentClientProps) {
@@ -39,12 +32,8 @@ export default function AdminAffiliateContentClient({
   return (
     <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
       <AdminAffiliateSettingsForm
-        key={initialFeeRecipientWallet}
         builderTakerFeeBps={builderTakerFeeBps}
-        builderMakerFeeBps={builderMakerFeeBps}
         affiliateShareBps={affiliateShareBps}
-        initialFeeRecipientWallet={initialFeeRecipientWallet}
-        kuestFeeSettings={kuestFeeSettings}
         updatedAtLabel={updatedAtLabel}
       />
       <div className="grid gap-4 rounded-lg border p-6">

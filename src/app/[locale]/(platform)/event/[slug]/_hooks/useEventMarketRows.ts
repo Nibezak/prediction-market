@@ -4,6 +4,7 @@ import { useEventMarketChanceData } from '@/app/[locale]/(platform)/event/[slug]
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { toCents } from '@/lib/formatters'
 import { resolveFallbackOutcomeUnitPrice } from '@/lib/market-pricing'
+import { formatMarketChancePercent } from '@/lib/market-chance'
 
 interface BuildEventMarketRowsOptions {
   outcomeChances: Record<string, number>
@@ -35,11 +36,24 @@ export interface EventMarketRowsResult {
   rows: EventMarketRow[]
 }
 
-const MIN_PERCENT = 0
-const MAX_PERCENT = 100
+const MIN_PERCENT = 1
+const MAX_PERCENT = 99
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
+}
+
+function clampPercentageForDisplay(value: number): number {
+  // Clamp displayed percentage to 1%-99% range
+  // ≥ 99.5% → display 99% (round down)
+  // ≤ 0.5% → display 1% (round up)
+  if (value >= 99.5) {
+    return 99
+  }
+  if (value <= 0.5) {
+    return 1
+  }
+  return Math.round(value)
 }
 
 export function buildEventMarketRows(
@@ -66,19 +80,23 @@ export function buildEventMarketRows(
     const normalizedChance = hasMarketChance
       ? clamp(rawChance ?? 0, MIN_PERCENT, MAX_PERCENT)
       : null
-    const fallbackYesPrice = resolveFallbackOutcomeUnitPrice(market, yesOutcome)
-      ?? normalizedYesPrice
-      ?? (normalizedChance != null ? clamp(normalizedChance / 100, 0, 1) : null)
-    const fallbackNoPrice = resolveFallbackOutcomeUnitPrice(market, noOutcome)
-      ?? (fallbackYesPrice != null ? clamp(1 - fallbackYesPrice, 0, 1) : null)
+    const computedChanceUnitPrice = normalizedChance != null
+      ? clamp(normalizedChance / 100, 0.001, 0.999)
+      : null
+    const fallbackYesPrice = computedChanceUnitPrice
+      ?? resolveFallbackOutcomeUnitPrice(market, yesOutcome)
+      ?? (normalizedYesPrice != null ? clamp(normalizedYesPrice, 0.001, 0.999) : null)
+    const fallbackNoPrice = fallbackYesPrice != null
+      ? clamp(1 - fallbackYesPrice, 0.001, 0.999)
+      : resolveFallbackOutcomeUnitPrice(market, noOutcome)
     const yesPriceValue = fallbackYesPrice
     const noPriceValue = fallbackNoPrice
     const yesPriceCentsOverride = fallbackYesPrice != null ? toCents(fallbackYesPrice) : null
     const normalizedChanceValue = normalizedChance ?? 0
-    const roundedChance = Math.round(normalizedChanceValue)
+    const roundedChance = clampPercentageForDisplay(normalizedChanceValue)
     const isSubOnePercent = normalizedChance != null && normalizedChance < 1
     const chanceDisplay = normalizedChance != null
-      ? (isSubOnePercent ? '<1%' : `${roundedChance}%`)
+      ? formatMarketChancePercent(normalizedChanceValue)
       : '—'
 
     const rawChanceChange = outcomeChanceChanges[market.condition_id]

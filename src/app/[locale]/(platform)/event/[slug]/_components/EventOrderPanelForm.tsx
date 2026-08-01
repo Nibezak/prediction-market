@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleCheckIcon, TrophyIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import Form from 'next/form'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
@@ -369,6 +370,7 @@ function useOrderBookComputations({
   isLimitOrder,
   amountNumber,
   outcomeFallbackBuyPriceCents,
+  isAmm,
   ammBuyQuote,
 }: {
   outcomeTokenId: string | null
@@ -381,7 +383,8 @@ function useOrderBookComputations({
   isLimitOrder: boolean
   amountNumber: number
   outcomeFallbackBuyPriceCents: number | null
-  ammBuyQuote?: { potentialReturn: number } | null
+  isAmm: boolean
+  ammBuyQuote?: { currentProbability: number, sharesPurchased: number, totalPayout: number } | null
 }) {
   const normalizedOrderBook = useMemo(() => {
     const summary = outcomeTokenId ? orderBookSummaryData?.[outcomeTokenId] : undefined
@@ -439,13 +442,30 @@ function useOrderBookComputations({
       return null
     }
 
-    if (ammBuyQuote && amountNumber > 0 && ammBuyQuote.potentialReturn > 0) {
-      const avgPriceCents = (amountNumber / ammBuyQuote.potentialReturn) * 100
+    if (ammBuyQuote && amountNumber > 0 && ammBuyQuote.sharesPurchased > 0) {
+      // The backend quote is the execution source of truth. Keeping the panel
+      // on this value prevents the displayed chance and payout from diverging.
+      const actualPriceCents = Number((ammBuyQuote.currentProbability * 100).toFixed(2))
       return {
-        avgPriceCents,
-        filledShares: ammBuyQuote.potentialReturn,
+        avgPriceCents: actualPriceCents,
+        filledShares: ammBuyQuote.sharesPurchased,
         totalCost: amountNumber,
-        limitPriceCents: avgPriceCents,
+        limitPriceCents: actualPriceCents,
+      }
+    }
+
+    // An AMM quote is only requested after the user enters an amount. Before
+    // then, show the selected option's canonical price, never CLOB's 50c
+    // fallback. This keeps the initial panel aligned with the option card.
+    if (isAmm) {
+      const actualPriceCents = outcomeFallbackBuyPriceCents && outcomeFallbackBuyPriceCents > 0
+        ? outcomeFallbackBuyPriceCents
+        : 50
+      return {
+        avgPriceCents: actualPriceCents,
+        filledShares: amountNumber > 0 ? amountNumber / (actualPriceCents / 100) : 0,
+        totalCost: amountNumber,
+        limitPriceCents: actualPriceCents,
       }
     }
 
@@ -455,7 +475,7 @@ function useOrderBookComputations({
       normalizedOrderBook.bids,
       normalizedOrderBook.asks,
     )
-  }, [ammBuyQuote, amountNumber, isLimitOrder, normalizedOrderBook.asks, normalizedOrderBook.bids, side])
+  }, [ammBuyQuote, amountNumber, isAmm, isLimitOrder, normalizedOrderBook.asks, normalizedOrderBook.bids, outcomeFallbackBuyPriceCents, side])
   const bestAskPriceCents = normalizedOrderBook.asks[0]?.priceCents ?? null
   const bestBidPriceCents = normalizedOrderBook.bids[0]?.priceCents ?? null
   const sellOrderSnapshot = useMemo(() => {
@@ -518,6 +538,7 @@ function useOrderBookComputations({
       const price = Number.parseFloat(limitPrice || '0') / 100
       const shares = Number.parseFloat(limitShares || '0') || 0
       const cost = price > 0 ? shares * price : 0
+      // Payout is total return (shares × $1), which equals shares count
       const payout = shares
       const profit = payout - cost
       const changePct = cost > 0 ? (profit / cost) * 100 : 0
@@ -525,17 +546,29 @@ function useOrderBookComputations({
       return { payout, cost, profit, changePct, multiplier }
     }
 
-    const avgPrice = marketBuyFill?.avgPriceCents != null ? marketBuyFill.avgPriceCents / 100 : (currentBuyPriceCents ?? 0) / 100
+    const fallbackPrice = 0.5
+    const avgPrice = marketBuyFill?.avgPriceCents != null && marketBuyFill.avgPriceCents > 0
+      ? marketBuyFill.avgPriceCents / 100
+      : currentBuyPriceCents != null && currentBuyPriceCents > 0
+        ? currentBuyPriceCents / 100
+        : fallbackPrice
     const cost = marketBuyFill?.totalCost ?? amountNumber
-    const payout = marketBuyFill?.filledShares && marketBuyFill.filledShares > 0
+    // A winning AMM share settles at $1, so the shares count is the total
+    // payout shown to the user. It is not a profit-only figure.
+    const rawShares = marketBuyFill?.filledShares && marketBuyFill.filledShares > 0
       ? marketBuyFill.filledShares
-      : (avgPrice > 0 ? amountNumber / avgPrice : 0)
+      : (cost > 0 && avgPrice > 0 ? cost / avgPrice : 0)
+    // The quote endpoint is authoritative for AMM math. It returns the total
+    // winning payout (not profit) after the configured fee is applied once.
+    const payout = isAmm && ammBuyQuote?.totalPayout && ammBuyQuote.totalPayout > 0
+      ? ammBuyQuote.totalPayout
+      : rawShares > 0 ? rawShares : (cost > 0 ? cost : 0)
     const profit = payout - cost
     const changePct = cost > 0 ? (profit / cost) * 100 : 0
     const multiplier = cost > 0 ? payout / cost : 0
 
     return { payout, cost, profit, changePct, multiplier }
-  }, [amountNumber, currentBuyPriceCents, isLimitOrder, marketBuyFill, limitPrice, limitShares, side])
+  }, [ammBuyQuote, amountNumber, currentBuyPriceCents, isAmm, isLimitOrder, marketBuyFill, limitPrice, limitShares, side])
 
   return {
     limitMatchingShares,
@@ -757,6 +790,25 @@ function useClaimablePositions({
     return formatCurrency(1)
   }, [hasYesAndNoPosition, noPositionShares, resolvedOutcomeIndex, yesPositionShares])
   const claimTotalLabel = useMemo(() => formatCurrency(claimableShares), [claimableShares])
+  const positionRows = useMemo(() => {
+    if (hasYesAndNoPosition) {
+      return [
+        { label: resolvedYesOutcomeLabel, shares: yesPositionLabel, stake: formatCurrency(yesPositionShares) },
+        { label: resolvedNoOutcomeLabel, shares: noPositionLabel, stake: formatCurrency(noPositionShares) },
+      ]
+    }
+    if (yesPositionShares > 0) {
+      return [{ label: resolvedYesOutcomeLabel, shares: yesPositionLabel, stake: formatCurrency(yesPositionShares) }]
+    }
+    if (noPositionShares > 0) {
+      return [{ label: resolvedNoOutcomeLabel, shares: noPositionLabel, stake: formatCurrency(noPositionShares) }]
+    }
+    return [{
+      label: claimOutcomeLabel,
+      shares: formatSharesLabel(claimableShares, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      stake: formatCurrency(claimableShares),
+    }]
+  }, [claimOutcomeLabel, claimableShares, hasYesAndNoPosition, noPositionLabel, noPositionShares, resolvedNoOutcomeLabel, resolvedYesOutcomeLabel, yesPositionLabel, yesPositionShares])
 
   return {
     claimableShares,
@@ -765,6 +817,7 @@ function useClaimablePositions({
     claimPositionLabel,
     claimValuePerShareLabel,
     claimTotalLabel,
+    positionRows,
   }
 }
 
@@ -832,12 +885,13 @@ export default function EventOrderPanelForm({
   outcomeAccentOverrides = {},
   optimisticallyClaimedConditionIds = {},
 }: EventOrderPanelFormProps) {
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
   const { open } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
   const t = useExtracted()
+  const router = useRouter()
   const locale = useLocale()
   const currentTimestamp = useCurrentTimestamp({ intervalMs: 60_000 })
   const normalizeOutcomeLabel = useOutcomeLabel()
@@ -903,6 +957,9 @@ export default function EventOrderPanelForm({
   const [claimedConditionIdsByEvent, setClaimedConditionIdsByEvent] = useState<Record<string, Record<string, true>>>({})
   const hasMounted = useHasHydrated()
   const limitSharesInputRef = useRef<HTMLInputElement | null>(null)
+  // Keep the optimistic confirmation responsive without allowing a double-click
+  // to submit the same AMM request twice before the server acknowledges it.
+  const ammTradeInFlightRef = useRef(false)
   const limitSharesNumber = Number.parseFloat(state.limitShares) || 0
   const { balance, isLoadingBalance } = useBalance()
   const yesOutcome = useMemo(
@@ -915,8 +972,14 @@ export default function EventOrderPanelForm({
   )
   const activeLiveYesPrice = hasMatchingStoreMarket ? liveYesPrice : null
   const activeLiveNoPrice = hasMatchingStoreMarket ? liveNoPrice : null
-  const yesPrice = activeLiveYesPrice ?? resolveFallbackOutcomeUnitPrice(activeMarket, yesOutcome)
-  const noPrice = activeLiveNoPrice ?? resolveFallbackOutcomeUnitPrice(activeMarket, noOutcome)
+  // AMM prices belong to the selected market option. Never reuse the legacy
+  // order-book store here: it can contain a quote for a different condition.
+  const yesPrice = isSlimefishBackendAmm
+    ? resolveFallbackOutcomeUnitPrice(activeMarket, yesOutcome)
+    : activeLiveYesPrice ?? resolveFallbackOutcomeUnitPrice(activeMarket, yesOutcome)
+  const noPrice = isSlimefishBackendAmm
+    ? resolveFallbackOutcomeUnitPrice(activeMarket, noOutcome)
+    : activeLiveNoPrice ?? resolveFallbackOutcomeUnitPrice(activeMarket, noOutcome)
   const outcomeTokenId = activeOutcome?.token_id ? String(activeOutcome.token_id) : null
   const shouldLoadOrderBookSummary = Boolean(
     outcomeTokenId
@@ -1020,8 +1083,10 @@ export default function EventOrderPanelForm({
   const noTokenShares = conditionTokenShares?.[OUTCOME_INDEX.NO] ?? 0
   const yesPositionShares = conditionPositionShares?.[OUTCOME_INDEX.YES] ?? 0
   const noPositionShares = conditionPositionShares?.[OUTCOME_INDEX.NO] ?? 0
-  const isEntryLocked = isPlayMoneyAmm && (yesPositionShares > 0 || noPositionShares > 0)
-  const isPositionStatePending = isPlayMoneyAmm && positionsQuery.data === undefined
+  // AMM purchases are independent fills. A user may add to an existing outcome;
+  // the server records every fill separately in trade history.
+  const isEntryLocked = false
+  const isPositionStatePending = isSlimefishBackendAmm && positionsQuery.data === undefined
   const lockedYesShares = activeMarket ? openSellSharesByCondition[activeMarket.condition_id]?.[OUTCOME_INDEX.YES] ?? 0 : 0
   const lockedNoShares = activeMarket ? openSellSharesByCondition[activeMarket.condition_id]?.[OUTCOME_INDEX.NO] ?? 0 : 0
   const availableYesTokenShares = Math.max(0, yesTokenShares - lockedYesShares)
@@ -1058,7 +1123,7 @@ export default function EventOrderPanelForm({
   } = useClaimablePositions({
     activeMarket,
     isResolvedMarket,
-    positionsQueryData: positionsQuery.data,
+    positionsQueryData: positionsQuery.data as any,
     resolvedOutcomeIndex,
     resolvedOutcomeLabel,
     resolvedYesOutcomeLabel,
@@ -1082,8 +1147,10 @@ export default function EventOrderPanelForm({
     ? (outcomeAccentOverrides[outcomeIndex] ?? null)
     : null
 
-  const outcomeFallbackBuyPriceCents = typeof activeOutcome?.buy_price === 'number'
-    ? Number((activeOutcome.buy_price * 100).toFixed(1))
+  const outcomeFallbackBuyPrice = resolveFallbackOutcomeUnitPrice(activeMarket, activeOutcome)
+  const outcomeFallbackBuyPriceCents = outcomeFallbackBuyPrice !== null
+    && Number.isFinite(outcomeFallbackBuyPrice)
+    ? Number((outcomeFallbackBuyPrice * 100).toFixed(1))
     : null
   const ammQuoteQuery = useQuery({
     queryKey: ['amm-market-quote', activeMarket?.condition_id, activeOutcome?.token_id, amountNumber, state.side],
@@ -1099,15 +1166,23 @@ export default function EventOrderPanelForm({
         }),
       })
       const result = await response.json() as {
-        data?: { newProbability: number, potentialReturn: number }
+        data?: {
+          currentProbability: number
+          newProbability: number
+          sharesPurchased?: number
+          totalPayout?: number
+          potentialReturn?: number
+        }
         error?: string
       }
       if (!response.ok || !result.data) {
         throw new Error(result.error || 'Failed to quote AMM trade.')
       }
-      return result.data
+      const sharesPurchased = result.data.sharesPurchased ?? result.data.potentialReturn ?? 0
+      const totalPayout = result.data.totalPayout ?? result.data.potentialReturn ?? sharesPurchased
+      return { ...result.data, sharesPurchased, totalPayout }
     },
-    enabled: isPlayMoneyAmm
+    enabled: isSlimefishBackendAmm
       && state.side === ORDER_SIDE.BUY
       && amountNumber > 0
       && Boolean(activeMarket?.condition_id && activeOutcome?.token_id),
@@ -1145,7 +1220,8 @@ export default function EventOrderPanelForm({
     isLimitOrder,
     amountNumber,
     outcomeFallbackBuyPriceCents,
-    ammBuyQuote: isPlayMoneyAmm ? ammQuoteQuery.data : null,
+    isAmm: isSlimefishBackendAmm,
+    ammBuyQuote: isSlimefishBackendAmm ? ammQuoteQuery.data : null,
   })
 
   const sellAmountValue = state.side === ORDER_SIDE.SELL ? sellOrderSnapshot.totalValue : 0
@@ -1158,7 +1234,7 @@ export default function EventOrderPanelForm({
   const effectiveMarketBuyCost = state.side === ORDER_SIDE.BUY && state.type === ORDER_TYPE.MARKET
     ? (marketBuyFill?.totalCost ?? amountNumber)
     : 0
-  const isInteractiveWalletReady = hasMounted && (isPlayMoneyAmm || isConnected)
+  const isInteractiveWalletReady = hasMounted && (isSlimefishBackendAmm || isConnected)
   const shouldShowDepositCta = isInteractiveWalletReady
     && state.side === ORDER_SIDE.BUY
     && state.type === ORDER_TYPE.MARKET
@@ -1184,13 +1260,13 @@ export default function EventOrderPanelForm({
     && !isLimitOrder
     && amountNumber > 0
     && filledSharesForCurrentSide <= 0
-  const ammQuoteErrorMessage = isPlayMoneyAmm
+  const ammQuoteErrorMessage = isSlimefishBackendAmm
     && state.side === ORDER_SIDE.BUY
     && amountNumber > 0
     && ammQuoteQuery.isError
     ? (ammQuoteQuery.error instanceof Error ? ammQuoteQuery.error.message : t('No liquidity for this market order'))
     : null
-  const isAmmQuoteNumberLoading = isPlayMoneyAmm
+  const isAmmQuoteNumberLoading = isSlimefishBackendAmm
     && state.side === ORDER_SIDE.BUY
     && amountNumber > 0
     && buyPayoutSummary.payout <= 0
@@ -1271,12 +1347,17 @@ export default function EventOrderPanelForm({
       return
     }
 
-    if (isPlayMoneyAmm) {
+    if (isSlimefishBackendAmm) {
       if (!activeMarket?.condition_id || !activeOutcome?.token_id || amountNumber <= 0) {
         setShowAmountTooLowWarning(true)
         triggerInputShake()
         return
       }
+
+      if (ammTradeInFlightRef.current) {
+        return
+      }
+      ammTradeInFlightRef.current = true
 
       state.setIsLoading(true)
       setTradeErrorMessage(null)
@@ -1290,7 +1371,7 @@ export default function EventOrderPanelForm({
       const balanceQueryKey = [DEPOSIT_WALLET_BALANCE_QUERY_KEY, user?.id] as const
       const previousPositions = queryClient.getQueryData(positionQueryKey)
       const previousBalance = queryClient.getQueryData(balanceQueryKey)
-      const estimatedShares = ammQuoteQuery.data?.potentialReturn ?? 0
+      const estimatedShares = ammQuoteQuery.data?.sharesPurchased ?? 0
 
       if (operation === 'buy' && estimatedShares > 0) {
         queryClient.setQueryData(
@@ -1301,10 +1382,20 @@ export default function EventOrderPanelForm({
             outcome_text?: string | null
             total_shares?: number | null
           }> | undefined) => {
-            const remaining = (current ?? []).filter(position =>
-              position.market?.condition_id !== activeMarket.condition_id,
+            const positions = [...(current ?? [])]
+            const existingIndex = positions.findIndex(position =>
+              position.market?.condition_id === activeMarket.condition_id
+              && position.outcome_index === activeOutcome.outcome_index
             )
-            return [...remaining, {
+            if (existingIndex >= 0) {
+              const existing = positions[existingIndex]
+              positions[existingIndex] = {
+                ...existing,
+                total_shares: Number(existing.total_shares ?? 0) + estimatedShares,
+              }
+              return positions
+            }
+            return [...positions, {
               market: { condition_id: activeMarket.condition_id },
               outcome_index: activeOutcome.outcome_index,
               outcome_text: outcomeText,
@@ -1321,7 +1412,6 @@ export default function EventOrderPanelForm({
           },
         )
         state.setAmount('')
-        state.setIsLoading(false)
       }
 
       try {
@@ -1361,15 +1451,13 @@ export default function EventOrderPanelForm({
         void queryClient.invalidateQueries({ queryKey: ['event-market-quotes'] })
         void queryClient.invalidateQueries({ queryKey: ['amm-market-quote'] })
         void queryClient.invalidateQueries({ queryKey: ['event-price-history'] })
-        void queryClient.invalidateQueries({ queryKey: ['playmoney-market-stats'] })
+        void queryClient.invalidateQueries({ queryKey: ['slimefish-backend-market-stats'] })
         void queryClient.invalidateQueries({ queryKey: ['amm-market-depth'] })
         void queryClient.invalidateQueries({ queryKey: ['event-activity'] })
         void queryClient.invalidateQueries({ queryKey: ['event-top-holders'] })
         void queryClient.invalidateQueries({ queryKey: ['event-user-positions'] })
         void queryClient.invalidateQueries({ queryKey: ['user-event-positions'] })
-        setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: ['order-panel-user-positions'] })
-        }, 1000)
+        void queryClient.invalidateQueries({ queryKey: ['order-panel-user-positions'] })
       }
       catch (error) {
         queryClient.setQueryData(positionQueryKey, previousPositions)
@@ -1380,6 +1468,7 @@ export default function EventOrderPanelForm({
         triggerInputShake()
       }
       finally {
+        ammTradeInFlightRef.current = false
         state.setIsLoading(false)
       }
       return
@@ -1685,6 +1774,11 @@ export default function EventOrderPanelForm({
         lastMouseEvent: submittedLastMouseEvent,
       })
 
+      try {
+        router.refresh()
+      }
+      catch {}
+
       const optimisticPositionDelta = submittedIsLimitOrder
         ? null
         : {
@@ -1944,8 +2038,25 @@ export default function EventOrderPanelForm({
   const secondaryOutcome = activeMarket?.outcomes.find(
     outcome => outcome.outcome_index === normalizedSecondaryOutcomeIndex,
   ) ?? activeMarket?.outcomes[normalizedSecondaryOutcomeIndex]
-  const primaryPrice = normalizedPrimaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice
-  const secondaryPrice = normalizedSecondaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice
+
+  // Resolve the AMM price from the current market probability, not the
+  // optional buy_price field. The latter is a legacy CLOB-shaped value and
+  // can be stale after another outcome is selected.
+  const primaryPrice = primaryOutcome
+    ? (isSlimefishBackendAmm
+        ? resolveFallbackOutcomeUnitPrice(activeMarket, primaryOutcome)
+        : (Number.isFinite(primaryOutcome.buy_price)
+            ? Number(primaryOutcome.buy_price)
+            : (normalizedPrimaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice)))
+    : (normalizedPrimaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice)
+
+  const secondaryPrice = secondaryOutcome
+    ? (isSlimefishBackendAmm
+        ? resolveFallbackOutcomeUnitPrice(activeMarket, secondaryOutcome)
+        : (Number.isFinite(secondaryOutcome.buy_price)
+            ? Number(secondaryOutcome.buy_price)
+            : (normalizedSecondaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice)))
+    : (normalizedSecondaryOutcomeIndex === OUTCOME_INDEX.NO ? noPrice : yesPrice)
   const lockedOutcomeIndex = yesPositionShares >= noPositionShares ? OUTCOME_INDEX.YES : OUTCOME_INDEX.NO
   const lockedShares = lockedOutcomeIndex === OUTCOME_INDEX.YES ? yesPositionShares : noPositionShares
   const lockedOutcome = lockedOutcomeIndex === OUTCOME_INDEX.YES ? primaryOutcome : secondaryOutcome
@@ -2057,6 +2168,7 @@ export default function EventOrderPanelForm({
                 claimValuePerShareLabel={claimValuePerShareLabel}
                 claimTotalLabel={claimTotalLabel}
                 isClaimSubmitting={isClaimSubmitting}
+                positionRows={[]}
                 isPositionsLoading={positionsQuery.isLoading}
                 onClaimWinnings={handleClaimWinnings}
               />

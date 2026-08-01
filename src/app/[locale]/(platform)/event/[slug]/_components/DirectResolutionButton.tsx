@@ -11,6 +11,7 @@ import { useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { getAddress, isAddress } from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
+import { refundAndCancelMarket } from '@/app/[locale]/admin/events/_actions/refund-market'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -111,7 +112,7 @@ function getOutcomeLabel(market: Event['markets'][number], outcomeIndex: number,
   return market.outcomes.find(outcome => outcome.outcome_index === outcomeIndex)?.outcome_text || fallback
 }
 
-function getResolutionSource(market: Event['markets'][number]) {
+function getResolutionSource(market: DirectResolutionButtonProps['market']) {
   return market.resolution_source_url?.trim() || market.resolution_source?.trim() || ''
 }
 
@@ -138,6 +139,27 @@ export default function DirectResolutionButton({
   const [sourceConfirmed, setSourceConfirmed] = useState(false)
   const [state, setState] = useState<DirectResolutionState>('idle')
   const [message, setMessage] = useState('')
+  const [isRefunding, setIsRefunding] = useState(false)
+
+  async function handleRefund() {
+    if (!confirm(t('Are you sure you want to refund this market? All trades will be canceled and money refunded to each trader\'s ledger.'))) {
+      return
+    }
+    setIsRefunding(true)
+    try {
+      const res = await refundAndCancelMarket(market.condition_id)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success(t('Market refunded successfully! All user balances updated.'))
+        setOpen(false)
+      }
+    } catch {
+      toast.error(t('Failed to refund market.'))
+    } finally {
+      setIsRefunding(false)
+    }
+  }
 
   const isDirect = isDirectResolutionMarket(market)
   const resolutionSource = getResolutionSource(market)
@@ -510,15 +532,25 @@ export default function DirectResolutionButton({
             )}
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              {t('Cancel')}
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isRefunding || isResolved}
+              onClick={() => void handleRefund()}
+            >
+              {isRefunding ? t('Refunding...') : t('Refund Market')}
             </Button>
-            <Button type="button" disabled={!canSubmit} onClick={() => void submitResolution()}>
-              {state === 'pending'
-                ? t('Submitting...')
-                : t('Submit final result')}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                {t('Cancel')}
+              </Button>
+              <Button type="button" disabled={!canSubmit} onClick={() => void submitResolution()}>
+                {state === 'pending'
+                  ? t('Submitting...')
+                  : t('Submit final result')}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

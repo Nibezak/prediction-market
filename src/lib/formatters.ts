@@ -401,10 +401,11 @@ export function toCents(value?: string | number | null) {
   }
 
   const numeric = typeof value === 'string' ? Number(value) : value
-  const normalized = Number.isFinite(numeric)
-    ? Math.min(Math.max(numeric, 0), 1)
-    : 0.5
+  if (!Number.isFinite(numeric)) {
+    return null
+  }
 
+  const normalized = Math.min(Math.max(numeric, 0), 1)
   return Number((normalized * 100).toFixed(1))
 }
 

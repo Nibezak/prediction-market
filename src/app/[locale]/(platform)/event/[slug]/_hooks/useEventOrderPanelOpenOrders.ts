@@ -7,10 +7,12 @@ export function useEventOrderPanelOpenOrders({
   userId,
   eventSlug,
   conditionId,
+  enabled = true,
 }: {
   userId?: string | null
   eventSlug: string
   conditionId?: string
+  enabled?: boolean
 }) {
   const openOrdersQueryKey = useMemo(
     () => buildUserOpenOrdersQueryKey(userId, eventSlug, conditionId),
@@ -20,7 +22,7 @@ export function useEventOrderPanelOpenOrders({
     userId,
     eventSlug,
     conditionId,
-    enabled: Boolean(userId && conditionId),
+    enabled: Boolean(enabled && userId && conditionId),
   })
 
   const openOrders = useMemo(

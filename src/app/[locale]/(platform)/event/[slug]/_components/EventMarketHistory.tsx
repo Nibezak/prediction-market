@@ -1,7 +1,8 @@
 'use client'
 
-import type { Event } from '@/types'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import type { ActivityOrder, Event } from '@/types'
+import type { InfiniteData } from '@tanstack/react-query'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,6 +20,8 @@ import { useUser } from '@/stores/useUser'
 
 interface EventMarketHistoryProps {
   market: Event['markets'][number]
+  markets?: Event['markets']
+  publicFeed?: boolean
 }
 
 function useInfiniteScrollSentinel({
@@ -58,7 +61,7 @@ function useInfiniteScrollSentinel({
   }, [hasError, hasNextPage, isFetchingNextPage, fetchNextPage, sentinelRef, setInfiniteScrollError])
 }
 
-export default function EventMarketHistory({ market }: EventMarketHistoryProps) {
+export default function EventMarketHistory({ market, markets, publicFeed = false }: EventMarketHistoryProps) {
   const t = useExtracted()
   const locale = useLocale()
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
@@ -70,10 +73,30 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
     error: null,
   })
   const user = useUser()
+  const queryClient = useQueryClient()
   const isSingleMarket = useIsSingleMarket()
   const userAddress = getUserPublicAddress(user)
   const normalizeOutcomeLabel = useOutcomeLabel()
-  const isPlayMoneyAmm = process.env.NEXT_PUBLIC_USE_PLAY_MONEY_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const feedMarkets = useMemo(
+    () => (publicFeed && markets?.length ? markets : [market]),
+    [market, markets, publicFeed],
+  )
+  const feedMarketIds = useMemo(
+    () => feedMarkets.map(item => item.condition_id).filter(Boolean),
+    [feedMarkets],
+  )
+  const feedMarketKey = useMemo(() => feedMarketIds.join(','), [feedMarketIds])
+  const marketLabels = useMemo(
+    () => new Map(feedMarkets.map(item => [item.condition_id, item.short_title || item.title])),
+    [feedMarkets],
+  )
+  const activityQueryKey = useMemo(
+    () => publicFeed
+      ? ['event-activity', feedMarketKey]
+      : ['user-market-activity', userAddress, market.condition_id],
+    [feedMarketKey, market.condition_id, publicFeed, userAddress],
+  )
 
   const infiniteScrollError = infiniteScrollErrorState.conditionId === market.condition_id
     ? infiniteScrollErrorState.error
@@ -93,11 +116,11 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
     hasNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['user-market-activity', userAddress, market.condition_id],
+    queryKey: activityQueryKey,
     queryFn: async ({ pageParam = 0, signal }) => {
-      if (isPlayMoneyAmm) {
+      if (isSlimefishBackendAmm) {
         if (pageParam > 0) return []
-        const response = await fetch(`/api/event-activity?market=${encodeURIComponent(market.condition_id || '')}`, { signal })
+        const response = await fetch(`/api/event-activity?market=${encodeURIComponent(feedMarketKey)}`, { signal })
         if (!response.ok) throw new Error('Failed to load activity')
         return await response.json()
       }
@@ -115,19 +138,39 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
 
       return undefined
     },
-    enabled: Boolean(userAddress && market.condition_id),
+    enabled: Boolean(market.condition_id && (publicFeed || userAddress)),
     initialPageParam: 0,
-    staleTime: 1000 * 60 * 5,
+    staleTime: isSlimefishBackendAmm ? 30_000 : 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: !isSlimefishBackendAmm,
   })
+
+  useEffect(function subscribeToAmmActivity() {
+    if (!isSlimefishBackendAmm || !publicFeed || !feedMarketKey) return
+
+    const source = new EventSource(`/api/event-activity/stream?market=${encodeURIComponent(feedMarketKey)}`)
+    const updateActivity = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data)
+        if (!Array.isArray(payload)) return
+        queryClient.setQueryData(activityQueryKey, (existing: InfiniteData<ActivityOrder[]> | undefined) => ({
+          pages: [payload, ...(existing?.pages.slice(1) ?? [])],
+          pageParams: existing?.pageParams ?? [0],
+        }))
+      }
+      catch {}
+    }
+    source.addEventListener('activity', updateActivity as EventListener)
+    return () => source.close()
+  }, [activityQueryKey, feedMarketKey, isSlimefishBackendAmm, publicFeed, queryClient])
 
   const activities = useMemo(
     () => (data?.pages.flat() ?? [])
       .filter(activity =>
-        activity.market.condition_id === market.condition_id
+        feedMarketIds.includes(activity.market.condition_id)
         && (activity.type === 'trade'
-          || (isPlayMoneyAmm && (activity.type === 'buy' || activity.type === 'sell')))),
-    [data?.pages, isPlayMoneyAmm, market.condition_id],
+          || (isSlimefishBackendAmm && (activity.type === 'buy' || activity.type === 'sell')))),
+    [data?.pages, feedMarketIds, isSlimefishBackendAmm],
   )
   const isLoadingInitial = status === 'pending'
   const hasInitialError = status === 'error'
@@ -148,7 +191,7 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
     })
   }
 
-  if (!userAddress) {
+  if (!publicFeed && !userAddress) {
     return null
   }
 
@@ -233,16 +276,28 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
             hour: 'numeric',
             minute: '2-digit',
           })
-          const txUrl = !isPlayMoneyAmm && activity.tx_hash && /^0x[\da-f]{64}$/i.test(activity.tx_hash)
+          const txUrl = !isSlimefishBackendAmm && activity.tx_hash && /^0x[\da-f]{64}$/i.test(activity.tx_hash)
             ? `${POLYGON_SCAN_BASE}/tx/${activity.tx_hash}`
             : null
 
           return (
             <div
               key={activity.id}
-              className={cn('flex h-11 items-center justify-between gap-3 px-3 text-sm leading-none text-foreground')}
+              className={cn('flex min-h-11 items-center justify-between gap-3 px-3 py-2 text-sm leading-none text-foreground')}
             >
               <div className="flex min-w-0 items-center gap-2 overflow-hidden leading-none whitespace-nowrap">
+                {publicFeed && (
+                  <span className="max-w-28 truncate text-xs font-medium text-muted-foreground">
+                    {(activity as typeof activity & { user?: { username?: string | null, address?: string | null } }).user?.username
+                      || (activity as typeof activity & { user?: { address?: string | null } }).user?.address
+                      || t('Trader')}
+                  </span>
+                )}
+                {publicFeed && feedMarketIds.length > 1 && (
+                  <span className="max-w-36 truncate text-xs font-semibold text-foreground">
+                    {marketLabels.get(activity.market.condition_id) || activity.market.title}
+                  </span>
+                )}
                 <span className="font-semibold">{actionLabel}</span>
                 <span className={cn('font-semibold', outcomeColorClass)}>
                   {sharesLabel}

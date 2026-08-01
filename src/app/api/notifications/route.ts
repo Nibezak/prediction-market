@@ -27,3 +27,28 @@ export async function GET() {
     return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
   }
 }
+
+export async function PATCH() {
+  try {
+    const user = await UserRepository.getCurrentUser({ minimal: true })
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthenticated.' },
+        { status: 401 },
+      )
+    }
+
+    const { data, error } = await NotificationRepository.markAllReadByUserId(user.id)
+
+    if (error) {
+      return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
+    }
+
+    return NextResponse.json(data)
+  }
+  catch (error) {
+    console.error('API Error:', error)
+    return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
+  }
+}

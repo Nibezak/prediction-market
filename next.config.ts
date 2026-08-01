@@ -7,6 +7,7 @@ import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
 
 const optimizedImageHostPatterns = getOptimizedImageHostPatterns(process.env)
 const commitSha = resolveCommitSha()
+const firebaseAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN?.trim()
 
 const config: NextConfig = {
   output: process.env.VERCEL_ENV ? undefined : 'standalone',
@@ -20,8 +21,9 @@ const config: NextConfig = {
   },
   staticPageGenerationTimeout: 180,
   experimental: {
+    cpus: Math.max(1, Number.parseInt(process.env.NEXT_BUILD_CPUS ?? '2', 10) || 2),
     serverActions: {
-      bodySizeLimit: '2mb',
+      bodySizeLimit: '24mb',
     },
     typedEnv: true,
   },
@@ -41,13 +43,13 @@ const config: NextConfig = {
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: '/:path((?!market\\.html$|__/auth(?:/|$)|__/firebase/init\\.json$).*)',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
-          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
           { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
           ...(process.env.NODE_ENV === 'production' ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' }] : []),
         ],
@@ -73,6 +75,18 @@ const config: NextConfig = {
   },
   async rewrites() {
     return [
+      ...(firebaseAuthDomain
+        ? [
+            {
+              source: '/__/auth/:path*',
+              destination: `https://${firebaseAuthDomain}/__/auth/:path*`,
+            },
+          ]
+        : []),
+      {
+        source: '/__/firebase/init.json',
+        destination: '/api/firebase/init',
+      },
       {
         source: '/sitemaps/:id.xml',
         destination: '/sitemaps/sitemap/:id.xml',

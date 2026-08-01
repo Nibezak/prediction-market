@@ -114,7 +114,7 @@ export type TellwiseRealtimeEvent
     | { type: 'price_reference.tick', payload: TellwisePriceReferenceTick }
     | { type: 'market.status', payload: { marketId: string, status: string, updatedAt: string } }
 
-export type TellwiseRampProvider = 'pretium' | 'kotani' | 'honeycoin' | 'sandbox'
+export type TellwiseRampProvider = 'pretium' | 'kotani' | 'honeycoin' | 'sandbox' | 'minisend'
 
 export interface TellwiseRampQuoteRequest {
   fiatCurrency: 'KES'

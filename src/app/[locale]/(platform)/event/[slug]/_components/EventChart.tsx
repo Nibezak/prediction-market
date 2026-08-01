@@ -29,6 +29,7 @@ import {
 import {
   buildChartSeries,
   buildMarketSignature,
+  buildOutcomeSeriesKey,
   filterChartDataForSeries,
   getMaxSeriesCount,
   getOutcomeColorForMarket,
@@ -158,8 +159,9 @@ function EventChartComponent({
   const userAddress = getUserPublicAddress(user)
   const isSingleMarketFromOrder = useIsSingleMarket()
   const isSingleMarket = isSingleMarketOverride ?? isSingleMarketFromOrder
-  const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
-  const shouldHideChart = !forceVisible && !isSingleMarket && !isNegRiskEnabled
+  // Multi-option AMM events are persisted as one binary market per option.
+  // They still have a valid event-level chart: one Yes-price series per option.
+  const shouldHideChart = !forceVisible && event.markets.length === 0
   const shouldFetchChartData = !shouldHideChart
   const chartSettings = useSyncExternalStore(
     subscribeToChartSettings,
@@ -191,12 +193,20 @@ function EventChartComponent({
     storeChartSettings(nextSettings)
   }, [chartSettings])
 
+  // Trading mode and chart shape are separate concerns. A legacy categorical
+  // event is one persisted market even when the order panel treats it as a
+  // multi-selection event.
+  const persistedSingleMarket = event.markets.length === 1 ? event.markets[0] : null
   const singleMarket = isSingleMarket ? event.markets[0] : null
   const hasBinaryOutcomePair = Boolean(
-    singleMarket?.outcomes.some(outcome => outcome.outcome_index === OUTCOME_INDEX.YES)
+    singleMarket?.outcomes.length === 2
+    && singleMarket.outcomes.some(outcome => outcome.outcome_index === OUTCOME_INDEX.YES)
     && singleMarket?.outcomes.some(outcome => outcome.outcome_index === OUTCOME_INDEX.NO),
   )
   const showBothOutcomes = isSingleMarket && hasBinaryOutcomePair
+  const multiOutcomeMarket = (persistedSingleMarket?.outcomes.length ?? 0) > 2
+    ? persistedSingleMarket
+    : null
   const eventHistoryEndAt = useMemo(
     () => resolveEventHistoryEndAt(event),
     [event],
@@ -260,18 +270,39 @@ function EventChartComponent({
     eventCreatedAt: event.created_at,
     eventResolvedAt: eventHistoryEndAt,
   })
+  const multiOutcomeTargets = useMemo(
+    () => (multiOutcomeMarket?.outcomes ?? [])
+      .filter(outcome => Boolean(outcome.token_id))
+      .map(outcome => ({
+        conditionId: buildOutcomeSeriesKey(multiOutcomeMarket!.condition_id, outcome.outcome_index),
+        tokenId: outcome.token_id,
+      })),
+    [multiOutcomeMarket],
+  )
+  const multiOutcomePriceHistory = useEventPriceHistory({
+    eventId: event.id,
+    range: activeTimeRange,
+    targets: multiOutcomeTargets,
+    eventCreatedAt: event.created_at,
+    eventResolvedAt: eventHistoryEndAt,
+    enabled: shouldFetchChartData && multiOutcomeTargets.length > 0,
+  })
 
-  const chartHistory = isSingleMarket && activeOutcomeIndex === OUTCOME_INDEX.NO
-    ? noPriceHistory
-    : yesPriceHistory
+  const chartHistory = multiOutcomeMarket
+    ? multiOutcomePriceHistory
+    : (isSingleMarket && activeOutcomeIndex === OUTCOME_INDEX.NO
+        ? noPriceHistory
+        : yesPriceHistory)
   const marketSnapshot = showBothOutcomes ? yesPriceHistory.latestSnapshot : chartHistory.latestSnapshot
 
   const maxSeriesCount = getMaxSeriesCount()
   const allMarketIds = useMemo(
-    () => event.markets
-      .map(market => market.condition_id)
-      .filter((conditionId): conditionId is string => Boolean(conditionId)),
-    [event.markets],
+    () => multiOutcomeMarket
+      ? multiOutcomeMarket.outcomes.map(outcome => buildOutcomeSeriesKey(multiOutcomeMarket.condition_id, outcome.outcome_index))
+      : event.markets
+          .map(market => market.condition_id)
+          .filter((conditionId): conditionId is string => Boolean(conditionId)),
+    [event.markets, multiOutcomeMarket],
   )
   const topMarketIds = useMemo(
     () => getTopMarketIds(marketSnapshot, maxSeriesCount),
@@ -282,8 +313,12 @@ function EventChartComponent({
     [allMarketIds, maxSeriesCount],
   )
   const defaultMarketIds = useMemo(
-    () => (topMarketIds.length > 0 ? topMarketIds : fallbackMarketIds),
-    [topMarketIds, fallbackMarketIds],
+    () => (multiOutcomeMarket
+      ? fallbackMarketIds
+      : !isSingleMarket
+      ? fallbackMarketIds
+      : (topMarketIds.length > 0 ? topMarketIds : fallbackMarketIds)),
+    [fallbackMarketIds, isSingleMarket, multiOutcomeMarket, topMarketIds],
   )
   const [customMarketSelection, setCustomMarketSelection] = useState<{
     eventId: string
@@ -296,10 +331,12 @@ function EventChartComponent({
     ? customMarketSelection.marketIds
     : null
   const selectedMarketIds = useMemo(
-    () => (isSingleMarket
+    () => (multiOutcomeMarket
+      ? defaultMarketIds
+      : isSingleMarket
       ? defaultMarketIds
       : resolveSelectedMarketIds(activeCustomMarketIds, allMarketIds, defaultMarketIds)),
-    [activeCustomMarketIds, allMarketIds, defaultMarketIds, isSingleMarket],
+    [activeCustomMarketIds, allMarketIds, defaultMarketIds, isSingleMarket, multiOutcomeMarket],
   )
 
   const handleToggleMarket = useCallback((marketId: string) => {
@@ -361,6 +398,9 @@ function EventChartComponent({
   )
 
   const baseSeries = useMemo(() => {
+    if (multiOutcomeMarket) {
+      return selectedSeries.length > 0 ? selectedSeries : fallbackChartSeries
+    }
     if (!isSingleMarket) {
       if (selectedSeries.length > 0) {
         return selectedSeries
@@ -368,7 +408,7 @@ function EventChartComponent({
       return chartSeries.length > 0 ? chartSeries : fallbackChartSeries
     }
     return chartSeries.length > 0 ? chartSeries : fallbackChartSeries
-  }, [chartSeries, fallbackChartSeries, isSingleMarket, selectedSeries])
+  }, [chartSeries, fallbackChartSeries, isSingleMarket, multiOutcomeMarket, selectedSeries])
 
   const primaryMarket = useMemo(
     () => {
@@ -411,14 +451,14 @@ function EventChartComponent({
     if (showBothOutcomes) {
       return bothOutcomeSeries
     }
-    if (!isSingleMarket || baseSeries.length === 0) {
+    if (multiOutcomeMarket || !isSingleMarket || baseSeries.length === 0) {
       return baseSeries
     }
     const primaryColor = activeOutcomeIndex === OUTCOME_INDEX.NO ? noOutcomeColor : yesOutcomeColor
     return baseSeries.map((seriesItem, index) => (index === 0
       ? { ...seriesItem, color: primaryColor }
       : seriesItem))
-  }, [activeOutcomeIndex, baseSeries, isSingleMarket, showBothOutcomes, bothOutcomeSeries, yesOutcomeColor, noOutcomeColor])
+  }, [activeOutcomeIndex, baseSeries, isSingleMarket, multiOutcomeMarket, showBothOutcomes, bothOutcomeSeries, yesOutcomeColor, noOutcomeColor])
 
   const watermark = useMemo(
     () => ({
@@ -521,6 +561,17 @@ function EventChartComponent({
     ? bothOutcomeHistory.points
     : chartHistory.normalizedHistory
   const latestPointOverrides = useMemo(() => {
+    if (multiOutcomeMarket) {
+      return Object.fromEntries(multiOutcomeMarket.outcomes.flatMap((outcome) => {
+        const rawPrice = typeof outcome.buy_price === 'number'
+          ? outcome.buy_price
+          : null
+        return rawPrice == null || !Number.isFinite(rawPrice)
+          ? []
+          : [[buildOutcomeSeriesKey(multiOutcomeMarket.condition_id, outcome.outcome_index), Math.max(0, Math.min(100, rawPrice * 100))]]
+      }))
+    }
+
     if (showBothOutcomes && primaryConditionId && yesSeriesKey && noSeriesKey) {
       const liveYesChance = displayChanceByMarket[primaryConditionId]
       if (typeof liveYesChance !== 'number' || !Number.isFinite(liveYesChance)) {
@@ -551,19 +602,28 @@ function EventChartComponent({
     const entries = effectiveSeries
       .map((seriesItem) => {
         const liveValue = displayChanceByMarket[seriesItem.key]
-        if (typeof liveValue !== 'number' || !Number.isFinite(liveValue)) {
-          return null
+        if (typeof liveValue === 'number' && Number.isFinite(liveValue)) {
+          return [seriesItem.key, liveValue] as const
         }
-        return [seriesItem.key, liveValue] as const
+
+        const market = event.markets.find(item => item.condition_id === seriesItem.key)
+        const initialValue = typeof market?.probability === 'number' && Number.isFinite(market.probability)
+          ? market.probability
+          : (typeof market?.price === 'number' && Number.isFinite(market.price)
+              ? market.price * 100
+              : 50)
+
+        return [seriesItem.key, Math.max(0, Math.min(100, initialValue))] as const
       })
-      .filter((entry): entry is readonly [string, number] => entry !== null)
 
     return Object.fromEntries(entries)
   }, [
     activeOutcomeIndex,
     displayChanceByMarket,
     effectiveSeries,
+    event.markets,
     isSingleMarket,
+    multiOutcomeMarket,
     noSeriesKey,
     primaryConditionId,
     showBothOutcomes,

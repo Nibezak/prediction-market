@@ -1,5 +1,6 @@
 import type { NextResponse } from 'next/server'
 import type { Event, Market, Outcome } from '@/types'
+import { DEFAULT_THEME_SITE_LOGO_IMAGE_PATH } from '@/lib/theme-site-identity'
 
 const FALLBACK_PRICE = 0.5
 
@@ -38,7 +39,7 @@ export function buildEmbedMarket(market: Market, event?: Event) {
   const outcomeLabels = normalizedOutcomes.map(outcome => outcome.outcome_text || '')
   const outcomePrices = normalizedOutcomes.map(outcome => normalizeOutcomePrice(outcome))
   const tokenIds = normalizedOutcomes.map(outcome => outcome.token_id).filter(Boolean)
-  const iconUrl = market.icon_url || event?.icon_url || ''
+  const iconUrl = market.icon_url || event?.icon_url || DEFAULT_THEME_SITE_LOGO_IMAGE_PATH
   const endDateIso = market.end_time ?? event?.end_date ?? null
 
   return {

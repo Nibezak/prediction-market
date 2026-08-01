@@ -28,6 +28,7 @@ import {
   validateThemeSiteGoogleAnalyticsId,
   validateThemeSiteLogoImagePath,
   validateThemeSiteLogoMode,
+  validateThemeSiteMobileAppName,
   validateThemeSiteName,
   validateThemeSiteSupportUrl,
 } from '@/lib/theme-site-identity'
@@ -39,6 +40,7 @@ const THEME_LIGHT_JSON_KEY = 'light_json'
 const THEME_DARK_JSON_KEY = 'dark_json'
 const THEME_RADIUS_KEY = 'radius'
 const THEME_SITE_NAME_KEY = 'site_name'
+const THEME_SITE_MOBILE_APP_NAME_KEY = 'mobile_app_name'
 const THEME_SITE_DESCRIPTION_KEY = 'site_description'
 const THEME_SITE_LOGO_MODE_KEY = 'site_logo_mode'
 const THEME_SITE_LOGO_SVG_KEY = 'site_logo_svg'
@@ -78,6 +80,8 @@ interface NormalizedThemeConfig {
 interface NormalizedThemeSiteConfig {
   siteName: string
   siteNameValue: string
+  mobileAppName: string
+  mobileAppNameValue: string
   siteDescription: string
   siteDescriptionValue: string
   logoMode: ThemeSiteLogoMode
@@ -135,6 +139,7 @@ export interface ThemeSettingsFormState {
 
 export interface ThemeSiteSettingsFormState {
   siteName: string
+  mobileAppName: string
   siteDescription: string
   logoMode: ThemeSiteLogoMode
   logoSvg: string
@@ -278,6 +283,7 @@ function normalizeOptionalLiFiApiKey(value: string | null | undefined, sourceLab
 
 function normalizeThemeSiteConfig(params: {
   siteNameValue: string | null | undefined
+  mobileAppNameValue?: string | null | undefined
   siteDescriptionValue: string | null | undefined
   logoModeValue: string | null | undefined
   logoSvgValue: string | null | undefined
@@ -298,6 +304,7 @@ function normalizeThemeSiteConfig(params: {
   lifiIntegratorValue?: string | null | undefined
   lifiApiKeyValue?: string | null | undefined
   siteNameErrorLabel: string
+  mobileAppNameErrorLabel?: string
   siteDescriptionErrorLabel: string
   logoModeErrorLabel: string
   logoSvgErrorLabel: string
@@ -321,6 +328,15 @@ function normalizeThemeSiteConfig(params: {
   const siteNameValidated = validateThemeSiteName(params.siteNameValue, params.siteNameErrorLabel)
   if (siteNameValidated.error) {
     return { data: null, error: siteNameValidated.error }
+  }
+
+  const mobileAppNameValidated = validateThemeSiteMobileAppName(
+    params.mobileAppNameValue,
+    params.mobileAppNameErrorLabel ?? 'Mobile app name',
+    siteNameValidated.value!,
+  )
+  if (mobileAppNameValidated.error) {
+    return { data: null, error: mobileAppNameValidated.error }
   }
 
   const siteDescriptionValidated = validateThemeSiteDescription(params.siteDescriptionValue, params.siteDescriptionErrorLabel)
@@ -444,6 +460,8 @@ function normalizeThemeSiteConfig(params: {
     data: {
       siteName: siteNameValidated.value!,
       siteNameValue: siteNameValidated.value!,
+      mobileAppName: mobileAppNameValidated.value!,
+      mobileAppNameValue: mobileAppNameValidated.value!,
       siteDescription: siteDescriptionValidated.value!,
       siteDescriptionValue: siteDescriptionValidated.value!,
       logoMode: logoModeValidated.value!,
@@ -503,6 +521,7 @@ function buildThemeSiteIdentity(config: NormalizedThemeSiteConfig): ThemeSiteIde
 
   return {
     name: config.siteName,
+    mobileAppName: config.mobileAppName,
     description: config.siteDescription,
     logoMode: useImageLogo ? 'image' : 'svg',
     logoSvg: config.logoSvg,
@@ -578,6 +597,7 @@ function hasStoredThemeSiteSettings(generalSettings?: SettingsGroup) {
 
   return Boolean(
     generalSettings[THEME_SITE_NAME_KEY]?.value?.trim()
+    || generalSettings[THEME_SITE_MOBILE_APP_NAME_KEY]?.value?.trim()
     || generalSettings[THEME_SITE_DESCRIPTION_KEY]?.value?.trim()
     || generalSettings[THEME_SITE_LOGO_MODE_KEY]?.value?.trim()
     || generalSettings[THEME_SITE_LOGO_SVG_KEY]?.value?.trim()
@@ -632,6 +652,7 @@ export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeS
 
   const normalized = normalizeThemeSiteConfig({
     siteNameValue: generalSettings?.[THEME_SITE_NAME_KEY]?.value ?? defaultSite.name,
+    mobileAppNameValue: generalSettings?.[THEME_SITE_MOBILE_APP_NAME_KEY]?.value ?? defaultSite.mobileAppName,
     siteDescriptionValue: generalSettings?.[THEME_SITE_DESCRIPTION_KEY]?.value ?? defaultSite.description,
     logoModeValue: generalSettings?.[THEME_SITE_LOGO_MODE_KEY]?.value ?? defaultSite.logoMode,
     logoSvgValue: generalSettings?.[THEME_SITE_LOGO_SVG_KEY]?.value ?? defaultSite.logoSvg,
@@ -651,6 +672,7 @@ export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeS
     feeRecipientWalletValue:
       generalSettings?.[GENERAL_FEE_RECIPIENT_WALLET_KEY]?.value ?? DEFAULT_FEE_RECEIVER_WALLET_ADDRESS,
     siteNameErrorLabel: 'Site name',
+    mobileAppNameErrorLabel: 'Mobile app name',
     siteDescriptionErrorLabel: 'Site description',
     logoModeErrorLabel: 'Logo mode',
     logoSvgErrorLabel: 'Logo SVG',
@@ -673,6 +695,7 @@ export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeS
   if (normalized.data) {
     return {
       siteName: normalized.data.siteNameValue,
+      mobileAppName: normalized.data.mobileAppNameValue,
       siteDescription: normalized.data.siteDescriptionValue,
       logoMode: normalized.data.logoModeValue,
       logoSvg: normalized.data.logoSvgValue,
@@ -698,6 +721,7 @@ export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeS
 
   return {
     siteName: defaultSite.name,
+    mobileAppName: defaultSite.mobileAppName,
     siteDescription: defaultSite.description,
     logoMode: defaultSite.logoMode,
     logoSvg: defaultSite.logoSvg,
@@ -741,6 +765,7 @@ export function validateThemeSettingsInput(params: {
 
 export function validateThemeSiteSettingsInput(params: {
   siteName: string | null | undefined
+  mobileAppName?: string | null | undefined
   siteDescription: string | null | undefined
   logoMode: string | null | undefined
   logoSvg: string | null | undefined
@@ -763,6 +788,7 @@ export function validateThemeSiteSettingsInput(params: {
 }): ThemeSiteSettingsValidationResult {
   return normalizeThemeSiteConfig({
     siteNameValue: params.siteName,
+    mobileAppNameValue: params.mobileAppName,
     siteDescriptionValue: params.siteDescription,
     logoModeValue: params.logoMode,
     logoSvgValue: params.logoSvg,
@@ -783,6 +809,7 @@ export function validateThemeSiteSettingsInput(params: {
     lifiIntegratorValue: params.lifiIntegrator,
     lifiApiKeyValue: params.lifiApiKey,
     siteNameErrorLabel: 'Site name',
+    mobileAppNameErrorLabel: 'Mobile app name',
     siteDescriptionErrorLabel: 'Site description',
     logoModeErrorLabel: 'Logo type',
     logoSvgErrorLabel: 'Logo SVG',
@@ -837,6 +864,7 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
   const normalizedSite = hasSite
     ? normalizeThemeSiteConfig({
         siteNameValue: generalSettings?.[THEME_SITE_NAME_KEY]?.value,
+        mobileAppNameValue: generalSettings?.[THEME_SITE_MOBILE_APP_NAME_KEY]?.value,
         siteDescriptionValue: generalSettings?.[THEME_SITE_DESCRIPTION_KEY]?.value,
         logoModeValue: generalSettings?.[THEME_SITE_LOGO_MODE_KEY]?.value,
         logoSvgValue: generalSettings?.[THEME_SITE_LOGO_SVG_KEY]?.value,
@@ -856,6 +884,7 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
         feeRecipientWalletValue:
           generalSettings?.[GENERAL_FEE_RECIPIENT_WALLET_KEY]?.value ?? DEFAULT_FEE_RECEIVER_WALLET_ADDRESS,
         siteNameErrorLabel: 'Site name in settings',
+        mobileAppNameErrorLabel: 'Mobile app name in settings',
         siteDescriptionErrorLabel: 'Site description in settings',
         logoModeErrorLabel: 'Logo mode in settings',
         logoSvgErrorLabel: 'Logo SVG in settings',
