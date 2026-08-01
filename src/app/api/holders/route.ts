@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { fetchTopHoldersFromDataApi } from '@/lib/data-api/holders'
 import { UserRepository } from '@/lib/db/queries/user'
+import { slimefishBackendFetch } from '@/lib/slimefish-backend-auth'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { normalizeAddress } from '@/lib/wallet'
 
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
   try {
     if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
       const ammBaseUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
-      const response = await fetch(`${ammBaseUrl}/markets/${conditionId}/positions?status=active&limit=${limit}`)
+      const response = await slimefishBackendFetch(`${ammBaseUrl}/markets/${conditionId}/positions?status=active&limit=${limit}`)
       if (!response.ok) {
         throw new Error('Failed to load AMM positions.')
       }
@@ -63,7 +64,9 @@ export async function GET(request: Request) {
 
       for (const position of payload.data ?? []) {
         const quantity = Number(position.quantity ?? 0)
-        if (!Number.isFinite(quantity) || quantity <= 0) continue
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          continue
+        }
         const user = position.account?.user ?? {}
         const optionName = String(position.option?.name || '').trim().toLowerCase()
         const outcomeIndex = position.optionId === noToken || optionName === 'no' ? 1 : 0

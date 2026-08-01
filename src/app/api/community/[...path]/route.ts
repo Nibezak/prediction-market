@@ -1,29 +1,36 @@
+import { eq, or } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+import { recordAuditEvent, requestAuditContext } from '@/lib/audit'
 import { auth } from '@/lib/auth'
-import { db } from '@/lib/drizzle'
 import { events, markets } from '@/lib/db/schema/events/tables'
 import { notifications } from '@/lib/db/schema/notifications/tables'
-import { eq, or } from 'drizzle-orm'
-import { recordAuditEvent, requestAuditContext } from '@/lib/audit'
-import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
+import { db } from '@/lib/drizzle'
+import { getSlimefishBackendServiceKey, signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
-const getAmmUrl = () => process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
+function getAmmUrl() {
+  return process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
+}
 const LIKE_EMOJI = '\u{1F44D}'
-const getServiceHeaders = (input: { url: string, method?: string, body?: string | null, extra?: Record<string, string> }) => {
-  const tellwiseSecret = process.env.TELLWISE_SECRET || 'tellwise_super_secret_bypass_key_123'
+function getServiceHeaders(input: { url: string, method?: string, body?: string | null, extra?: Record<string, string> }) {
+  const tellwiseSecret = getSlimefishBackendServiceKey()
+  if (!tellwiseSecret) {
+    throw new Error('Backend service authentication is not configured.')
+  }
   return signSlimefishBackendRequest({
     url: input.url,
     method: input.method,
     body: input.body,
     headers: {
-    'x-tellwise-secret': tellwiseSecret,
+      'x-tellwise-secret': tellwiseSecret,
       ...input.extra,
     },
   })
 }
 
 async function getMarketId(slug: string) {
-  if (!slug) return undefined
+  if (!slug) {
+    return undefined
+  }
   const [market] = await db
     .select({ condition_id: markets.condition_id })
     .from(markets)
@@ -34,7 +41,9 @@ async function getMarketId(slug: string) {
 }
 
 async function getEventSlugForMarketId(marketId: string) {
-  if (!marketId) return undefined
+  if (!marketId) {
+    return undefined
+  }
   const [row] = await db
     .select({ slug: events.slug })
     .from(markets)
@@ -70,27 +79,34 @@ export async function GET(req: Request, { params }: { params: Promise<{ path: st
   const path = resolvedParams.path.join('/')
   const url = new URL(req.url)
   const ammUrl = getAmmUrl()
-  
+
   // Try to parse headers safely, as Slimefish ledger might expect standard auth
   let currentUserId: string | undefined
   try {
     const session = await auth.api.getSession({ headers: req.headers })
     currentUserId = session?.user?.id
-  } catch (e) {
+  }
+  catch {
     // Ignore
   }
 
   if (path === 'comments') {
     const eventSlug = url.searchParams.get('event_slug')
-    if (!eventSlug) return NextResponse.json({ error: 'event_slug required' }, { status: 400 })
+    if (!eventSlug) {
+      return NextResponse.json({ error: 'event_slug required' }, { status: 400 })
+    }
 
     const marketId = await getMarketId(eventSlug)
-    if (!marketId) return NextResponse.json({ pages: [[]], pageParams: [0] })
+    if (!marketId) {
+      return NextResponse.json({ pages: [[]], pageParams: [0] })
+    }
 
     const commentsUrl = `${ammUrl}/markets/${marketId}/comments`
     const res = await fetch(commentsUrl, { headers: getServiceHeaders({ url: commentsUrl }) })
-    if (!res.ok) return NextResponse.json({ pages: [[]], pageParams: [0] })
-    
+    if (!res.ok) {
+      return NextResponse.json({ pages: [[]], pageParams: [0] })
+    }
+
     const json = await res.json()
 
     const slimefishBackendComments = json.data || []
@@ -99,10 +115,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ path: st
       .filter((c: any) => !c.parentId) // only top level
       .map((c: any) => mapComment({ ...c, replies: slimefishBackendComments.filter((r: any) => r.parentId === c.id) }, currentUserId))
       .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    
+
     return NextResponse.json({ pages: [mapped], pageParams: [0] })
   }
-  
+
   if (path === 'comments/metrics') {
     return NextResponse.json({ comments_count: 0 })
   }
@@ -114,9 +130,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
   const resolvedParams = await params
   const path = resolvedParams.path.join('/')
   const ammUrl = getAmmUrl()
-  
+
   const session = await auth.api.getSession({ headers: req.headers })
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   let currentUserId = session.user.id
   const syncUrl = `${ammUrl}/users/sync`
   const syncBody = JSON.stringify({
@@ -137,10 +155,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
   if (path === 'comments') {
     const body = await req.json()
     const { event_slug, content, parent_comment_id } = body
-    
+
     const marketId = await getMarketId(event_slug)
-    if (!marketId) return NextResponse.json({ error: 'Market not found' }, { status: 404 })
-    
+    if (!marketId) {
+      return NextResponse.json({ error: 'Market not found' }, { status: 404 })
+    }
+
     let replyRecipientId: string | null = null
     if (parent_comment_id) {
       const commentsUrl = `${ammUrl}/markets/${marketId}/comments`
@@ -159,7 +179,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
       entityType: 'MARKET',
       entityId: marketId,
     }
-    
+
     // Call SlimefishBackend using bypass headers since cookie forwarding might fail across domains
     const createCommentUrl = `${ammUrl}/comments`
     const createCommentBody = JSON.stringify(pmBody)
@@ -171,7 +191,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
       } }),
       body: createCommentBody,
     })
-    
+
     if (!res.ok) {
       const details = await res.json().catch(() => null)
       const message = details?.error?.message || details?.error || details?.message || 'Failed to post comment'
@@ -193,16 +213,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
         link_target: `/event/${event_slug}#${json.data?.id}`,
         link_url: `/event/${event_slug}#${json.data?.id}`,
         link_label: 'View reply',
-      }).catch((error) => console.error('Failed to store reply notification', error))
+      }).catch(error => console.error('Failed to store reply notification', error))
     }
-    
+
     const c = json.data
     c.author = { id: currentUserId, username: session.user.name, avatarUrl: session.user.image }
     return NextResponse.json(mapComment(c, currentUserId))
   }
-  
+
   // comments/[id]/reactions
-  const reactionMatch = path.match(/^comments\/([^\/]+)\/reactions$/) || path.match(/^comments\/([^\/]+)\/reaction$/)
+  const reactionMatch = path.match(/^comments\/([^/]+)\/reactions$/) || path.match(/^comments\/([^/]+)\/reaction$/)
   if (reactionMatch) {
     const commentId = reactionMatch[1]
     const reactionUrl = `${ammUrl}/comments/${commentId}/reaction`
@@ -243,7 +263,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
             link_target: eventSlug ? `/event/${eventSlug}#${commentId}` : null,
             link_url: eventSlug ? `/event/${eventSlug}#${commentId}` : null,
             link_label: 'View comment',
-          }).catch((error) => console.error('Failed to store comment reaction notification', error))
+          }).catch(error => console.error('Failed to store comment reaction notification', error))
         }
         return NextResponse.json({ likes_count, user_has_liked })
       }

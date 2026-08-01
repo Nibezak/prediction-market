@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { NotificationRepository } from '@/lib/db/queries/notification'
 import { UserRepository } from '@/lib/db/queries/user'
+import { enforceRateLimit } from '@/lib/security/rate-limit'
 
 export async function GET() {
   try {
@@ -13,6 +14,7 @@ export async function GET() {
         { status: 401 },
       )
     }
+    await enforceRateLimit({ scope: 'notifications-read', identifier: user.id, limit: 120, windowSeconds: 60 })
 
     const { data: notifications, error } = await NotificationRepository.getByUserId(user.id)
 
@@ -38,6 +40,7 @@ export async function PATCH() {
         { status: 401 },
       )
     }
+    await enforceRateLimit({ scope: 'notifications-write', identifier: user.id, limit: 30, windowSeconds: 60 })
 
     const { data, error } = await NotificationRepository.markAllReadByUserId(user.id)
 

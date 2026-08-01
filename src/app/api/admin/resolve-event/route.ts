@@ -10,20 +10,18 @@ import { resolution_approvals, resolution_proposals } from '@/lib/db/schema'
 import { conditions, event_creations, events, markets, outcomes } from '@/lib/db/schema/events/tables'
 import { notifications } from '@/lib/db/schema/notifications/tables'
 import { db } from '@/lib/drizzle'
-import { getUserPlatformRole } from '@/lib/staff-role'
+import { getSlimefishBackendServiceKey, signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 import { hasStaffPermission } from '@/lib/staff-permissions'
-import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
+import { getUserPlatformRole } from '@/lib/staff-role'
 
 const AMM_BASE_URL = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
-const DEVELOPMENT_SERVICE_SECRET = 'tellwise_super_secret_bypass_key_123'
 
 function normalizeStoredId(value: string | null | undefined) {
   return value?.trim() ?? ''
 }
 
 function getAmmServiceSecret() {
-  return process.env.TELLWISE_SECRET?.trim()
-    || (process.env.NODE_ENV === 'development' ? DEVELOPMENT_SERVICE_SECRET : '')
+  return getSlimefishBackendServiceKey()
 }
 
 function getPublicResolutionError(error: unknown) {
@@ -163,8 +161,8 @@ async function resolveInternalAmmMarket({
       method: 'POST',
       body: resolveBody,
       headers: {
-      ...serviceHeaders,
-      'idempotency-key': `resolve:${event.id}:${conditionId}:${winningTokenId}`,
+        ...serviceHeaders,
+        'idempotency-key': `resolve:${event.id}:${conditionId}:${winningTokenId}`,
       },
     }),
     body: resolveBody,
@@ -290,8 +288,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No markets found for this event.' }, { status: 404 })
     }
 
-    const allEventOutcomes = await db.select().from(outcomes)
-      .where(inArray(outcomes.condition_id, conditionIds))
+    const allEventOutcomes = await db.select().from(outcomes).where(inArray(outcomes.condition_id, conditionIds))
     const resolutionType = await getEventResolutionType(eventId, marketRows.length)
     const candidateTokenIds = resolutionType === 'binary'
       ? new Set(allEventOutcomes.map(outcome => outcome.token_id.trim()))
@@ -448,7 +445,6 @@ export async function POST(req: NextRequest) {
     })
     const resolvedOutcomeName = resolvedOutcomeNames.join(', ')
     const ammConditionId = resolutionTargets[0]!.market.condition_id.trim()
-    const ammWinningTokenId = canonicalWinningTokenIds[0]!
     const eventPath = `/event/${event.slug}`
     if (recipients.length > 0) {
       await db.insert(notifications).values(recipients.flatMap((recipient) => {

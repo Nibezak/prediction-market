@@ -1,2 +1,1 @@
-pnpm exec knip --no-config-hints
-pnpm exec lint-staged
+npm exec lint-staged

@@ -2,6 +2,7 @@
 import { sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/drizzle'
+import { slimefishBackendFetch } from '@/lib/slimefish-backend-auth'
 
 export async function GET() {
   const started = performance.now()
@@ -10,8 +11,7 @@ export async function GET() {
   try { await db.execute(sql`SELECT 1`); database = true }
   catch {}
   try {
-    const secret = process.env.SLIMEFISH_BACKEND_SERVICE_API_KEY?.trim() || process.env.TELLWISE_SECRET?.trim() || ''
-    const response = await fetch(`${(process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/api\/v1$/, '')}/api/health`, { cache: 'no-store', signal: AbortSignal.timeout(2500), headers: secret ? { 'x-slimefish-backend-api-key': secret } : {} })
+    const response = await slimefishBackendFetch(`${(process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/api\/v1$/, '')}/api/health`, { cache: 'no-store', signal: AbortSignal.timeout(2500) })
     settlement = response.ok
   }
   catch {}

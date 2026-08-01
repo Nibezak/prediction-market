@@ -1,7 +1,7 @@
-import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
+import { getSlimefishBackendServiceKey, signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 const AMM_BASE_URL = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
-const TELLWISE_SECRET = process.env.TELLWISE_SECRET || 'tellwise_super_secret_bypass_key_123'
+const TELLWISE_SECRET = getSlimefishBackendServiceKey()
 
 export async function syncUserToSlimefishBackend(user: { id: string, email: string, username?: string | null }) {
   const url = `${AMM_BASE_URL}/users/sync`

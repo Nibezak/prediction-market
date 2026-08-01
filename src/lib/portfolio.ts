@@ -1,4 +1,5 @@
 import { getDataApiUrl } from '@/lib/data-api/client'
+import { slimefishBackendFetch } from '@/lib/slimefish-backend-auth'
 import { normalizeAddress } from '@/lib/wallet'
 
 export interface PortfolioSnapshot {
@@ -73,14 +74,18 @@ export async function fetchPortfolioSnapshot(userAddress?: string | null): Promi
 
   const address = normalizeAddress(userAddress)
   if (!address) {
-    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'true') return defaultSnapshot
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'true') {
+      return defaultSnapshot
+    }
     try {
       const baseUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
       const [statsResponse, positionsResponse] = await Promise.all([
-        fetch(`${baseUrl}/users/${encodeURIComponent(userAddress)}/stats`, { cache: 'no-store' }),
-        fetch(`${baseUrl}/users/${encodeURIComponent(userAddress)}/positions?limit=100`, { cache: 'no-store' }),
+        slimefishBackendFetch(`${baseUrl}/users/${encodeURIComponent(userAddress)}/stats`, { cache: 'no-store' }),
+        slimefishBackendFetch(`${baseUrl}/users/${encodeURIComponent(userAddress)}/positions?limit=100`, { cache: 'no-store' }),
       ])
-      if (!statsResponse.ok || !positionsResponse.ok) return defaultSnapshot
+      if (!statsResponse.ok || !positionsResponse.ok) {
+        return defaultSnapshot
+      }
       const stats = await statsResponse.json()
       const positions = await positionsResponse.json()
       const rows = Array.isArray(positions?.data) ? positions.data : []

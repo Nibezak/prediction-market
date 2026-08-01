@@ -117,6 +117,6 @@
     "vitest": "4.1.8"
   },
   "lint-staged": {
-    "*": "eslint --fix"
+    "*.{js,jsx,ts,tsx,mjs,cjs}": "eslint --fix"
   }
 }

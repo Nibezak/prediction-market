@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
+import { getSlimefishBackendServiceKey, signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 function getApiUrl() {
   return process.env.NEXT_PUBLIC_SLIMEFISH_BACKEND_API_URL || 'http://localhost:8000/api'
@@ -11,7 +11,10 @@ async function handleRequest() {
   try {
     const apiUrl = new URL(`${getApiUrl()}/v1/sync/volume`)
 
-    const secret = process.env.TELLWISE_SECRET || 'tellwise_super_secret_bypass_key_123'
+    const secret = getSlimefishBackendServiceKey()
+    if (!secret) {
+      return NextResponse.json({ error: 'Backend service authentication is not configured.' }, { status: 503 })
+    }
     const res = await fetch(apiUrl.toString(), {
       method: 'POST',
       headers: signSlimefishBackendRequest({ url: apiUrl, method: 'POST', headers: {
@@ -26,10 +29,16 @@ async function handleRequest() {
 
     const json = await res.json()
     return NextResponse.json(json)
-  } catch (error) {
+  }
+  catch {
     return NextResponse.json({ error: 'Failed to sync volume via backend' }, { status: 500 })
   }
 }
 
-export async function GET() { return handleRequest() }
-export async function POST() { return handleRequest() }
+export async function GET() {
+  return handleRequest()
+}
+
+export async function POST() {
+  return handleRequest()
+}

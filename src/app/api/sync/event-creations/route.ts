@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
-import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
+import { getSlimefishBackendServiceKey, signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 
 function getApiUrl() {
   return process.env.NEXT_PUBLIC_SLIMEFISH_BACKEND_API_URL || 'http://localhost:8000/api'
@@ -12,7 +12,10 @@ async function handleRequest() {
   try {
     const apiUrl = new URL(`${getApiUrl()}/v1/sync/event-creations`)
 
-    const secret = process.env.TELLWISE_SECRET || 'tellwise_super_secret_bypass_key_123'
+    const secret = getSlimefishBackendServiceKey()
+    if (!secret) {
+      return NextResponse.json({ error: 'Backend service authentication is not configured.' }, { status: 503 })
+    }
     const res = await fetch(apiUrl.toString(), {
       method: 'POST',
       headers: signSlimefishBackendRequest({ url: apiUrl, method: 'POST', headers: {
