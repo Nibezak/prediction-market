@@ -1,14 +1,15 @@
 {
   "name": "slimefish",
+  "packageManager": "npm@10.9.3",
   "type": "module",
   "private": true,
   "description": "Slimefish prediction market UI and admin console.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kuestcom/prediction-market.git"
+    "url": "https://github.com/Nibezak/Slimefish-Monorepo.git"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22"
   },
   "scripts": {
     "dev": "node --max-old-space-size=6144 ./node_modules/next/dist/bin/next dev",
@@ -34,7 +35,6 @@
     "@fullcalendar/react": "6.1.20",
     "@fullcalendar/timegrid": "6.1.20",
     "@gatefi/js-sdk": "^1.2.0",
-    "@lifi/sdk": "3.16.3",
     "@next/third-parties": "16.2.9",
     "@reown/appkit": "1.8.21",
     "@reown/appkit-adapter-wagmi": "1.8.21",
@@ -58,6 +58,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "d3-array": "3.2.4",
+    "decimal.js": "10.6.0",
     "drizzle-orm": "0.45.2",
     "firebase": "^12.16.0",
     "fumadocs-core": "16.9.3",
@@ -83,6 +84,7 @@
     "vaul": "1.1.2",
     "viem": "2.52.2",
     "wagmi": "2.19.5",
+    "web-push": "^3.6.7",
     "zod": "4.4.3",
     "zustand": "5.0.14"
   },
@@ -92,6 +94,7 @@
     "@next/eslint-plugin-next": "16.2.7",
     "@playwright/test": "1.60.0",
     "@tailwindcss/postcss": "4.3.0",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
@@ -101,6 +104,7 @@
     "@types/node": "24.13.2",
     "@types/react": "19.2.16",
     "@types/react-dom": "19.2.3",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "4.1.8",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "10.4.1",
