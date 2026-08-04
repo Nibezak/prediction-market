@@ -432,6 +432,7 @@ function WalletSendForm({
               onChange={event => onChangeSendTo(event.target.value)}
               placeholder="07xx xxx xxx"
               inputMode="tel"
+              pattern="[0-9]*"
               readOnly={phoneChangeStep !== 'edit'}
               className={cn('h-10 border-0 px-0 text-sm shadow-none placeholder:text-sm focus-visible:ring-0', phoneChangeStep === 'edit' && 'rounded-sm ring-2 ring-primary/40')}
               required
@@ -469,6 +470,7 @@ function WalletSendForm({
               id="wallet-send-amount"
               type="text"
               inputMode="decimal"
+              pattern="[0-9.]*"
               value={inputValue}
               onChange={event => handleAmountChange(event.target.value)}
               onBlur={event => handleAmountBlur(event.target.value)}

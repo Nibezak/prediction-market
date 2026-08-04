@@ -280,6 +280,7 @@ export function WalletOnrampForm({
               value={currency === 'KES' ? formatKesAmountInput(fiatAmount) : formatDisplayAmount(fiatAmount)}
               onChange={event => setFiatAmount(currency === 'KES' ? sanitizeKesAmountInput(event.target.value) : sanitizeNumericInput(event.target.value))}
               inputMode="decimal"
+              pattern="[0-9.]*"
               className="h-11 border-0 text-right text-lg font-semibold shadow-none focus-visible:ring-0"
             />
           </div>
@@ -305,6 +306,7 @@ export function WalletOnrampForm({
               value={phoneNumber}
               onChange={event => setPhoneNumber(event.target.value)}
               inputMode="tel"
+              pattern="[0-9]*"
               placeholder="07xx xxx xxx"
               readOnly={!isEditingPhone}
               className={cn('h-9 border-0 px-0 shadow-none focus-visible:ring-0', isEditingPhone && 'rounded-sm ring-2 ring-primary/40')}
