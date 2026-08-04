@@ -109,8 +109,8 @@ export default function EventOrderPanelInput({
 
     const maxBalance = Number.isFinite(balance.raw) ? balance.raw : 0
     const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
-    // Don't use formatAmountInputValue as it expects cents, but balance.raw is already in dollars
-    onAmountChange(limitedBalance.toString())
+    // Use formatAmountInputValue to ensure proper formatting for both USD and KES
+    onAmountChange(formatAmountInputValue(limitedBalance))
     focusInput()
   }
 
@@ -261,31 +261,6 @@ export default function EventOrderPanelInput({
         )}
       >
         {renderActionButtons()}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className={cn(
-            'text-xs px-1',
-            { 'cursor-not-allowed opacity-50': side === ORDER_SIDE.SELL && availableShares <= 0 },
-          )}
-          disabled={side === ORDER_SIDE.SELL && availableShares <= 0}
-          onClick={() => {
-            if (side === ORDER_SIDE.SELL) {
-              if (availableShares <= 0) {
-                return
-              }
-              onAmountChange(formatAmountInputValue(availableShares, { roundingMode: 'floor' }))
-            }
-            else {
-              const limitedBalance = Math.min(balance.raw, MAX_AMOUNT_INPUT)
-              onAmountChange(formatAmountInputValue(limitedBalance, { roundingMode: 'floor' }))
-            }
-            focusInput()
-          }}
-        >
-          {t('Max')}
-        </Button>
       </div>
     </>
   )
