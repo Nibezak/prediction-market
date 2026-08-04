@@ -1416,7 +1416,7 @@ export default function EventOrderPanelForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             optionId: activeOutcome.token_id,
-            amount: Math.min(amountNumber, Math.max(0.1, availableBalanceForOrders)),
+            amount: amountNumber,
           }),
         })
         const result = await response.json().catch(() => null) as { error?: string } | null

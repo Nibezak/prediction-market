@@ -5,7 +5,7 @@ import { getAuth, type Auth, type Unsubscribe } from 'firebase/auth'
 
 const DEFAULT_FIREBASE_CONFIG = {
   apiKey: 'AIzaSyCuLoGr8JqgKx-k95UdTxM2TiTt6-Hmp5M',
-  authDomain: 'slimefish-official.firebaseapp.com',
+  authDomain: 'slimefish.com',
   projectId: 'slimefish-official',
   storageBucket: 'slimefish-official.firebasestorage.app',
   messagingSenderId: '475787665233',
@@ -17,9 +17,10 @@ const configuredAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
 
 function getBrowserAuthDomain() {
   if (configuredAuthDomain) return configuredAuthDomain
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  if (projectId) return `${projectId}.firebaseapp.com`
-  return DEFAULT_FIREBASE_CONFIG.authDomain
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    return window.location.hostname
+  }
+  return 'slimefish.com'
 }
 
 function getDynamicFirebaseConfig() {

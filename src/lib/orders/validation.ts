@@ -143,7 +143,7 @@ export function validateOrder({
     return { ok: false, reason: 'MARKET_MIN_AMOUNT' }
   }
 
-  if (side === ORDER_SIDE.BUY && amountNumber > (availableBalance + 0.05)) {
+  if (side === ORDER_SIDE.BUY && amountNumber > (availableBalance + 1e-4)) {
     return { ok: false, reason: 'INSUFFICIENT_BALANCE' }
   }
 
