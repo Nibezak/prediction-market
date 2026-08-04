@@ -8,6 +8,7 @@ import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
 const optimizedImageHostPatterns = getOptimizedImageHostPatterns(process.env)
 const commitSha = resolveCommitSha()
 const firebaseAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN?.trim()
+  || (process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ? `${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID.trim()}.firebaseapp.com` : 'slimefish-official.firebaseapp.com')
 
 const config: NextConfig = {
   output: process.env.VERCEL_ENV ? undefined : 'standalone',
