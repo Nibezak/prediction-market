@@ -76,7 +76,7 @@ export default function EventCardHeader({
               w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200
               hover:text-foreground hover:underline
             `,
-            isSportsEvent ? 'line-clamp-2' : 'line-clamp-3',
+            'line-clamp-2',
           )}
         >
           {title}
