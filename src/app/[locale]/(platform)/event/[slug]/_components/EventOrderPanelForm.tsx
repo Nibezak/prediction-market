@@ -52,6 +52,7 @@ import { useAffiliateOrderMetadata } from '@/hooks/useAffiliateOrderMetadata'
 import { useAppKit } from '@/hooks/useAppKit'
 import { DEPOSIT_WALLET_BALANCE_QUERY_KEY, useBalance } from '@/hooks/useBalance'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
@@ -954,6 +955,7 @@ export default function EventOrderPanelForm({
   const ammTradeInFlightRef = useRef(false)
   const limitSharesNumber = Number.parseFloat(state.limitShares) || 0
   const { balance, isLoadingBalance } = useBalance()
+  const { kesPerUsdc } = useDisplayCurrency()
   const yesOutcome = useMemo(
     () => resolveMarketOutcome(activeMarket, OUTCOME_INDEX.YES),
     [activeMarket],
@@ -1346,9 +1348,12 @@ export default function EventOrderPanelForm({
         return
       }
       if (state.side === ORDER_SIDE.BUY && amountNumber < 1.0) {
-        setShowMarketMinimumWarning(true)
-        triggerInputShake()
-        return
+        const kesAmount = amountNumber * kesPerUsdc
+        if (kesAmount < 130) {
+          setShowMarketMinimumWarning(true)
+          triggerInputShake()
+          return
+        }
       }
 
       if (ammTradeInFlightRef.current) {
@@ -1416,7 +1421,7 @@ export default function EventOrderPanelForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             optionId: activeOutcome.token_id,
-            amount: amountNumber,
+            amount: Math.round(amountNumber * 100) / 100, // Ensure 2 decimal places
           }),
         })
         const result = await response.json().catch(() => null) as { error?: string } | null
@@ -1431,7 +1436,9 @@ export default function EventOrderPanelForm({
         if (!response.ok) {
           queryClient.setQueryData(positionQueryKey, previousPositions)
           queryClient.setQueryData(balanceQueryKey, previousBalance)
-          setTradeErrorMessage(result?.error || t('An unexpected error occurred. Please try again.'))
+          const errorMessage = result?.error || `API Error (${response.status})`
+          console.error('AMM API Error:', response.status, result)
+          setTradeErrorMessage(errorMessage)
           triggerInputShake()
           return
         }
