@@ -325,7 +325,7 @@ function useEventUserPositionsData({
     enabled: Boolean(ownerAddress),
     staleTime: 1000 * 30,
     gcTime: 1000 * 60 * 10,
-    refetchInterval: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? false : (ownerAddress ? 15_000 : false),
+    refetchInterval: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false' ? false : (ownerAddress ? 15_000 : false),
     refetchIntervalInBackground: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'true',
     refetchOnWindowFocus: process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'true',
     queryFn: ({ signal }) =>

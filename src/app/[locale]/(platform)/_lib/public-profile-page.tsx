@@ -265,7 +265,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
     )
   }
 
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const userAddress = isSlimefishBackendAmm ? profile.id : profile.deposit_wallet_address!
   const snapshot = await fetchPortfolioSnapshot(userAddress)
   const fallbackChartEndDate = buildFallbackChartEndDate()

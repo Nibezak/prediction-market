@@ -43,7 +43,7 @@ interface EventMarketPositionsProps {
 }
 
 const POSITION_VISIBILITY_THRESHOLD = 0.01
-const IS_SLIMEFISH_BACKEND_AMM = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+const IS_SLIMEFISH_BACKEND_AMM = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
 
 function toNumber(value: unknown) {
   if (value === null || value === undefined) {

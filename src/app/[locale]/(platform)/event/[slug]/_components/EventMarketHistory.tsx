@@ -77,7 +77,7 @@ export default function EventMarketHistory({ market, markets, publicFeed = false
   const isSingleMarket = useIsSingleMarket()
   const userAddress = getUserPublicAddress(user)
   const normalizeOutcomeLabel = useOutcomeLabel()
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const feedMarkets = useMemo(
     () => (publicFeed && markets?.length ? markets : [market]),
     [market, markets, publicFeed],

@@ -877,7 +877,7 @@ export default function EventOrderPanelForm({
   outcomeAccentOverrides = {},
   optimisticallyClaimedConditionIds = {},
 }: EventOrderPanelFormProps) {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const { open } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const { signTypedDataAsync } = useSignTypedData()

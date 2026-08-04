@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false') {
       const ammBaseUrl = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
       const response = await slimefishBackendFetch(`${ammBaseUrl}/markets/${conditionId}/positions?status=active&limit=${limit}`)
       if (!response.ok) {

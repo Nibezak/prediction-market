@@ -43,7 +43,7 @@ async function fetchLastTradesByMarket(targets: MarketTokenTarget[]) {
 }
 
 export function useEventLastTrades(targets: MarketTokenTarget[]) {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const tokenSignature = useMemo(
     () => targets.map(target => `${target.conditionId}:${target.tokenId}`).sort().join(','),
     [targets],

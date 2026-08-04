@@ -98,7 +98,7 @@ function getMarketTokenIds(markets: Event['markets']) {
 
 const WS_REFRESH_THROTTLE_MS = 2000
 const ACTIVITY_POLL_INTERVAL_MS = 60_000
-const USE_SLIMEFISH_BACKEND_AMM = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+const USE_SLIMEFISH_BACKEND_AMM = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
 
 function filterSlimefishBackendActivity(activities: ActivityOrder[], minAmountFilter: string) {
   if (minAmountFilter === 'none') {

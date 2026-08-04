@@ -28,7 +28,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { firebaseAuth, isFirebaseConfigured } from '@/lib/firebase/client'
+import { firebaseAuth, getOrInitAuth, isFirebaseConfigured } from '@/lib/firebase/client'
+
+function getAuthInstance() {
+  return getOrInitAuth() || firebaseAuth
+}
 import { buildTwoFactorRedirectPath } from '@/lib/locale-path'
 
 interface AuthDialogProps {
@@ -144,7 +148,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
     if (typeof window === 'undefined' || !isFirebaseConfigured()) {
       return
     }
-    if (isSignInWithEmailLink(firebaseAuth, window.location.href)) {
+    if (isSignInWithEmailLink(getAuthInstance(), window.location.href)) {
       const emailForSignIn = window.localStorage.getItem('emailForSignIn')
       if (!emailForSignIn) {
         setEmail('')
@@ -154,7 +158,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
       }
       if (emailForSignIn) {
         setIsSubmitting(true)
-        signInWithEmailLink(firebaseAuth, emailForSignIn, window.location.href)
+        signInWithEmailLink(getAuthInstance(), emailForSignIn, window.location.href)
           .then(async (credential) => {
             window.localStorage.removeItem('emailForSignIn')
             if (await finishSignIn(credential.user)) {
@@ -220,11 +224,11 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
       }
     }
 
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(getAuthInstance(), (firebaseUser) => {
       void reconcileFirebaseUser(firebaseUser)
     })
 
-    void getRedirectResult(firebaseAuth)
+    void getRedirectResult(getAuthInstance())
       .then(credential => reconcileFirebaseUser(credential?.user ?? null))
       .catch((error) => {
         console.error('Firebase Google redirect failed', error)
@@ -248,7 +252,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
         url: window.location.href,
         handleCodeInApp: true,
       }
-      await sendSignInLinkToEmail(firebaseAuth, email, actionCodeSettings)
+      await sendSignInLinkToEmail(getAuthInstance(), email, actionCodeSettings)
       window.localStorage.setItem('emailForSignIn', email)
       setStep('email-link-sent')
       toast.success(`Verification link sent to ${email}! Please check your email.`)
@@ -265,10 +269,10 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (step === 'email') {
-      if (typeof window !== 'undefined' && isSignInWithEmailLink(firebaseAuth, window.location.href)) {
+      if (typeof window !== 'undefined' && isSignInWithEmailLink(getAuthInstance(), window.location.href)) {
         setIsSubmitting(true)
         try {
-          const credential = await signInWithEmailLink(firebaseAuth, email, window.location.href)
+          const credential = await signInWithEmailLink(getAuthInstance(), email, window.location.href)
           window.localStorage.removeItem('emailForSignIn')
           if (await finishSignIn(credential.user)) {
             toast.success('Email verified. Welcome to Slimefish.')
@@ -292,13 +296,13 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
         if (password !== confirmPassword) {
           throw new Error('Passwords do not match.')
         }
-        const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+        const credential = await createUserWithEmailAndPassword(getAuthInstance(), email, password)
         await sendEmailVerification(credential.user, { url: `${window.location.origin}/en` })
         setStep('verify-email')
         toast.success(`Verification link sent to ${email}.`)
       }
       else {
-        const credential = await signInWithEmailAndPassword(firebaseAuth, email, password)
+        const credential = await signInWithEmailAndPassword(getAuthInstance(), email, password)
         if (!credential.user.emailVerified) {
           setStep('verify-email')
           throw new Error('Verify your email before signing in.')
@@ -317,7 +321,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
   }
 
   async function resendVerification() {
-    const firebaseUser = firebaseAuth.currentUser
+    const firebaseUser = getAuthInstance().currentUser
     if (!firebaseUser || firebaseUser.email?.toLowerCase() !== email.trim().toLowerCase()) {
       toast.error('Sign in again to resend the verification email.')
       setStep('password')
@@ -337,7 +341,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
   }
 
   async function confirmEmailVerification() {
-    const firebaseUser = firebaseAuth.currentUser
+    const firebaseUser = getAuthInstance().currentUser
     if (!firebaseUser) {
       setStep('password')
       return
@@ -368,7 +372,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
     }
     setIsSubmitting(true)
     try {
-      await sendPasswordResetEmail(firebaseAuth, email, { url: `${window.location.origin}/en` })
+      await sendPasswordResetEmail(getAuthInstance(), email, { url: `${window.location.origin}/en` })
       setStep('password-reset-sent')
     }
     catch (error) {
@@ -385,7 +389,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
       const provider = new GoogleAuthProvider()
       provider.setCustomParameters({ prompt: 'select_account' })
 
-      const credential = await signInWithPopup(firebaseAuth, provider)
+      const credential = await signInWithPopup(getAuthInstance(), provider)
       if (await finishSignIn(credential.user)) {
         toast.success('Welcome back.')
       }
@@ -398,7 +402,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
       if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
         const provider = new GoogleAuthProvider()
         provider.setCustomParameters({ prompt: 'select_account' })
-        await signInWithRedirect(firebaseAuth, provider)
+        await signInWithRedirect(getAuthInstance(), provider)
         return
       }
       toast.error(firebaseErrorMessage(error))

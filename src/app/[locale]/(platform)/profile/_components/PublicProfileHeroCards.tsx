@@ -53,7 +53,7 @@ function usePnlSeries({
   })
 
   useEffect(function fetchPnlSeriesEffect() {
-    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
     if (!pnlAddress || (!isSlimefishBackendAmm && !pnlBaseUrl)) {
       return
     }

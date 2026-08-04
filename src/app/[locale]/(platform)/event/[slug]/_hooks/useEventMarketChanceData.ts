@@ -42,7 +42,7 @@ export function useEventMarketChanceData({
   enabled = true,
   includePriceHistory = true,
 }: UseEventMarketChanceDataParams) {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const eventHistoryEndAt = useMemo(
     () => resolveEventHistoryEndAt(event),
     [event],

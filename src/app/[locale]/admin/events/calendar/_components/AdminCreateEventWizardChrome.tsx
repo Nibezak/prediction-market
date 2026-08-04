@@ -105,7 +105,7 @@ export function AdminCreateEventFooter({
   onBack,
   onNext,
 }: AdminCreateEventFooterProps) {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const signatureBusy = isLoadingPendingRequest
     || isSigningAuth
     || isPreparingSignaturePlan

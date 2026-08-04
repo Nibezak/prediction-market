@@ -406,7 +406,7 @@ export function useAdminCreateEventForm({
     home: teamLogoFiles.home ? URL.createObjectURL(teamLogoFiles.home) : (storedAssets.teamLogos.home?.publicUrl || null),
     away: teamLogoFiles.away ? URL.createObjectURL(teamLogoFiles.away) : (storedAssets.teamLogos.away?.publicUrl || null),
   }), [storedAssets.teamLogos.away?.publicUrl, storedAssets.teamLogos.home?.publicUrl, teamLogoFiles])
-  const hasEventImage = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const hasEventImage = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
     || Boolean(eventImageFile || storedAssets.eventImage?.publicUrl)
   const hasTeamLogoByHostStatus = useMemo(() => ({
     home: Boolean(teamLogoFiles.home || storedAssets.teamLogos.home?.publicUrl),
@@ -890,11 +890,11 @@ export function useAdminCreateEventForm({
 
     return Array.from(warnings)
   }, [creationMode, form.resolutionRules, recurringOccurrencePreviews, titleTemplate])
-  const isSlimefishBackendAmmMode = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmmMode = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const recurringRequiresServerWalletSetup = !isSlimefishBackendAmmMode && creationMode === 'recurring' && !hasConfiguredServerSigners
 
   const stepLabels = useMemo(
-    () => process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    () => process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
       ? ['Event', 'Market Structure', 'Resolution', 'Review', 'Create']
       : ['Event', 'Market Structure', 'Resolution', 'Pre-sign', 'Sign & Create'],
     [],
@@ -974,7 +974,7 @@ export function useAdminCreateEventForm({
     () => contentCheckIssues.filter(issue => !bypassedIssueKeys.includes(getAiIssueKey(issue))),
     [bypassedIssueKeys, contentCheckIssues],
   )
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const fundingHasIssue = !isSlimefishBackendAmm && (fundingCheckState === 'insufficient' || fundingCheckState === 'no_wallet' || fundingCheckState === 'error')
   const nativeGasHasIssue = !isSlimefishBackendAmm && (nativeGasCheckState === 'insufficient'
     || nativeGasCheckState === 'no_wallet'
@@ -2648,7 +2648,7 @@ export function useAdminCreateEventForm({
   const buildPreparePayload = useCallback((): PreparePayloadBody => {
     const { resolvedForm } = getResolvedDateForms()
 
-    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
     const creatorAddress = eoaAddress || (isSlimefishBackendAmm ? '0x0000000000000000000000000000000000000000' : null)
 
     if (!creatorAddress) {
@@ -2954,7 +2954,7 @@ export function useAdminCreateEventForm({
     setFundingCheckState('checking')
     setFundingCheckError('')
 
-    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
     if (isSlimefishBackendAmm) {
       try {
         const requiredLiquidityKes = Math.floor(Number(form.initialLiquidity))
@@ -3069,7 +3069,7 @@ export function useAdminCreateEventForm({
     setNativeGasCheckState('checking')
     setNativeGasCheckError('')
 
-    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false') {
       setEoaPolBalance(0)
       setRequiredGasPol(0)
       setNativeGasCheckState('ok')
@@ -3487,7 +3487,7 @@ export function useAdminCreateEventForm({
   }, [buildAiPayload])
 
   const prepareSignaturePlan = useCallback(async () => {
-    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
     if (!isSlimefishBackendAmm && !eoaAddress) {
       throw new Error('Connect wallet first.')
     }

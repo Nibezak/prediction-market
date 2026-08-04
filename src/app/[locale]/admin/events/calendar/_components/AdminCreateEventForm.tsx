@@ -302,7 +302,7 @@ function AdminCreateEventFormContent({
     stepFourNextButtonContent,
   } = hook
 
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
 
 
   return (
@@ -2628,7 +2628,7 @@ function AdminCreateEventFormContent({
       {currentStep === 5 && (
         <Card className="bg-background">
           <CardHeader className="pt-8 pb-6">
-            <CardTitle>{process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? 'Create event' : 'Sign & create'}</CardTitle>
+            <CardTitle>{process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false' ? 'Create event' : 'Sign & create'}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pb-8">
             <div className="rounded-md border px-4 py-3">
@@ -2688,7 +2688,7 @@ function AdminCreateEventFormContent({
                       <p className="text-sm text-muted-foreground">
                         {pendingWorkflowRequestId
                           ? 'Server workflow is preparing your tx plan.'
-                          : process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+                          : process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
                             ? 'Create this event in the AMM service.'
                             : 'Sign auth to load tx plan.'}
                       </p>
@@ -2719,7 +2719,7 @@ function AdminCreateEventFormContent({
                         ? `Verified (auth time remaining: ${authChallengeCountdownLabel})`
                         : 'Verified'
                       : isSigningAuth
-                        ? process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? 'Creating event' : 'Awaiting wallet'
+                        ? process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false' ? 'Creating event' : 'Awaiting wallet'
                         : isPreparingSignaturePlan || pendingWorkflowStatus === 'prepare_running'
                           ? 'Signed. Preparing tx plan on server'
                           : signatureFlowError

@@ -53,7 +53,7 @@ export function resolvePublicRuntimeEnv(env: NodeJS.ProcessEnv): Omit<PublicRunt
   const siteUrl = env.SITE_URL || 'http://localhost:3000'
 
   return {
-    clobUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_CLOB_URL, normalizePublicRuntimeEnvValue(env.CLOB_URL, env.AMM_BASE_URL || 'http://localhost:8000/api/v1')),
+    clobUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_CLOB_URL, normalizePublicRuntimeEnvValue(env.CLOB_URL, '/api/amm')),
     communityUrl: normalizePublicRuntimeEnvValue(
       env.NEXT_PUBLIC_COMMUNITY_URL,
       normalizePublicRuntimeEnvValue(env.TELLWISE_COMMUNITY_URL, normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, '/api/community')),
@@ -66,7 +66,7 @@ export function resolvePublicRuntimeEnv(env: NodeJS.ProcessEnv): Omit<PublicRunt
     chainId: parseNetworkChainId(env.CHAIN_ID, defaultPublicRuntimeConfig.chainId),
     polygonRpcUrl: normalizePublicRuntimeEnvValue(env.POLYGON_RPC_URL),
     priceReferenceUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_PRICE_REFERENCE_URL, normalizePublicRuntimeEnvValue(env.PRICE_REFERENCE_URL, defaultPublicRuntimeConfig.priceReferenceUrl)),
-    relayerUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_RELAYER_URL, normalizePublicRuntimeEnvValue(env.RELAYER_URL, env.AMM_BASE_URL || 'http://localhost:8000/api/v1')),
+    relayerUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_RELAYER_URL, normalizePublicRuntimeEnvValue(env.RELAYER_URL, '/api/amm')),
     reownAppKitProjectId: normalizePublicRuntimeEnvValue(env.REOWN_APPKIT_PROJECT_ID),
     sdkDownloadUrl: normalizePublicRuntimeEnvValue(env.TELLWISE_SDK_DOWNLOAD_URL, normalizePublicRuntimeEnvValue(env.SDK_DOWNLOAD_URL, defaultPublicRuntimeConfig.sdkDownloadUrl)),
     sentryDsn: normalizePublicRuntimeEnvValue(env.SENTRY_DSN),

@@ -63,7 +63,7 @@ export default function EventSingleMarketOrderBook({
   showCompactVolume = false,
 }: EventSingleMarketOrderBookProps) {
   const t = useExtracted()
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const normalizeOutcomeLabel = useOutcomeLabel()
   const isMobile = useIsMobile()
   const marketChannelStatus = useMarketChannelStatus()

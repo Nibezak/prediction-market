@@ -38,7 +38,7 @@ interface EventMarketCardProps {
 function useMarketCardVolume(market: EventMarketRow['market']) {
   const snapshots = useAmmLiveMarkets(
     market.condition_id ? [market.condition_id] : [],
-    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true',
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false',
   )
   return snapshots[market.condition_id]?.volume ?? market.volume
 }

@@ -21,7 +21,7 @@ interface UseUserShareBalancesOptions {
 export function useUserShareBalances({ event, ownerAddress }: UseUserShareBalancesOptions) {
   const user = useUser()
   const { data: authSession, isPending: isAuthSessionPending } = authClient.useSession()
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const authenticatedUserId = !isAuthSessionPending
     && user
     && authSession?.user?.id === user.id

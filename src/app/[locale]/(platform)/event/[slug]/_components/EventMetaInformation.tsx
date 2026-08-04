@@ -20,7 +20,7 @@ function useEventVolume(event: Event) {
   }, [event.markets])
   const snapshots = useAmmLiveMarkets(
     marketIds,
-    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true',
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false',
   )
 
   return useMemo(() => {

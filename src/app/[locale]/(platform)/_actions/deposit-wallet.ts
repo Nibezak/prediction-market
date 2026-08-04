@@ -633,7 +633,7 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
     let status = user.deposit_wallet_status ?? 'not_started'
     let txHash: string | null = user.deposit_wallet_tx_hash ?? null
 
-    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false') {
       status = 'deployed'
       txHash = null
     } else {

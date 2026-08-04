@@ -375,7 +375,7 @@ function TradingOnboardingProviderContent({
   children,
   user,
 }: TradingOnboardingProviderContentProps) {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
   const [dismissedModal, setDismissedModalState] = useState<OnboardingModal>(null)
 

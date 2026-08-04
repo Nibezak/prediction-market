@@ -6,13 +6,10 @@ import { getAuth, type Auth, type Unsubscribe } from 'firebase/auth'
 const configuredAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
 
 function getBrowserAuthDomain() {
-  if (typeof window === 'undefined') return configuredAuthDomain
-
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return configuredAuthDomain
-  }
-
-  return window.location.host
+  if (configuredAuthDomain) return configuredAuthDomain
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  if (projectId) return `${projectId}.firebaseapp.com`
+  return undefined
 }
 
 const firebaseConfig = {
@@ -47,11 +44,18 @@ function getFirebaseConfig() {
 
 const browserAppName = 'slimefish-browser'
 
-function initApp(): FirebaseApp | null {
-  if (!isFirebaseConfigured()) return null
+let _cachedApp: FirebaseApp | null | undefined
+let _cachedAuth: Auth | null | undefined
+
+function getOrInitApp(): FirebaseApp | null {
+  if (_cachedApp) return _cachedApp
+  if (!isFirebaseConfigured()) {
+    return null
+  }
   try {
     const existing = getApps().find((app) => app.name === browserAppName)
-    return existing ?? initializeApp(getFirebaseConfig(), browserAppName)
+    _cachedApp = existing ?? initializeApp(getFirebaseConfig(), browserAppName)
+    return _cachedApp
   }
   catch (err) {
     console.warn('Firebase initialization skipped/failed:', err)
@@ -59,11 +63,15 @@ function initApp(): FirebaseApp | null {
   }
 }
 
-function initAuth(): Auth | null {
-  const app = initApp()
-  if (!app) return null
+export function getOrInitAuth(): Auth | null {
+  if (_cachedAuth) return _cachedAuth
+  const app = getOrInitApp()
+  if (!app) {
+    return null
+  }
   try {
-    return getAuth(app)
+    _cachedAuth = getAuth(app)
+    return _cachedAuth
   }
   catch (err) {
     console.warn('Firebase auth initialization failed:', err)
@@ -71,7 +79,15 @@ function initAuth(): Auth | null {
   }
 }
 
-const dummyAuth: Auth = {
+// Eagerly initialize on module load (client-side only).
+// Firebase SDK v10+ uses internal Symbols and _delegate patterns that break
+// through Proxy get traps, so we must export the real Auth/App instances.
+const _eagerApp = typeof window !== 'undefined' ? getOrInitApp() : null
+const _eagerAuth = typeof window !== 'undefined' ? getOrInitAuth() : null
+
+export const firebaseApp: FirebaseApp = _eagerApp ?? {} as FirebaseApp
+
+export const firebaseAuth: Auth = _eagerAuth ?? {
   app: {} as FirebaseApp,
   name: 'dummy',
   config: {} as any,
@@ -86,30 +102,4 @@ const dummyAuth: Auth = {
   setPersistence: async () => {},
   signOut: async () => {},
   useDeviceLanguage: () => {},
-}
-
-export const firebaseApp: FirebaseApp = new Proxy({} as FirebaseApp, {
-  get(_target, prop) {
-    const realApp = initApp()
-    if (realApp) {
-      const val = (realApp as any)[prop]
-      return typeof val === 'function' ? val.bind(realApp) : val
-    }
-    return undefined
-  },
-})
-
-export const firebaseAuth: Auth = new Proxy(dummyAuth, {
-  get(_target, prop) {
-    const realAuth = initAuth()
-    if (realAuth) {
-      const val = (realAuth as any)[prop]
-      return typeof val === 'function' ? val.bind(realAuth) : val
-    }
-    const dummyVal = (dummyAuth as any)[prop]
-    if (typeof dummyVal === 'function') {
-      return dummyVal.bind(dummyAuth)
-    }
-    return dummyVal
-  },
-})
+} as Auth

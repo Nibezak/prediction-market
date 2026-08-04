@@ -172,7 +172,7 @@ function useCreateEventCalendarState() {
   const [recurringWalletSetupDialogOpen, setRecurringWalletSetupDialogOpen] = useState(false)
   const [selectedStartAt, setSelectedStartAt] = useState(() => buildDefaultStartAt(readCurrentTimeMs()))
   const [serverSignerAvailability, setServerSignerAvailability] = useState<'loading' | 'available' | 'missing' | 'error'>(() => (
-    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true' ? 'available' : 'loading'
+    process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false' ? 'available' : 'loading'
   ))
 
   useEffect(function loadDraftsOnMount() {
@@ -205,7 +205,7 @@ function useCreateEventCalendarState() {
 
   useEffect(function loadServerSignersOnMount() {
     // In fiat/AMM mode, server-side crypto signers are not needed.
-    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false') {
       return
     }
 

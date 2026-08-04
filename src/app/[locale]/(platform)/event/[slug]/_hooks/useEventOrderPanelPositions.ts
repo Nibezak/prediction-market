@@ -24,7 +24,7 @@ export function useEventOrderPanelPositions({
   eventConditionIds?: string[]
   userId?: string | null
 }) {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const liveAccount = useAmmLiveAccount(isSlimefishBackendAmm && Boolean(userId), userId)
   const eventConditionKey = [...new Set(eventConditionIds ?? [])].sort().join(',')
   const positionsQuery = useQuery({
