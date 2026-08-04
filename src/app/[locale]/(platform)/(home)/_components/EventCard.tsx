@@ -168,12 +168,7 @@ export default function EventCard({
         dark:hover:bg-secondary
       `)}
     >
-      {shouldShowNewBadge && (
-        <div className="absolute top-2.5 right-2.5 z-10">
-          <NewBadge />
-        </div>
-      )}
-      {!shouldShowNewBadge && shouldShowEndingSoonBadge(event) && (
+      {shouldShowEndingSoonBadge(event) && (
         <div className="absolute top-2.5 right-2.5 z-10">
           <span className="inline-flex items-center bg-transparent px-1 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">
             Ending soon

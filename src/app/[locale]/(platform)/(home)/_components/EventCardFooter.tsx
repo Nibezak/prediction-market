@@ -56,11 +56,14 @@ export default function EventCardFooter({
           </span>
         )}
       </div>
-      {isResolvedEvent
-        ? (endedLabel
-            ? <span>{endedLabel}</span>
-            : null)
-        : <EventBookmark event={event} refreshStatusOnMount={false} />}
+      <div className="flex items-center gap-2">
+        {shouldShowNewBadge && <NewBadge />}
+        {isResolvedEvent
+          ? (endedLabel
+              ? <span>{endedLabel}</span>
+              : null)
+          : <EventBookmark event={event} refreshStatusOnMount={false} />}
+      </div>
     </div>
   )
 }

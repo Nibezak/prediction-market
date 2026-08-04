@@ -1408,7 +1408,6 @@ export default function EventOrderPanelForm({
             return { ...current, raw, text: raw.toFixed(2) }
           },
         )
-        state.setAmount('')
       }
 
       try {
