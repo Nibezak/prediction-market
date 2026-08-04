@@ -177,7 +177,6 @@ export default function EventOrderPanelInput({
                     ref={inputRef}
                     type="text"
                     inputMode="decimal"
-                    pattern="[0-9.]*"
                     className={cn(
                       `
                         w-full [appearance:textfield] border-0 bg-transparent text-center font-semibold text-foreground
@@ -237,7 +236,6 @@ export default function EventOrderPanelInput({
                   ref={inputRef}
                   type="text"
                   inputMode="decimal"
-                  pattern="[0-9.]*"
                   className={cn(
                     `
                       h-14 w-full [appearance:textfield] border-0 bg-transparent text-right font-semibold text-slate-700

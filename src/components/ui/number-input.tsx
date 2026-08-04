@@ -115,7 +115,6 @@ export function NumberInput({
           ref={inputRef}
           type="text"
           inputMode="decimal"
-          pattern="[0-9.]*"
           value={displayValue}
           onFocus={() => {
             setInputValue(formatNumberInputValue(value))
