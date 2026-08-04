@@ -1347,13 +1347,29 @@ export default function EventOrderPanelForm({
         triggerInputShake()
         return
       }
-      if (state.side === ORDER_SIDE.BUY && amountNumber < 1.0) {
+      
+      // Check for minimum trade amount
+      if (state.side === ORDER_SIDE.BUY) {
         const kesAmount = amountNumber * kesPerUsdc
         if (kesAmount < 130) {
           setShowMarketMinimumWarning(true)
           triggerInputShake()
           return
         }
+      }
+      
+      // Check for insufficient funds before API call
+      if (state.side === ORDER_SIDE.BUY && balance?.raw && amountNumber > balance.raw) {
+        setTradeErrorMessage(t('Insufficient funds'))
+        triggerInputShake()
+        return
+      }
+      
+      // Check for insufficient shares to sell
+      if (state.side === ORDER_SIDE.SELL && amountNumber > selectedShares) {
+        setTradeErrorMessage(t('Insufficient shares'))
+        triggerInputShake()
+        return
       }
 
       if (ammTradeInFlightRef.current) {
@@ -1436,9 +1452,25 @@ export default function EventOrderPanelForm({
         if (!response.ok) {
           queryClient.setQueryData(positionQueryKey, previousPositions)
           queryClient.setQueryData(balanceQueryKey, previousBalance)
-          const errorMessage = result?.error || `API Error (${response.status})`
-          console.error('AMM API Error:', response.status, result)
-          setTradeErrorMessage(errorMessage)
+          
+          // Handle specific error types
+          if (response.status === 400) {
+            const errorMessage = result?.error || 'Invalid request'
+            // Check if it's an insufficient funds error
+            if (errorMessage.toLowerCase().includes('insufficient') || errorMessage.toLowerCase().includes('balance')) {
+              setTradeErrorMessage(t('Insufficient funds'))
+            } else if (errorMessage.toLowerCase().includes('minimum') || errorMessage.toLowerCase().includes('130')) {
+              setTradeErrorMessage(t('Minimum trade amount is 130 KES'))
+            } else {
+              setTradeErrorMessage(errorMessage)
+            }
+          } else if (response.status === 403) {
+            setTradeErrorMessage(t('Insufficient funds'))
+          } else {
+            const errorMessage = result?.error || `API Error (${response.status})`
+            console.error('AMM API Error:', response.status, result)
+            setTradeErrorMessage(errorMessage)
+          }
           triggerInputShake()
           return
         }
