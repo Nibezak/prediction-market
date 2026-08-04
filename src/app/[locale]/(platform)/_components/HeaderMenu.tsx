@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpFromWalletIcon, BadgePlusIcon, WalletIcon } from 'lucide-react'
+import { ArrowUpIcon, BadgePlusIcon, WalletIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
@@ -111,7 +111,7 @@ function HeaderMenuClient() {
               aria-label={t('Withdraw')}
               title={t('Withdraw')}
             >
-              <ArrowUpFromWalletIcon className="size-5" strokeWidth={2.25} />
+              <ArrowUpIcon className="size-5" strokeWidth={2.25} />
             </Button>
           )}
           {!isMobile && <HeaderNotifications />}
