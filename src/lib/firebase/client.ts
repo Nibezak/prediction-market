@@ -22,8 +22,22 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 }
 
+function getDynamicFirebaseConfig() {
+  const windowConfig = typeof window !== 'undefined' ? (window as any).__FIREBASE_CONFIG__ : null
+  return {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || windowConfig?.apiKey,
+    authDomain: getBrowserAuthDomain() || windowConfig?.authDomain,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || windowConfig?.projectId,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || windowConfig?.storageBucket,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || windowConfig?.messagingSenderId,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || windowConfig?.appId,
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || windowConfig?.measurementId,
+  }
+}
+
 export function isFirebaseConfigured(): boolean {
-  const missing = Object.entries(firebaseConfig)
+  const config = getDynamicFirebaseConfig()
+  const missing = Object.entries(config)
     .filter(([key, value]) => key !== 'measurementId' && !value?.trim())
     .map(([key]) => key)
 
@@ -31,7 +45,8 @@ export function isFirebaseConfigured(): boolean {
 }
 
 function getFirebaseConfig() {
-  const missing = Object.entries(firebaseConfig)
+  const config = getDynamicFirebaseConfig()
+  const missing = Object.entries(config)
     .filter(([key, value]) => key !== 'measurementId' && !value?.trim())
     .map(([key]) => key)
 
@@ -39,7 +54,7 @@ function getFirebaseConfig() {
     throw new Error(`Firebase is not configured. Missing: ${missing.join(', ')}`)
   }
 
-  return firebaseConfig as Required<Omit<typeof firebaseConfig, 'measurementId'>> & Pick<typeof firebaseConfig, 'measurementId'>
+  return config as Required<Omit<typeof config, 'measurementId'>> & Pick<typeof config, 'measurementId'>
 }
 
 const browserAppName = 'slimefish-browser'

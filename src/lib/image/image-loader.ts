@@ -52,7 +52,7 @@ export default function imageLoader({
   const normalizedSrc = src.startsWith('//') ? `https:${src}` : src
 
   if (isDirectUrl(normalizedSrc)) {
-    return appendLoaderParams(normalizedSrc, width, quality)
+    return normalizedSrc
   }
 
   const url = new URL('https://wsrv.nl/')

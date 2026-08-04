@@ -192,12 +192,14 @@ export function resolveCanonicalSportsSportSlug(
     return resolvedSeriesSlug
   }
 
-  const tagCandidates = Array.isArray(sportsTags) ? sportsTags : []
-  for (const candidate of tagCandidates) {
-    const mappedSlug = resolveAlias(resolver.classificationByAliasKey, candidate)
-    if (mappedSlug) {
-      return mappedSlug
-    }
+  const normalizedSport = normalizeAliasKey(sportsSportSlug)
+  if (normalizedSport) {
+    return normalizedSport
+  }
+
+  const normalizedSeries = normalizeAliasKey(sportsSeriesSlug)
+  if (normalizedSeries) {
+    return normalizedSeries
   }
 
   return null

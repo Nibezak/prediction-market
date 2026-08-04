@@ -66,21 +66,23 @@ export default function EventOrderPanelInput({
     }
   }
 
-  function handleBlur(value: string) {
-    const cleaned = sanitizeNumericInput(value)
-    const numeric = Number.parseFloat(cleaned)
-
-    if (!cleaned || Number.isNaN(numeric)) {
-      onAmountChange('')
-      return
+  function handleBlur() {
+    if (side === ORDER_SIDE.SELL) {
+      const cleaned = sanitizeNumericInput(amount)
+      const numeric = Number.parseFloat(cleaned)
+      if (!cleaned || Number.isNaN(numeric)) {
+        onAmountChange('')
+        return
+      }
+      onAmountChange(formatAmountInputValue(numeric))
     }
-
-    const clampedValue = side === ORDER_SIDE.SELL
-      ? numeric
-      : Math.min(numeric, MAX_AMOUNT_INPUT)
-
-    const ledgerValue = side === ORDER_SIDE.BUY && currency === 'KES' ? clampedValue / kesPerUsdc : clampedValue
-    onAmountChange(formatAmountInputValue(ledgerValue))
+    else {
+      if (amountNumber <= 0) {
+        onAmountChange('')
+        return
+      }
+      onAmountChange(formatAmountInputValue(amountNumber))
+    }
   }
 
   function incrementAmount(delta: number) {
@@ -187,7 +189,7 @@ export default function EventOrderPanelInput({
                     placeholder={side === ORDER_SIDE.SELL ? '0' : currency === 'KES' ? 'KES 0' : '$0'}
                     value={inputValue}
                     onChange={e => handleInputChange(e.target.value)}
-                    onBlur={e => handleBlur(e.target.value)}
+                    onBlur={handleBlur}
                   />
                 </div>
                 <Button
@@ -246,7 +248,7 @@ export default function EventOrderPanelInput({
                   placeholder={side === ORDER_SIDE.SELL ? '0' : currency === 'KES' ? 'KES 0' : '$0'}
                   value={inputValue}
                   onChange={e => handleInputChange(e.target.value)}
-                  onBlur={e => handleBlur(e.target.value)}
+                  onBlur={handleBlur}
                 />
               </div>
             </div>
