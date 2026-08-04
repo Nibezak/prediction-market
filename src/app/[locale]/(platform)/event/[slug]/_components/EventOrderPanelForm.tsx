@@ -442,28 +442,18 @@ function useOrderBookComputations({
       return null
     }
 
-    if (ammBuyQuote && amountNumber > 0 && ammBuyQuote.sharesPurchased > 0) {
-      // The backend quote is the execution source of truth. Keeping the panel
-      // on this value prevents the displayed chance and payout from diverging.
-      const actualPriceCents = Number((ammBuyQuote.currentProbability * 100).toFixed(2))
-      return {
-        avgPriceCents: actualPriceCents,
-        filledShares: ammBuyQuote.sharesPurchased,
-        totalCost: amountNumber,
-        limitPriceCents: actualPriceCents,
-      }
-    }
-
-    // An AMM quote is only requested after the user enters an amount. Before
-    // then, show the selected option's canonical price, never CLOB's 50c
-    // fallback. This keeps the initial panel aligned with the option card.
     if (isAmm) {
-      const actualPriceCents = outcomeFallbackBuyPriceCents && outcomeFallbackBuyPriceCents > 0
-        ? outcomeFallbackBuyPriceCents
-        : 50
+      const actualPriceCents = (ammBuyQuote?.sharesPurchased && ammBuyQuote.sharesPurchased > 0)
+        ? Number((ammBuyQuote.currentProbability * 100).toFixed(2))
+        : (outcomeFallbackBuyPriceCents && outcomeFallbackBuyPriceCents > 0)
+          ? outcomeFallbackBuyPriceCents
+          : 50
+      const filledShares = (ammBuyQuote?.sharesPurchased && ammBuyQuote.sharesPurchased > 0)
+        ? ammBuyQuote.sharesPurchased
+        : (amountNumber > 0 && actualPriceCents > 0 ? amountNumber / (actualPriceCents / 100) : 0)
       return {
         avgPriceCents: actualPriceCents,
-        filledShares: amountNumber > 0 ? amountNumber / (actualPriceCents / 100) : 0,
+        filledShares,
         totalCost: amountNumber,
         limitPriceCents: actualPriceCents,
       }
