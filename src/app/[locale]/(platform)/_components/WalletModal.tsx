@@ -104,58 +104,6 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     }
   }
 
-  if (isMobile) {
-    return (
-      <Drawer
-        open={open}
-        onOpenChange={(next) => {
-          setCopied(false)
-          onOpenChange(next)
-        }}
-      >
-        <DrawerContent className="max-h-[90vh] w-full bg-background px-0">
-          <DrawerHeader className="gap-1 px-4 pt-3 pb-2">
-            <div className="flex items-center">
-              {view !== 'fund'
-                ? (
-                    <button
-                      type="button"
-                      className={cn(`
-                        rounded-md p-2 opacity-70 ring-offset-background transition
-                        hover:bg-muted hover:opacity-100
-                        focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden
-                        disabled:pointer-events-none
-                        [&_svg]:pointer-events-none [&_svg]:shrink-0
-                        [&_svg:not([class*='size-'])]:size-4
-                      `)}
-                      onClick={() => onViewChange('fund')}
-                    >
-                      <ChevronLeftIcon />
-                    </button>
-                  )
-                : (
-                    <span className="size-8" aria-hidden="true" />
-                  )}
-              <DrawerTitle className="flex-1 text-center text-xl font-semibold text-foreground">Deposit</DrawerTitle>
-              <span className="size-8" aria-hidden="true" />
-            </div>
-            <DrawerDescription className="text-center text-xs text-muted-foreground">
-              Balance:
-              {' '}
-              {balanceDisplay}
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="border-t" />
-          <div className="w-full px-4 pb-4">
-            <div className="space-y-4 pt-4">
-              {content}
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
-    )
-  }
-
   return (
     <Dialog
       open={open}
@@ -165,7 +113,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       }}
     >
       <DialogContent
-        className="max-w-md border bg-background pt-4 sm:max-w-md"
+        className="max-w-md border bg-background pt-4 max-sm:max-h-[calc(100dvh-3rem)] max-sm:w-[calc(100%-1rem)] max-sm:rounded-xl sm:max-w-md"
         showCloseButton
       >
         <DialogHeader className="gap-1">
@@ -200,7 +148,9 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
           </DialogDescription>
         </DialogHeader>
         <div className="-mx-6 border-t" />
-        {content}
+        <div className="overflow-y-auto overscroll-contain max-sm:max-h-[calc(100dvh-10rem)]">
+          {content}
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -258,31 +208,9 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
     />
   )
 
-  if (isMobile) {
-    return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="max-h-[90vh] w-full bg-background px-0">
-          <DrawerHeader className="px-4 pt-4 pb-2">
-            <DrawerTitle className="text-center text-foreground">
-              Withdraw
-            </DrawerTitle>
-            <DrawerDescription className="text-center text-xs text-muted-foreground">
-              Send funds from your Slimefish balance to M-Pesa.
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="w-full px-4 pb-4">
-            <div className="space-y-4 pt-4">
-              {content}
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
-    )
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-md border bg-background">
+      <DialogContent className="w-full max-w-md border bg-background max-sm:max-h-[calc(100dvh-3rem)] max-sm:w-[calc(100%-1rem)] max-sm:rounded-xl">
         <DialogHeader>
           <DialogTitle className="text-center text-foreground">
             Withdraw
@@ -291,7 +219,9 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
             Send funds from your Slimefish balance to M-Pesa.
           </DialogDescription>
         </DialogHeader>
-        {content}
+        <div className="overflow-y-auto overscroll-contain max-sm:max-h-[calc(100dvh-10rem)]">
+          {content}
+        </div>
       </DialogContent>
     </Dialog>
   )
