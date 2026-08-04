@@ -6,8 +6,8 @@ import AppLink from '@/components/AppLink'
 import HeaderCurrencyToggle from '@/components/HeaderCurrencyToggle'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { hasStaffPermission } from '@/lib/staff-permissions'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { useUser } from '@/stores/useUser'
 
 interface FinanceOverview {
@@ -24,7 +24,6 @@ const accounts = [
 
 export default function AdminHeaderBalances() {
   const user = useUser()
-  const { formatMoney } = useDisplayCurrency()
   const canViewFinance = hasStaffPermission(user, 'finance.view') || hasStaffPermission(user, 'finance.ledger.view')
   const query = useQuery({
     queryKey: ['admin-finance-overview'],
@@ -34,18 +33,28 @@ export default function AdminHeaderBalances() {
     refetchIntervalInBackground: true,
     queryFn: async (): Promise<FinanceOverview> => {
       const response = await fetch('/api/amm/admin/finance/overview', { cache: 'no-store' })
-      if (!response.ok) throw new Error('Finance balances are unavailable.')
+      if (!response.ok) {
+        throw new Error('Finance balances are unavailable.')
+      }
       const payload = await response.json().catch(() => null)
       return payload?.data ?? {}
     },
   })
 
-  if (!canViewFinance) return null
+  if (!canViewFinance) {
+    return null
+  }
 
   const values = {
     treasury: Number(query.data?.treasury?.available ?? 0),
     wallet: Number(query.data?.wallet?.total ?? 0),
     commissions: Number(query.data?.commissions?.total ?? 0),
+  }
+
+  // The API returns values in KES, but formatMoney expects USD
+  // For admin dashboard, we should display the raw values with KES symbol
+  function formatKESMoney(value: number) {
+    return `KES ${value.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
   }
 
   return (
@@ -66,7 +75,7 @@ export default function AdminHeaderBalances() {
             </span>
             {query.isLoading
               ? <Skeleton className="h-4 w-14" />
-              : <span className="text-sm font-semibold tabular-nums text-foreground">{formatMoney(values[key])}</span>}
+              : <span className="text-sm font-semibold tabular-nums text-foreground">{formatKESMoney(values[key])}</span>}
           </AppLink>
         </Button>
       ))}

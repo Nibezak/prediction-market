@@ -143,8 +143,11 @@ export function validateOrder({
     return { ok: false, reason: 'MARKET_MIN_AMOUNT' }
   }
 
-  if (side === ORDER_SIDE.BUY && amountNumber > (availableBalance + 1e-4)) {
-    return { ok: false, reason: 'INSUFFICIENT_BALANCE' }
+  if (side === ORDER_SIDE.BUY) {
+    const fundingRequired = calculateBuyOrderFundingRequirement(amountNumber)
+    if (!Number.isFinite(fundingRequired) || fundingRequired > availableBalance) {
+      return { ok: false, reason: 'INSUFFICIENT_BALANCE' }
+    }
   }
 
   if (side === ORDER_SIDE.SELL && amountNumber > normalizedAvailableShares) {

@@ -61,12 +61,11 @@ function resolveEventOrderQueryState(
   }
 
   const parsedOutcomeIndex = Number.parseInt(outcomeIndexParam ?? '', 10)
-  const resolvedOutcomeIndex = Number.isFinite(parsedOutcomeIndex)
+  const resolvedOutcomeIndex = Number.isFinite(parsedOutcomeIndex) && parsedOutcomeIndex >= 0
     ? parsedOutcomeIndex
     : null
   const targetOutcome = resolvedOutcomeIndex !== null
     ? market.outcomes.find(outcome => outcome.outcome_index === resolvedOutcomeIndex)
-    ?? market.outcomes[resolvedOutcomeIndex]
     ?? null
     : null
   const normalizedSide = sideParam?.toUpperCase()

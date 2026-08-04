@@ -17,13 +17,13 @@ export default function HeaderCurrencyToggle({ showBoth = false }: { showBoth?: 
   }
   if (showBoth) {
     return (
-      <div className="inline-flex h-8 items-center rounded-md border bg-muted/30 p-0.5" role="group" aria-label="Display currency">
+      <div className="inline-flex h-6 items-center rounded-md border bg-muted/30 p-0.5" role="group" aria-label="Display currency">
         {(['USD', 'KES'] as const).map(option => (
           <button
             key={option}
             type="button"
             className={cn(
-              'h-7 min-w-9 rounded px-2 text-xs font-semibold transition-colors',
+              'h-5 min-w-7 rounded px-1.5 text-[10px] font-semibold transition-colors',
               currency === option
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -31,8 +31,12 @@ export default function HeaderCurrencyToggle({ showBoth = false }: { showBoth?: 
             aria-pressed={currency === option}
             title={option === 'USD' ? 'Show values in US dollars' : 'Show values in Kenyan shillings'}
             onClick={async () => {
-              if (currency === option) return
-              if (await setCurrency(option)) router.refresh()
+              if (currency === option) {
+                return
+              }
+              if (await setCurrency(option)) {
+                router.refresh()
+              }
             }}
           >
             {option === 'USD' ? '$' : 'KES'}

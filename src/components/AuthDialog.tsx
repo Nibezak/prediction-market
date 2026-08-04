@@ -132,7 +132,10 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-      throw new Error(payload?.message || 'Authentication failed.')
+      // Only throw error for actual failures, not for successful 2FA redirect
+      if (!payload.requiresTwoFactor) {
+        throw new Error(payload?.message || 'Authentication failed.')
+      }
     }
     if (payload.requiresTwoFactor) {
       window.location.assign(buildTwoFactorRedirectPath(window.location.pathname, window.location.search))

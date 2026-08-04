@@ -29,8 +29,6 @@ interface EventOrderPanelInputProps {
   shouldShake?: boolean
 }
 
-const BUY_CHIP_VALUES_USD = [1, 5, 10, 100]
-
 export default function EventOrderPanelInput({
   isMobile,
   side,
@@ -111,7 +109,8 @@ export default function EventOrderPanelInput({
 
     const maxBalance = Number.isFinite(balance.raw) ? balance.raw : 0
     const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
-    onAmountChange(formatAmountInputValue(limitedBalance, { roundingMode: 'floor' }))
+    // Don't use formatAmountInputValue as it expects cents, but balance.raw is already in dollars
+    onAmountChange(limitedBalance.toString())
     focusInput()
   }
 
