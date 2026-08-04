@@ -230,14 +230,14 @@ export default function EventOrderPanelInput({
                         )}
                 </div>
               </div>
-              <div className="relative flex-1">
+              <div className="relative flex-1 min-w-0 overflow-hidden">
                 <input
                   ref={inputRef}
                   type="text"
                   className={cn(
                     `
                       h-14 w-full [appearance:textfield] border-0 bg-transparent text-right font-semibold text-slate-700
-                      placeholder-slate-400 outline-hidden
+                      placeholder-slate-400 outline-hidden tracking-tight truncate min-w-0
                       dark:text-slate-300 dark:placeholder-slate-500
                       [&::-webkit-inner-spin-button]:appearance-none
                       [&::-webkit-outer-spin-button]:appearance-none

@@ -86,8 +86,8 @@ export default function EventOrderPanelEarnings({
     side === ORDER_SIDE.SELL && 'inline-flex items-center justify-center gap-2',
   )
   const desktopEarningsClass = cn(
-    'font-bold text-yes',
-    desktopDigitCount >= 9 ? 'text-xl' : desktopDigitCount >= 7 ? 'text-2xl' : 'text-3xl',
+    'font-bold text-yes truncate min-w-0 max-w-[180px] text-right',
+    desktopDigitCount >= 7 ? 'text-lg sm:text-xl' : desktopDigitCount >= 5 ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl',
     side === ORDER_SIDE.SELL && 'flex items-center gap-2',
   )
 

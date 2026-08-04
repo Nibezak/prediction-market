@@ -54,15 +54,15 @@ export function getAmountSizeClass(rawAmount: string, options?: AmountSizeClassO
   const [rawWholePart = ''] = rawAmount.split('.')
   const normalizedWholePart = rawWholePart.replace(/^0+/, '')
   const digitCount = normalizedWholePart.length
-  const largeClass = options?.large ?? 'text-4xl'
-  const mediumClass = options?.medium ?? 'text-3xl'
-  const smallClass = options?.small ?? 'text-2xl'
+  const largeClass = options?.large ?? 'text-2xl sm:text-3xl'
+  const mediumClass = options?.medium ?? 'text-xl sm:text-2xl'
+  const smallClass = options?.small ?? 'text-lg sm:text-xl'
 
-  if (digitCount >= 9) {
+  if (digitCount >= 6) {
     return smallClass
   }
 
-  if (digitCount >= 7) {
+  if (digitCount >= 4) {
     return mediumClass
   }
 
