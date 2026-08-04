@@ -479,12 +479,6 @@ export function formatAmountInputValue(value: number, options: AmountInputFormat
     return ''
   }
 
-  const display = getDisplayMoneyConfig()
-  if (display.currency === 'KES') {
-    const kesValue = Math.round(value)
-    return kesValue <= 0 ? '' : kesValue.toString()
-  }
-
   const roundingMode = options.roundingMode ?? 'round'
   const scaled = value * 100
   const roundedScaled = roundingMode === 'floor'

@@ -34,46 +34,7 @@ function resolveFallbackMarketChance(event: Event) {
   return yesPrice == null ? 50 : Math.max(0, Math.min(100, yesPrice * 100))
 }
 
-function buildFallbackFeaturedEvents(events: Event[], locale: SupportedLocale): HomeFeaturedEventCard[] {
-  const candidates = events.filter(event => event.markets.length > 0).slice(0, 6)
 
-  return candidates.map((event, index, all) => {
-    const market = event.markets[0]!
-    const yesChance = resolveFallbackMarketChance(event)
-    const noChance = Math.max(0, Math.min(100, 100 - yesChance))
-
-    return {
-      featuredId: `fallback:${event.id}`,
-      targetType: 'event',
-      source: 'manual',
-      rank: index,
-      contextMode: 'hidden',
-      kind: 'standard',
-      event,
-      primaryMarkets: [market],
-      topOutcomes: market.outcomes.slice(0, 2).map((outcome, outcomeIndex) => ({
-        key: `${market.condition_id}:${outcome.outcome_index}`,
-        label: outcome.outcome_text,
-        chance: outcomeIndex === 1 ? noChance : yesChance,
-        imageUrl: null,
-        color: outcomeIndex === 1 ? 'var(--chart-2)' : 'var(--chart-1)',
-      })),
-      contextItems: [],
-      previousTitle: all[index - 1]?.title ?? all.at(-1)?.title ?? null,
-      nextTitle: all[index + 1]?.title ?? all[0]?.title ?? null,
-      resolvedEventId: event.id,
-      resolvedSeriesSlug: event.series_slug ?? null,
-      temporalStatus: event.has_live_chart ? 'live' : 'ends',
-      temporalLabel: event.has_live_chart
-        ? 'LIVE'
-        : event.end_date
-          ? `Ends ${(() => { try { return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(event.end_date)) } catch { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(event.end_date)) } })()}`
-          : 'Ends later',
-      sportsMarketGroups: [],
-      liveChartConfig: null,
-    }
-  })
-}
 
 const DEFAULT_FALLBACK_HOT_TOPICS: HomeFeaturedHotTopic[] = [
   { label: 'World', slug: 'world', href: '/world', volume24h: 0 },
@@ -233,11 +194,7 @@ export default async function HomeContent({
 
   initialEvents = initialEventsResult.events
   initialCurrentTimestamp = initialEventsResult.currentTimestamp
-  initialFeaturedEvents = featuredEventsResult.featuredEvents.length > 0
-    ? featuredEventsResult.featuredEvents
-    : shouldLoadFeaturedEvents
-      ? buildFallbackFeaturedEvents(initialEvents, resolvedLocale)
-      : []
+  initialFeaturedEvents = featuredEventsResult.featuredEvents
   initialFeaturedHotTopics = mergeHotTopics(
     featuredEventsResult.featuredHotTopics,
     buildFallbackHotTopics(initialEvents),
