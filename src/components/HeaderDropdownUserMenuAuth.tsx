@@ -2,11 +2,9 @@
 
 import { BadgePercentIcon, BookmarkIcon, ChevronDownIcon, DownloadIcon, InfoIcon, MessageCircleIcon, SettingsIcon, ShieldIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
 import HeaderNotifications from '@/app/[locale]/(platform)/_components/HeaderNotifications'
 import AppLink from '@/components/AppLink'
 import LocaleSwitcherMenuItem from '@/components/LocaleSwitcherMenuItem'
@@ -22,8 +20,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import UserInfoSection from '@/components/UserInfoSection'
-import { useBalance } from '@/hooks/useBalance'
-import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { usePathname } from '@/i18n/navigation'
@@ -31,11 +27,6 @@ import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/ava
 import { signOutAndRedirect } from '@/lib/logout'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
-
-const HeaderDepositButton = dynamic(
-  () => import('@/app/[locale]/(platform)/_components/HeaderDepositButton'),
-  { ssr: false },
-)
 
 function useHoverMenu(enableHoverOpen: boolean) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -125,11 +116,7 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
     ? getAvatarPlaceholderStyle(avatarSeed)
     : undefined
 
-  const { balance, isLoadingBalance } = useBalance()
-  const { formatMoney } = useDisplayCurrency()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
-  const tradingOnboarding = useOptionalTradingOnboarding()
-  const startDepositFlow = tradingOnboarding?.startDepositFlow
 
   async function handleLogout() {
     handleMenuClose()
@@ -188,23 +175,14 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
             <span>{t('Profile')}</span>
           </button>
         </DrawerTrigger>
-        <DrawerContent className="max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] rounded-t-[1.75rem] border-border/70 bg-background px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <DrawerContent className="
+          max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] rounded-t-[1.75rem] border-border/70 bg-background px-4
+          pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]
+        "
+        >
           <div className="grid min-h-0 flex-1 gap-4 overflow-x-hidden overflow-y-auto overscroll-contain pt-2 pb-4">
             <div className="rounded-2xl border border-border/70 p-2">
               <UserInfoSection />
-            </div>
-
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-3">
-              <AppLink href="/portfolio" className="text-lg font-semibold text-yes">
-                {isLoadingBalance
-                  ? <span className="block h-6 w-20 animate-pulse rounded-md bg-muted" />
-                  : (
-                      <span>{formatMoney(Number.isFinite(balance?.raw) ? balance?.raw ?? 0 : 0)}</span>
-                    )}
-              </AppLink>
-              {startDepositFlow
-                ? <Button size="sm" onClick={startDepositFlow}>{t('Deposit')}</Button>
-                : <HeaderDepositButton />}
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-border/70">
@@ -229,7 +207,11 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
                 </>
               )}
               <DrawerClose asChild>
-                <AppLink intentPrefetch href="/predictions/trending?bookmarked=true" className="flex items-center gap-3 px-4 py-3 text-sm font-semibold">
+                <AppLink
+                  intentPrefetch
+                  href="/predictions/trending?bookmarked=true"
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                >
                   <BookmarkIcon className="size-4 text-primary" />
                   {t('Bookmarks')}
                 </AppLink>
@@ -265,7 +247,15 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
 
             <div className="overflow-hidden rounded-2xl border border-border/70">
               <DrawerClose asChild>
-                <a href="https://chat.whatsapp.com/CbEzxiNuvTS7utAm5TMD05" target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-emerald-500 hover:text-emerald-400">
+                <a
+                  href="https://chat.whatsapp.com/CbEzxiNuvTS7utAm5TMD05"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="
+                    flex items-center gap-3 px-4 py-3 text-sm font-semibold text-emerald-500
+                    hover:text-emerald-400
+                  "
+                >
                   <MessageCircleIcon className="size-4 text-emerald-500" />
                   {t('WhatsApp group')}
                 </a>
@@ -290,7 +280,9 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
               <DrawerClose asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-muted-foreground"
+                  className="
+                    flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-muted-foreground
+                  "
                   onClick={() => {
                     if (onHowItWorks) {
                       onHowItWorks()
@@ -408,7 +400,11 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
           )}
 
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <AppLink intentPrefetch href="/predictions/trending?bookmarked=true" className="flex w-full items-center gap-1.5">
+            <AppLink
+              intentPrefetch
+              href="/predictions/trending?bookmarked=true"
+              className="flex w-full items-center gap-1.5"
+            >
               <BookmarkIcon className="size-4 text-primary" />
               {t('Bookmarks')}
             </AppLink>
@@ -464,31 +460,6 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
             <ThemeSelector />
           </div>
 
-          {isMobile && (
-            <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-              <div className="flex w-full items-center justify-between" onClickCapture={handleMenuClose}>
-                <AppLink href="/portfolio" className="flex items-center gap-1 text-base font-semibold text-yes">
-                  {isLoadingBalance
-                    ? <div className="h-5 w-16 animate-pulse rounded-md bg-muted" />
-                    : (
-                        <span>
-                          {formatMoney(Number.isFinite(balance?.raw) ? balance?.raw ?? 0 : 0)}
-                        </span>
-                      )}
-                </AppLink>
-                {startDepositFlow
-                  ? (
-                      <Button size="sm" onClick={startDepositFlow}>
-                        {t('Deposit')}
-                      </Button>
-                    )
-                  : (
-                      <HeaderDepositButton />
-                    )}
-              </div>
-            </DropdownMenuItem>
-          )}
-
           <DropdownMenuSeparator />
 
           {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
@@ -496,19 +467,25 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
           </DropdownMenuItem> */}
 
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-emerald-500 hover:text-emerald-400">
-            <a href="https://chat.whatsapp.com/CbEzxiNuvTS7utAm5TMD05" target="_blank" rel="noreferrer" className="flex w-full items-center gap-1.5 text-emerald-500 hover:text-emerald-400">
+            <a
+              href="https://chat.whatsapp.com/CbEzxiNuvTS7utAm5TMD05"
+              target="_blank"
+              rel="noreferrer"
+              className="flex w-full items-center gap-1.5 text-emerald-500 hover:text-emerald-400"
+            >
               <MessageCircleIcon className="size-4 text-emerald-500" />
               {t('WhatsApp group')}
             </a>
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            className="py-2 text-sm font-semibold cursor-pointer text-muted-foreground"
+            className="cursor-pointer py-2 text-sm font-semibold text-muted-foreground"
             onSelect={() => {
               handleMenuClose()
               if (onHowItWorks) {
                 onHowItWorks()
-              } else {
+              }
+              else {
                 const searchParams = new URLSearchParams(window.location.search)
                 searchParams.set('howItWorks', 'true')
                 window.history.pushState(null, '', `?${searchParams.toString()}`)

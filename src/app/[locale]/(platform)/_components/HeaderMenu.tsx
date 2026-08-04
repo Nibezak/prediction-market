@@ -11,13 +11,13 @@ import AppLink from '@/components/AppLink'
 import HeaderCurrencyToggle from '@/components/HeaderCurrencyToggle'
 import HeaderDropdownUserMenuAuth from '@/components/HeaderDropdownUserMenuAuth'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { authClient } from '@/lib/auth-client'
 import { useUser } from '@/stores/useUser'
 
@@ -68,6 +68,7 @@ function HeaderMenuClient() {
     <>
       {isAuthenticated && (
         <>
+          <HeaderCurrencyToggle showBoth />
           {startDepositFlow && (
             <Button
               variant="ghost"
@@ -92,7 +93,13 @@ function HeaderMenuClient() {
                 aria-label={`${t('Cash available to trade')}: ${formattedCash}`}
               >
                 {!isMobile && <WalletIcon className="size-4 text-muted-foreground" />}
-                {isLoadingBalance ? <Skeleton className="h-4 w-14" /> : <span className="text-sm font-semibold tabular-nums">{formattedCash}</span>}
+                {isLoadingBalance
+                  ? <Skeleton className="h-4 w-14" />
+                  : (
+                      <span className="text-sm font-semibold tabular-nums">
+                        {formattedCash}
+                      </span>
+                    )}
                 <ChevronDownIcon className="size-3.5 opacity-70" />
               </Button>
             </DropdownMenuTrigger>
@@ -104,11 +111,6 @@ function HeaderMenuClient() {
               sticky="always"
               className="w-64 max-w-[calc(100vw-1rem)]"
             >
-              <DropdownMenuLabel className="flex items-center justify-between gap-3 font-normal">
-                <span className="text-xs text-muted-foreground">Display currency</span>
-                <HeaderCurrencyToggle showBoth />
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
               <DropdownMenuItem asChild><AppLink href="/portfolio">View portfolio</AppLink></DropdownMenuItem>
               <DropdownMenuItem onSelect={() => launchWalletFlow(startDepositFlow)} disabled={!startDepositFlow}>
                 {t('Deposit funds')}
