@@ -109,8 +109,8 @@ export default function EventOrderPanelInput({
 
     const maxBalance = Number.isFinite(balance.raw) ? balance.raw : 0
     const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
-    // Use formatAmountInputValue to ensure proper formatting for both USD and KES
-    onAmountChange(formatAmountInputValue(limitedBalance))
+    // Balance is already in the correct format, no need for formatAmountInputValue
+    onAmountChange(String(limitedBalance))
     focusInput()
   }
 

@@ -1,17 +1,15 @@
 'use client'
 
-import { BadgePlusIcon, ChevronDownIcon, WalletIcon } from 'lucide-react'
+import { ArrowUpFromWalletIcon, BadgePlusIcon, WalletIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import HeaderDropdownUserMenuGuest from '@/app/[locale]/(platform)/_components/HeaderDropdownUserMenuGuest'
 import HeaderNotifications from '@/app/[locale]/(platform)/_components/HeaderNotifications'
 import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
-import AppLink from '@/components/AppLink'
 import HeaderCurrencyToggle from '@/components/HeaderCurrencyToggle'
 import HeaderDropdownUserMenuAuth from '@/components/HeaderDropdownUserMenuAuth'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
@@ -20,6 +18,7 @@ import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { authClient } from '@/lib/auth-client'
 import { useUser } from '@/stores/useUser'
+import { useRouter } from 'next/navigation'
 
 const { useSession } = authClient
 
@@ -48,7 +47,7 @@ function HeaderMenuClient() {
   const { balance, isLoadingBalance } = useBalance()
   const { formatMoney } = useDisplayCurrency()
   const [howItWorksOpen, setHowItWorksOpen] = useState(false)
-  const [walletMenuOpen, setWalletMenuOpen] = useState(false)
+  const router = useRouter()
 
   const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
   const shouldShowGuestActions = hasHydrated && !isAuthenticated && !isSessionPending
@@ -60,8 +59,11 @@ function HeaderMenuClient() {
     : formatMoney(0)
 
   function launchWalletFlow(flow?: () => void) {
-    setWalletMenuOpen(false)
     window.setTimeout(() => flow?.(), 0)
+  }
+
+  function handleCashClick() {
+    router.push('/portfolio')
   }
 
   return (
@@ -82,45 +84,36 @@ function HeaderMenuClient() {
             </Button>
           )}
           {!startDepositFlow && <HeaderDepositButton iconOnly />}
-          <DropdownMenu open={walletMenuOpen} onOpenChange={setWalletMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={isMobile ? 'ghost' : 'secondary'}
-                size="headerCompact"
-                className={isMobile
-                  ? 'h-9 gap-1.5 bg-transparent px-1.5 hover:bg-transparent'
-                  : 'h-9 gap-2 px-3'}
-                aria-label={`${t('Cash available to trade')}: ${formattedCash}`}
-              >
-                {!isMobile && <WalletIcon className="size-4 text-muted-foreground" />}
-                {isLoadingBalance
-                  ? <Skeleton className="h-4 w-14" />
-                  : (
-                      <span className="text-sm font-semibold tabular-nums">
-                        {formattedCash}
-                      </span>
-                    )}
-                <ChevronDownIcon className="size-3.5 opacity-70" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              side="bottom"
-              sideOffset={8}
-              collisionPadding={16}
-              sticky="always"
-              className="w-64 max-w-[calc(100vw-1rem)]"
+          <Button
+            variant={isMobile ? 'ghost' : 'secondary'}
+            size="headerCompact"
+            className={isMobile
+              ? 'h-9 gap-1.5 bg-transparent px-1.5 hover:bg-transparent'
+              : 'h-9 gap-2 px-3'}
+            onClick={handleCashClick}
+            aria-label={`${t('Cash available to trade')}: ${formattedCash}`}
+          >
+            {!isMobile && <WalletIcon className="size-4 text-muted-foreground" />}
+            {isLoadingBalance
+              ? <Skeleton className="h-4 w-14" />
+              : (
+                  <span className="text-sm font-semibold tabular-nums">
+                    {formattedCash}
+                  </span>
+                )}
+          </Button>
+          {startWithdrawFlow && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 bg-transparent hover:bg-transparent"
+              onClick={startWithdrawFlow}
+              aria-label={t('Withdraw')}
+              title={t('Withdraw')}
             >
-              <DropdownMenuItem asChild><AppLink href="/portfolio">View portfolio</AppLink></DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => launchWalletFlow(startDepositFlow)} disabled={!startDepositFlow}>
-                {t('Deposit funds')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => launchWalletFlow(startWithdrawFlow)} disabled={!startWithdrawFlow}>
-                {t('Withdraw funds')}
-              </DropdownMenuItem>
-              {!startDepositFlow && <div className="px-2 py-1"><HeaderDepositButton /></div>}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <ArrowUpFromWalletIcon className="size-5" strokeWidth={2.25} />
+            </Button>
+          )}
           {!isMobile && <HeaderNotifications />}
           {!isMobile && <HeaderDropdownUserMenuAuth onHowItWorks={() => setHowItWorksOpen(true)} />}
         </>

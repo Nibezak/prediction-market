@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { resolveEventOrderBootstrapSelection } from '@/app/[locale]/(platform)/event/[slug]/_utils/event-order-bootstrap-selection'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
+import { ORDER_SIDE, ORDER_TYPE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatAmountInputValue } from '@/lib/formatters'
 import { resolveDefaultEventMarket } from '@/lib/event-market-selection'
 import { useOrder, useSyncLimitPriceWithOutcome } from '@/stores/useOrder'
@@ -188,6 +188,15 @@ function applyOrderQueryParamsToStore({
     setMarket(resolvedQueryState.market)
     if (resolvedQueryState.targetOutcome) {
       setOutcome(resolvedQueryState.targetOutcome)
+      
+      // Auto-set side based on outcome index if not explicitly provided
+      if (!resolvedQueryState.normalizedSide) {
+        if (resolvedQueryState.targetOutcome.outcome_index === OUTCOME_INDEX.NO) {
+          setSide(ORDER_SIDE.SELL)
+        } else if (resolvedQueryState.targetOutcome.outcome_index === OUTCOME_INDEX.YES) {
+          setSide(ORDER_SIDE.BUY)
+        }
+      }
     }
 
     if (resolvedQueryState.normalizedSide === 'SELL') {

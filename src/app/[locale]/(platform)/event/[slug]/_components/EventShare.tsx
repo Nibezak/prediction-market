@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { fetchAffiliateSettingsFromAPI } from '@/lib/affiliate-data'
 import { maybeShowAffiliateToast } from '@/lib/affiliate-toast'
 import { resolveEventMarketPath, resolveEventPagePath } from '@/lib/events-routing'
@@ -234,6 +235,7 @@ function useShareUrlBuilder(affiliateCode: string) {
 export default function EventShare({ event }: EventShareProps) {
   const site = useSiteIdentity()
   const user = useUser()
+  const isMobile = useIsMobile()
   const affiliateCode = user?.affiliate_code?.trim() ?? ''
   const isMultiMarket = event.total_markets_count > 1
   const eventPath = resolveEventPagePath(event)
@@ -256,17 +258,30 @@ export default function EventShare({ event }: EventShareProps) {
   const buildShareUrl = useShareUrlBuilder(affiliateCode)
 
   function handleWrapperPointerEnter() {
+    if (isMobile) return
     clearCloseTimeout()
     setShareMenuOpen(true)
     prefetchAffiliateToastData()
   }
 
   function handleWrapperPointerLeave(pointerEvent: React.PointerEvent) {
+    if (isMobile) return
     if (relatedTargetIsInsideWrapper(pointerEvent.relatedTarget)) {
       return
     }
 
     scheduleClose()
+  }
+
+  function handleToggleClick() {
+    if (!isMobile) return
+    clearCloseTimeout()
+    setShareMenuOpen(prev => {
+      if (!prev) {
+        prefetchAffiliateToastData()
+      }
+      return !prev
+    })
   }
 
   async function handleShare() {
@@ -327,6 +342,7 @@ export default function EventShare({ event }: EventShareProps) {
             className={cn(headerIconButtonClass, 'size-auto p-0')}
             aria-label="Share event"
             onPointerDown={maybeHandleDebugCopy}
+            onClick={handleToggleClick}
           >
             {shareSuccess
               ? <CheckIcon className="size-4 text-primary" />
