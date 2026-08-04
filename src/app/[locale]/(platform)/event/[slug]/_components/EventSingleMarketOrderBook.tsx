@@ -10,9 +10,10 @@ import EventOrderBook, {
   useOrderBookSummaries,
 } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { useOrder } from '@/stores/useOrder'
@@ -48,7 +49,7 @@ function useOrderBookState(market: Market) {
       return null
     }
 
-    return `$${resolvedVolume.toLocaleString('en-US', {
+    return `${resolvedVolume.toLocaleString('en-US', {
       notation: 'compact',
       maximumFractionDigits: 1,
     })} Vol.`
@@ -65,6 +66,7 @@ export default function EventSingleMarketOrderBook({
   const t = useExtracted()
   const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const normalizeOutcomeLabel = useOutcomeLabel()
+  const { formatMoney } = useDisplayCurrency()
   const isMobile = useIsMobile()
   const marketChannelStatus = useMarketChannelStatus()
   const setOrderMarket = useOrder(state => state.setMarket)
@@ -112,7 +114,11 @@ export default function EventSingleMarketOrderBook({
             <h3 className="text-base font-medium">AMM liquidity pool</h3>
             <p className="text-sm text-muted-foreground">Trades execute instantly against shared market liquidity.</p>
           </div>
-          <span className="text-sm font-semibold">${liquidity.toFixed(2)} liquidity</span>
+          <span className="text-sm font-semibold">
+            {formatMoney(liquidity)}
+            {' '}
+            liquidity
+          </span>
         </div>
         <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-3">
           {market.outcomes.map((outcome) => {
@@ -127,7 +133,7 @@ export default function EventSingleMarketOrderBook({
             const optionProbability = option?.probability != null
               ? Number(option.probability) * (Number(option.probability) <= 1 ? 100 : 1)
               : null
-            let rawProb = optionProbability ?? (buyPrice != null ? buyPrice * 100 : 50)
+            const rawProb = optionProbability ?? (buyPrice != null ? buyPrice * 100 : 50)
             const probability = Number.isFinite(rawProb) ? Math.max(0, Math.min(100, rawProb)) : 50
             const selected = selectedOutcomeIndex === outcome.outcome_index
             return (
@@ -141,7 +147,10 @@ export default function EventSingleMarketOrderBook({
                 )}
               >
                 <span className="block font-semibold">{outcome.outcome_text}</span>
-                <span className="text-sm text-muted-foreground">{probability.toFixed(1)}% chance</span>
+                <span className="text-sm text-muted-foreground">
+                  {probability.toFixed(1)}
+                  % chance
+                </span>
               </button>
             )
           })}
