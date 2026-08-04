@@ -3,58 +3,44 @@
 import { getApps, initializeApp, type FirebaseApp } from 'firebase/app'
 import { getAuth, type Auth, type Unsubscribe } from 'firebase/auth'
 
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyCuLoGr8JqgKx-k95UdTxM2TiTt6-Hmp5M',
+  authDomain: 'slimefish-official.firebaseapp.com',
+  projectId: 'slimefish-official',
+  storageBucket: 'slimefish-official.firebasestorage.app',
+  messagingSenderId: '475787665233',
+  appId: '1:475787665233:web:d11f4ae257b7a262dafd70',
+  measurementId: 'G-WJ69LY1MNH',
+}
+
 const configuredAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
 
 function getBrowserAuthDomain() {
   if (configuredAuthDomain) return configuredAuthDomain
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
   if (projectId) return `${projectId}.firebaseapp.com`
-  return undefined
-}
-
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: getBrowserAuthDomain(),
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  return DEFAULT_FIREBASE_CONFIG.authDomain
 }
 
 function getDynamicFirebaseConfig() {
   const windowConfig = typeof window !== 'undefined' ? (window as any).__FIREBASE_CONFIG__ : null
   return {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || windowConfig?.apiKey,
-    authDomain: getBrowserAuthDomain() || windowConfig?.authDomain,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || windowConfig?.projectId,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || windowConfig?.storageBucket,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || windowConfig?.messagingSenderId,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || windowConfig?.appId,
-    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || windowConfig?.measurementId,
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || windowConfig?.apiKey || DEFAULT_FIREBASE_CONFIG.apiKey,
+    authDomain: getBrowserAuthDomain() || windowConfig?.authDomain || DEFAULT_FIREBASE_CONFIG.authDomain,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || windowConfig?.projectId || DEFAULT_FIREBASE_CONFIG.projectId,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || windowConfig?.storageBucket || DEFAULT_FIREBASE_CONFIG.storageBucket,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || windowConfig?.messagingSenderId || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || windowConfig?.appId || DEFAULT_FIREBASE_CONFIG.appId,
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || windowConfig?.measurementId || DEFAULT_FIREBASE_CONFIG.measurementId,
   }
 }
 
 export function isFirebaseConfigured(): boolean {
-  const config = getDynamicFirebaseConfig()
-  const missing = Object.entries(config)
-    .filter(([key, value]) => key !== 'measurementId' && !value?.trim())
-    .map(([key]) => key)
-
-  return missing.length === 0
+  return true
 }
 
 function getFirebaseConfig() {
-  const config = getDynamicFirebaseConfig()
-  const missing = Object.entries(config)
-    .filter(([key, value]) => key !== 'measurementId' && !value?.trim())
-    .map(([key]) => key)
-
-  if (missing.length > 0) {
-    throw new Error(`Firebase is not configured. Missing: ${missing.join(', ')}`)
-  }
-
-  return config as Required<Omit<typeof config, 'measurementId'>> & Pick<typeof config, 'measurementId'>
+  return getDynamicFirebaseConfig()
 }
 
 const browserAppName = 'slimefish-browser'
@@ -62,35 +48,30 @@ const browserAppName = 'slimefish-browser'
 let _cachedApp: FirebaseApp | null | undefined
 let _cachedAuth: Auth | null | undefined
 
-function getOrInitApp(): FirebaseApp | null {
+function getOrInitApp(): FirebaseApp {
   if (_cachedApp) return _cachedApp
-  if (!isFirebaseConfigured()) {
-    return null
-  }
   try {
     const existing = getApps().find((app) => app.name === browserAppName)
     _cachedApp = existing ?? initializeApp(getFirebaseConfig(), browserAppName)
     return _cachedApp
   }
   catch (err) {
-    console.warn('Firebase initialization skipped/failed:', err)
-    return null
+    const existing = getApps().find((app) => app.name === browserAppName)
+    _cachedApp = existing ?? initializeApp(DEFAULT_FIREBASE_CONFIG, browserAppName)
+    return _cachedApp
   }
 }
 
-export function getOrInitAuth(): Auth | null {
+export function getOrInitAuth(): Auth {
   if (_cachedAuth) return _cachedAuth
   const app = getOrInitApp()
-  if (!app) {
-    return null
-  }
   try {
     _cachedAuth = getAuth(app)
     return _cachedAuth
   }
   catch (err) {
-    console.warn('Firebase auth initialization failed:', err)
-    return null
+    _cachedAuth = getAuth(getOrInitApp())
+    return _cachedAuth
   }
 }
 
