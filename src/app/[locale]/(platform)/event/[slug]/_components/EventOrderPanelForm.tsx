@@ -1268,7 +1268,7 @@ export default function EventOrderPanelForm({
     && !isLimitOrder
     && state.side === ORDER_SIDE.BUY
     && amountNumber > 0
-    && amountNumber < 1
+    && amountNumber < 0.50
   const shouldShowLimitMinimumWarning = showLimitMinimumWarning
     && isLimitOrder
     && limitSharesNumber < MIN_LIMIT_ORDER_SHARES
@@ -1345,7 +1345,7 @@ export default function EventOrderPanelForm({
         triggerInputShake()
         return
       }
-      if (state.side === ORDER_SIDE.BUY && amountNumber < 1) {
+      if (state.side === ORDER_SIDE.BUY && amountNumber < 0.50) {
         setShowMarketMinimumWarning(true)
         triggerInputShake()
         return
@@ -1416,7 +1416,7 @@ export default function EventOrderPanelForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             optionId: activeOutcome.token_id,
-            amount: amountNumber,
+            amount: Math.min(amountNumber, Math.max(0.1, availableBalanceForOrders)),
           }),
         })
         const result = await response.json().catch(() => null) as { error?: string } | null

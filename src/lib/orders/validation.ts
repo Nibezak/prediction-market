@@ -139,11 +139,11 @@ export function validateOrder({
     return { ok: false, reason: 'INVALID_AMOUNT' }
   }
 
-  if (!isLimitOrder && side === ORDER_SIDE.BUY && amountNumber < 1) {
+  if (!isLimitOrder && side === ORDER_SIDE.BUY && amountNumber < 0.50) {
     return { ok: false, reason: 'MARKET_MIN_AMOUNT' }
   }
 
-  if (side === ORDER_SIDE.BUY && amountNumber > availableBalance) {
+  if (side === ORDER_SIDE.BUY && amountNumber > (availableBalance + 0.05)) {
     return { ok: false, reason: 'INSUFFICIENT_BALANCE' }
   }
 
