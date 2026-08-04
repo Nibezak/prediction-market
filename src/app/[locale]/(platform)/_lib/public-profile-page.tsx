@@ -233,12 +233,13 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
     notFound()
   }
 
-  const profile = await resolvePublicProfileForSlug(normalized)
   const viewer = await UserRepository.getCurrentUser({ minimal: true })
 
   if (normalized.type === 'username' && !canViewUserAccounts(viewer)) {
     notFound()
   }
+
+  const profile = await resolvePublicProfileForSlug(normalized)
 
   if (!profile) {
     if (normalized.type === 'username') {

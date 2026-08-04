@@ -108,7 +108,7 @@ async function fetchUserPositions({
     if (pageParam > 0) {
       return []
     }
-    const response = await fetch(`/api/amm/users/me/positions?status=${status}&limit=100`, { signal })
+    const response = await fetch(`/api/amm/users/${encodeURIComponent(userAddress)}/positions?status=${status}&limit=100`, { signal })
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
       return []

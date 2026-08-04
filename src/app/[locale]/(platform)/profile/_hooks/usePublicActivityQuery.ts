@@ -24,7 +24,7 @@ async function fetchUserActivity({
   const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   if (isSlimefishBackendAmm) {
     if (pageParam > 0) return []
-    const response = await fetch('/api/amm/users/me/transactions', { signal })
+    const response = await fetch(`/api/amm/users/${encodeURIComponent(userAddress)}/transactions`, { signal })
     const payload = await response.json().catch(() => null)
     if (!response.ok) throw new Error(payload?.error || 'Failed to load transaction history.')
     const rows = Array.isArray(payload?.data) ? payload.data : []

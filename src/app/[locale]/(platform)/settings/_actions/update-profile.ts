@@ -144,14 +144,17 @@ async function uploadImage(user: any, image: File) {
     .jpeg({ quality: 90 })
     .toBuffer()
 
+  console.log('[Profile Upload] Attempting to upload image:', fileName, 'Size:', resizedBuffer.length)
   const { error } = await uploadPublicAsset(fileName, resizedBuffer, {
     contentType: 'image/jpeg',
     cacheControl: '31536000',
   })
 
   if (error) {
+    console.error('[Profile Upload] Upload failed:', error)
     throw new Error(`Profile image upload failed: ${error}`)
   }
 
+  console.log('[Profile Upload] Upload successful:', fileName)
   return fileName
 }

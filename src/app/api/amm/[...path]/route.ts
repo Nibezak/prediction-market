@@ -21,7 +21,7 @@ import { getAccountRestriction } from '@/lib/risk/account-restrictions'
 import { enforceRateLimit } from '@/lib/security/rate-limit'
 import { getClientNetworkIdentity } from '@/lib/security/client-identity'
 import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
-import { getUserPlatformRole } from '@/lib/staff-role'
+import { getUserPlatformRole, canViewUserAccounts } from '@/lib/staff-role'
 import { getStaffPermissions } from '@/lib/staff-permissions'
 
 const AMM_BASE_URL = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
@@ -194,8 +194,18 @@ async function proxyRequest(
 
   let userId = effectiveUser?.id || 'public-user'
 
+  // Handle admin viewing another user's profile
+  const isUserSpecificPath = path.length >= 3
+    && path[0] === 'users'
+    && path[1] !== 'me'
+    && (path[2] === 'positions' || path[2] === 'transactions')
+  
+  if (isUserSpecificPath && canViewUserAccounts(effectiveUser as any)) {
+    const targetUserAddress = path[1]
+    userId = targetUserAddress
+  }
   // Construct the target URL
-  if (effectiveUser?.id) {
+  else if (effectiveUser?.id) {
     const cachedSync = userSyncCache.get(effectiveUser.id)
     if (cachedSync && cachedSync.expiresAt > Date.now()) {
       userId = cachedSync.userId

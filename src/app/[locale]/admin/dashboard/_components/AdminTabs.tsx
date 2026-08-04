@@ -61,7 +61,7 @@ function normalizeTab(value: string | null): TabType {
 }
 
 function formatCurrency(value: unknown) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value ?? 0))
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'KES', maximumFractionDigits: 2 }).format(Number(value ?? 0))
 }
 
 function formatNumber(value: unknown) {
