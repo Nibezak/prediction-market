@@ -1284,6 +1284,13 @@ export default function EventOrderPanelForm({
   }
 
   function handleSideChange(nextSide: typeof state.side) {
+    // For AMM, selling is not supported - force BUY side
+    if (isSlimefishBackendAmm) {
+      clearValidationFeedback()
+      clearSlippageWarning()
+      state.setSide(ORDER_SIDE.BUY)
+      return
+    }
     clearValidationFeedback()
     clearSlippageWarning()
     state.setSide(nextSide)
@@ -1342,6 +1349,13 @@ export default function EventOrderPanelForm({
     }
 
     if (isSlimefishBackendAmm) {
+      // AMM only supports BUY operations
+      if (state.side === ORDER_SIDE.SELL) {
+        setTradeErrorMessage(t('Selling is not supported with AMM'))
+        triggerInputShake()
+        return
+      }
+      
       if (!activeMarket?.condition_id || !activeOutcome?.token_id || amountNumber <= 0) {
         setShowAmountTooLowWarning(true)
         triggerInputShake()
@@ -1361,13 +1375,6 @@ export default function EventOrderPanelForm({
       // Check for insufficient funds before API call
       if (state.side === ORDER_SIDE.BUY && balance?.raw && amountNumber > balance.raw) {
         setTradeErrorMessage(t('Insufficient funds'))
-        triggerInputShake()
-        return
-      }
-      
-      // Check for insufficient shares to sell
-      if (state.side === ORDER_SIDE.SELL && amountNumber > selectedShares) {
-        setTradeErrorMessage(t('Insufficient shares'))
         triggerInputShake()
         return
       }
@@ -2293,6 +2300,7 @@ export default function EventOrderPanelForm({
                   onTypeChange={handleTypeChange}
                   onAmountReset={handleAmountReset}
                   onFocusInput={focusInput}
+                  isAmm={isSlimefishBackendAmm}
                 />
 
                 <EventOrderPanelOutcomeSelector

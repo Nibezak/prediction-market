@@ -20,6 +20,7 @@ interface EventOrderQuerySyncProps {
   event: Event
   marketSlug?: string
   isMobile: boolean
+  isAmm?: boolean
 }
 
 interface ResolvedEventOrderQueryState {
@@ -154,6 +155,7 @@ function applyOrderBootstrapMarketSelection({
 interface ApplyOrderQueryParamsToStoreParams {
   resolvedQueryState: ResolvedEventOrderQueryState | null
   isMobile: boolean
+  isAmm?: boolean
   appliedOrderParamsRef: { current: string | null }
   openedMobileOrderPanelParamsRef: { current: string | null }
   setMarket: (market: Event['markets'][number]) => void
@@ -168,6 +170,7 @@ interface ApplyOrderQueryParamsToStoreParams {
 function applyOrderQueryParamsToStore({
   resolvedQueryState,
   isMobile,
+  isAmm = false,
   appliedOrderParamsRef,
   openedMobileOrderPanelParamsRef,
   setMarket,
@@ -190,8 +193,11 @@ function applyOrderQueryParamsToStore({
       setOutcome(resolvedQueryState.targetOutcome)
       
       // Auto-set side based on outcome index if not explicitly provided
+      // For AMM, always force BUY side since selling is not supported
       if (!resolvedQueryState.normalizedSide) {
-        if (resolvedQueryState.targetOutcome.outcome_index === OUTCOME_INDEX.NO) {
+        if (isAmm) {
+          setSide(ORDER_SIDE.BUY)
+        } else if (resolvedQueryState.targetOutcome.outcome_index === OUTCOME_INDEX.NO) {
           setSide(ORDER_SIDE.SELL)
         } else if (resolvedQueryState.targetOutcome.outcome_index === OUTCOME_INDEX.YES) {
           setSide(ORDER_SIDE.BUY)
@@ -199,11 +205,16 @@ function applyOrderQueryParamsToStore({
       }
     }
 
-    if (resolvedQueryState.normalizedSide === 'SELL') {
-      setSide(ORDER_SIDE.SELL)
-    }
-    else if (resolvedQueryState.normalizedSide === 'BUY') {
+    // For AMM, always force BUY side even if explicitly set to SELL
+    if (isAmm) {
       setSide(ORDER_SIDE.BUY)
+    } else {
+      if (resolvedQueryState.normalizedSide === 'SELL') {
+        setSide(ORDER_SIDE.SELL)
+      }
+      else if (resolvedQueryState.normalizedSide === 'BUY') {
+        setSide(ORDER_SIDE.BUY)
+      }
     }
 
     if (resolvedQueryState.normalizedOrderType === 'LIMIT') {
@@ -273,9 +284,11 @@ function useOrderBootstrapMarketSelection({
 function useAppliedOrderQuerySync({
   resolvedQueryState,
   isMobile,
+  isAmm = false,
 }: {
   resolvedQueryState: ResolvedEventOrderQueryState | null
   isMobile: boolean
+  isAmm?: boolean
 }) {
   const appliedOrderParamsRef = useRef<string | null>(null)
   const openedMobileOrderPanelParamsRef = useRef<string | null>(null)
@@ -291,6 +304,7 @@ function useAppliedOrderQuerySync({
     applyOrderQueryParamsToStore({
       resolvedQueryState,
       isMobile,
+      isAmm,
       appliedOrderParamsRef,
       openedMobileOrderPanelParamsRef,
       setMarket,
@@ -303,6 +317,7 @@ function useAppliedOrderQuerySync({
     })
   }, [
     isMobile,
+    isAmm,
     setAmount,
     setIsMobileOrderPanelOpen,
     setLimitShares,
@@ -314,7 +329,7 @@ function useAppliedOrderQuerySync({
   ])
 }
 
-function EventOrderQuerySync({ event, marketSlug, isMobile }: EventOrderQuerySyncProps) {
+function EventOrderQuerySync({ event, marketSlug, isMobile, isAmm = false }: EventOrderQuerySyncProps) {
   const searchParams = useSearchParams()
   const resolvedQueryState = useMemo(
     () => resolveEventOrderQueryState(event, marketSlug, searchParams),
@@ -324,6 +339,7 @@ function EventOrderQuerySync({ event, marketSlug, isMobile }: EventOrderQuerySyn
   useAppliedOrderQuerySync({
     resolvedQueryState,
     isMobile,
+    isAmm,
   })
 
   return null
@@ -338,6 +354,7 @@ export default function EventOrderStateSync({ event, marketSlug }: EventOrderSta
   const currentEventId = useOrder(state => state.event?.id)
   const currentMarketId = useOrder(state => state.market?.condition_id)
   const isMobile = useIsMobile()
+  const isAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM !== 'false'
   const orderBootstrapTargetMarket = useMemo(
     () => resolveBootstrapTargetMarket(event, marketSlug),
     [event, marketSlug],
@@ -356,7 +373,7 @@ export default function EventOrderStateSync({ event, marketSlug }: EventOrderSta
     <>
       <OrderLimitPriceSync />
       <Suspense fallback={null}>
-        <EventOrderQuerySync event={event} marketSlug={marketSlug} isMobile={isMobile} />
+        <EventOrderQuerySync event={event} marketSlug={marketSlug} isMobile={isMobile} isAmm={isAmm} />
       </Suspense>
     </>
   )

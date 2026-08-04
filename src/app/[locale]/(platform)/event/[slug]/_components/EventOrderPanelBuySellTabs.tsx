@@ -19,6 +19,7 @@ interface EventOrderPanelBuySellTabsProps {
   onTypeChange: (type: OrderType) => void
   onAmountReset: () => void
   onFocusInput: () => void
+  isAmm?: boolean
 }
 
 export default function EventOrderPanelBuySellTabs({
@@ -39,8 +40,28 @@ export default function EventOrderPanelBuySellTabs({
   onTypeChange,
   onAmountReset,
   onFocusInput,
+  isAmm = false,
 }: EventOrderPanelBuySellTabsProps) {
   const t = useExtracted()
+
+  // For AMM, only show BUY option since selling is not supported
+  if (isAmm) {
+    return (
+      <div className="relative mb-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 text-sm font-semibold">
+            <span className="border-b-3 border-foreground pb-2 text-base font-semibold text-foreground">
+              {t('Buy')}
+            </span>
+          </div>
+        </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-x-4 bottom-0 h-px bg-border"
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="relative mb-4">
