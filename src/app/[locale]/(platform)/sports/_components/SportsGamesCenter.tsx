@@ -868,9 +868,6 @@ export default function SportsGamesCenter({
                               <span className={cn('relative z-1 opacity-80', isMoneylineColumn ? 'mr-1' : 'mr-2')}>
                                 {button.label}
                               </span>
-                              <span className="relative z-1 text-sm leading-none tabular-nums">
-                                {formatButtonOdds(buttonPriceCentsByKey.get(`${card.id}:${button.key}`) ?? button.cents)}
-                              </span>
                             </button>
                           </div>
                         )

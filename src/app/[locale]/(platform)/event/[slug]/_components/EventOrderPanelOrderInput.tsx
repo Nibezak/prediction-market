@@ -215,7 +215,7 @@ export default function EventOrderPanelOrderInput({
                   `)}
                 >
                   <TriangleAlertIcon className="size-4" />
-                  {t('Market buys must be at least {amount}', { amount: formatMoney(130) })}
+                  {t('Market buys must be at least {amount}', { amount: formatMoney(balance.minimumTradeKes) })}
                 </div>
               )}
               {shouldShowResolvedNoLiquidityWarning && (

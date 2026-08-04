@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getAdminDashboardData } from '@/lib/db/queries/admin-stats'
 
 const number = new Intl.NumberFormat('en-US')
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 })
 
 export default async function AdminDashboardPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params

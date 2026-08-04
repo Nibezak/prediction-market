@@ -69,6 +69,7 @@ export function validateOrder({
   limitExpirationTimestamp = null,
 }: ValidateOrderArgs): OrderValidationResult {
   const normalizedAvailableShares = Number.isFinite(availableShares) ? Math.max(0, availableShares) : 0
+  const minimumTradeUsd = 1.0
 
   if (isLoading) {
     return { ok: false, reason: 'IS_LOADING' }
@@ -139,7 +140,7 @@ export function validateOrder({
     return { ok: false, reason: 'INVALID_AMOUNT' }
   }
 
-  if (!isLimitOrder && side === ORDER_SIDE.BUY && amountNumber < 0.50) {
+  if (!isLimitOrder && side === ORDER_SIDE.BUY && amountNumber < minimumTradeUsd) {
     return { ok: false, reason: 'MARKET_MIN_AMOUNT' }
   }
 

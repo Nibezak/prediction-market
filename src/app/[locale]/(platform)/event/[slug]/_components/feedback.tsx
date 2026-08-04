@@ -71,7 +71,7 @@ export function handleValidationError(reason: OrderValidationError, { openWallet
       })
       break
     case 'MARKET_MIN_AMOUNT':
-      toast.error('Market buys must be at least $1')
+      toast.error('Market buys must be at least $1.00')
       break
     case 'INSUFFICIENT_BALANCE':
       toast.error('Insufficient balance', {

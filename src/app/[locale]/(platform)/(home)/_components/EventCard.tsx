@@ -37,7 +37,7 @@ function isMarketResolved(market: Market) {
   return Boolean(market.is_resolved || market.condition?.resolved)
 }
 
-function shouldShowEndingSoonBadge(event: Event): boolean {
+function isEventEndingSoon(event: Event): boolean {
   const targetDate = event.end_date
   if (!targetDate) return false
   const endMs = new Date(targetDate).getTime()
@@ -115,7 +115,8 @@ export default function EventCard({
     : event.title
   const yesOutcome = primaryMarket ? resolveHomeCardBinaryOutcome(primaryMarket, OUTCOME_INDEX.YES) : null
   const noOutcome = primaryMarket ? resolveHomeCardBinaryOutcome(primaryMarket, OUTCOME_INDEX.NO) : null
-  const shouldShowNewBadge = shouldShowEventNewBadge(event, currentTimestamp)
+  const shouldShowEndingSoonBadge = isEventEndingSoon(event)
+  const shouldShowNewBadge = shouldShowEventNewBadge(event, currentTimestamp) && !shouldShowEndingSoonBadge
   const shouldShowLiveBadge = !isResolvedEvent && Boolean(event.has_live_chart)
   const chanceByMarket = buildChanceByMarket(event.markets, priceOverridesByMarket)
   const homeSportsMoneylineModel = enableHomeSportsMoneylineLayout
@@ -168,13 +169,6 @@ export default function EventCard({
         dark:hover:bg-secondary
       `)}
     >
-      {shouldShowEndingSoonBadge(event) && (
-        <div className="absolute top-2.5 right-2.5 z-10">
-          <span className="inline-flex items-center bg-transparent px-1 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">
-            Ending soon
-          </span>
-        </div>
-      )}
       <CardContent
         className={
           cn(`
@@ -230,6 +224,7 @@ export default function EventCard({
           showLiveBadge={shouldShowLiveBadge}
           resolvedVolume={resolvedVolume}
           endedLabel={endedLabel}
+          shouldShowEndingSoonBadge={shouldShowEndingSoonBadge}
         />
       </CardContent>
     </Card>

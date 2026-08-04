@@ -11,6 +11,7 @@ interface EventCardFooterProps {
   showLiveBadge: boolean
   resolvedVolume: number
   endedLabel?: string | null
+  shouldShowEndingSoonBadge?: boolean
 }
 
 export default function EventCardFooter({
@@ -19,6 +20,7 @@ export default function EventCardFooter({
   showLiveBadge,
   resolvedVolume,
   endedLabel,
+  shouldShowEndingSoonBadge = false,
 }: EventCardFooterProps) {
   const isResolvedEvent = isEventResolvedLike(event)
   const recurrenceLabel = event.series_recurrence?.trim() || null
@@ -29,7 +31,7 @@ export default function EventCardFooter({
   return (
     <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
       <div className="flex items-center gap-2">
-        {showLiveBadge && !shouldShowNewBadge && (
+        {showLiveBadge && !shouldShowNewBadge && !shouldShowEndingSoonBadge && (
           <span className="flex items-center gap-1.5">
             <span className="relative flex size-2">
               <span className="absolute inline-flex size-2 animate-ping rounded-full bg-red-500 opacity-75" />
@@ -57,7 +59,12 @@ export default function EventCardFooter({
         )}
       </div>
       <div className="flex items-center gap-2">
-        {shouldShowNewBadge && <NewBadge />}
+        {shouldShowEndingSoonBadge && (
+          <span className="inline-flex items-center bg-transparent px-1 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">
+            Ending soon
+          </span>
+        )}
+        {shouldShowNewBadge && !shouldShowEndingSoonBadge && <NewBadge />}
         {isResolvedEvent
           ? (endedLabel
               ? <span>{endedLabel}</span>

@@ -1268,7 +1268,7 @@ export default function EventOrderPanelForm({
     && !isLimitOrder
     && state.side === ORDER_SIDE.BUY
     && amountNumber > 0
-    && amountNumber < 0.50
+    && amountNumber < 1.0
   const shouldShowLimitMinimumWarning = showLimitMinimumWarning
     && isLimitOrder
     && limitSharesNumber < MIN_LIMIT_ORDER_SHARES
@@ -1345,7 +1345,7 @@ export default function EventOrderPanelForm({
         triggerInputShake()
         return
       }
-      if (state.side === ORDER_SIDE.BUY && amountNumber < 0.50) {
+      if (state.side === ORDER_SIDE.BUY && amountNumber < 1.0) {
         setShowMarketMinimumWarning(true)
         triggerInputShake()
         return

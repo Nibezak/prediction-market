@@ -144,6 +144,25 @@ export default function EventOrderPanelInput({
       ))
     }
 
+    if (side === ORDER_SIDE.BUY) {
+      const isDisabled = !Number.isFinite(balance.raw) || balance.raw <= 0
+      return (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className={cn(
+            'text-xs',
+            { 'cursor-not-allowed opacity-50': isDisabled },
+          )}
+          disabled={isDisabled}
+          onClick={handleBalanceClick}
+        >
+          MAX
+        </Button>
+      )
+    }
+
     return null
   }
 

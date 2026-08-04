@@ -4,6 +4,8 @@ export const FINANCE_SETTINGS_GROUP = 'finance'
 export const KES_PER_USD_KEY = 'kes_per_usd'
 export const DEFAULT_KES_PER_USD = 130
 export const MINIMUM_TRADE_USD = 1
+export const MINIMUM_TRADE_KES_KEY = 'trade.minimum_kes'
+export const DEFAULT_MINIMUM_TRADE_KES = 130
 
 export async function loadKesPerUsdRate() {
   const { data } = await SettingsRepository.getSettings()
