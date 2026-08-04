@@ -1,11 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Ban, MoreHorizontal, RotateCcw, ScanEye, ShieldCheck } from 'lucide-react'
+import { Ban, KeyRound, MoreHorizontal, RotateCcw, ScanEye, ShieldCheck } from 'lucide-react'
 import { refundUserTrades } from '@/app/[locale]/admin/users/_actions/refund-user-trades'
 import { toast } from 'sonner'
-import { toggleUserBlockedStatus, updateUserRole } from '@/app/[locale]/admin/users/_actions/update-user-status'
+import { authorizeWithdrawalPasscodeReset, toggleUserBlockedStatus, updateUserRole } from '@/app/[locale]/admin/users/_actions/update-user-status'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -32,7 +32,7 @@ export function UserActions({ user }: UserActionsProps) {
   const canManageRoles = isAdmin || currentPermissions.includes('users.roles.manage') || currentPermissions.includes('users.permissions.manage')
   const canBlock = isAdmin || currentPermissions.includes('users.block') || currentPermissions.includes('users.unblock')
   const canRefund = isAdmin || currentUser?.role === 'FINANCE' || currentPermissions.includes('users.balance.adjust')
-  const [dialog, setDialog] = useState<'role' | 'block' | 'mirror' | 'refund' | null>(null)
+  const [dialog, setDialog] = useState<'role' | 'passcode' | 'block' | 'mirror' | 'refund' | null>(null)
   const [loading, setLoading] = useState(false)
   const [isBlocked, setIsBlocked] = useState(Boolean(user.is_blocked))
   const [role, setRole] = useState<Role>((ROLES.includes(user.role as Role) ? user.role : 'USER') as Role)
@@ -45,6 +45,22 @@ export function UserActions({ user }: UserActionsProps) {
   const [refundTo, setRefundTo] = useState('')
   const [refundReason, setRefundReason] = useState('')
   const filteredGroups = useMemo(() => STAFF_PERMISSION_GROUPS.map(group => ({ ...group, permissions: group.permissions.filter(value => value.includes(search.trim().toLowerCase())) })).filter(group => group.permissions.length), [search])
+
+  useEffect(() => {
+    if (dialog) return
+
+    const cleanup = window.setTimeout(() => {
+      if (!document.querySelector('[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"]')) {
+        document.body.style.removeProperty('pointer-events')
+      }
+    }, 0)
+
+    return () => window.clearTimeout(cleanup)
+  }, [dialog])
+
+  function openDialog(nextDialog: NonNullable<typeof dialog>) {
+    window.requestAnimationFrame(() => setDialog(nextDialog))
+  }
 
   async function refresh() { await queryClient.invalidateQueries({ queryKey: ['admin-users'] }) }
   async function saveRole() {
@@ -91,17 +107,28 @@ export function UserActions({ user }: UserActionsProps) {
     await refresh()
   }
 
+  async function resetWithdrawalPasscode() {
+    setLoading(true)
+    const result = await authorizeWithdrawalPasscodeReset(user.id)
+    setLoading(false)
+    if (result.error) return toast.error('Could not authorize reset', { description: result.error })
+    toast.success('Passcode reset authorized', { description: 'The user must create a new passcode before withdrawing.' })
+    setDialog(null)
+    await refresh()
+  }
+
   return <>
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /><span className="sr-only">User actions</span></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {canMirror && <DropdownMenuItem onSelect={() => setDialog('mirror')}><ScanEye className="mr-2 size-4" />Mirror user</DropdownMenuItem>}
-        {canManageRoles && <DropdownMenuItem onSelect={() => setDialog('role')}><ShieldCheck className="mr-2 size-4" />Roles and permissions</DropdownMenuItem>}
-        {canRefund && <DropdownMenuItem onSelect={() => setDialog('refund')}><RotateCcw className="mr-2 size-4" />Refund trades</DropdownMenuItem>}
+        {canMirror && <DropdownMenuItem onSelect={() => openDialog('mirror')}><ScanEye className="mr-2 size-4" />Mirror user</DropdownMenuItem>}
+        {canManageRoles && <DropdownMenuItem onSelect={() => openDialog('role')}><ShieldCheck className="mr-2 size-4" />Roles and permissions</DropdownMenuItem>}
+        {canRefund && <DropdownMenuItem onSelect={() => openDialog('refund')}><RotateCcw className="mr-2 size-4" />Refund trades</DropdownMenuItem>}
+        {canManageRoles && <DropdownMenuItem onSelect={() => openDialog('passcode')}><KeyRound className="mr-2 size-4" />Change passcode</DropdownMenuItem>}
         {canBlock && (
           <DropdownMenuItem
             className={isBlocked ? "text-emerald-600 dark:text-emerald-400 focus:text-emerald-600 focus:bg-emerald-500/10 font-medium" : "text-destructive focus:text-destructive"}
-            onSelect={() => setDialog('block')}
+            onSelect={() => openDialog('block')}
           >
             <Ban className="mr-2 size-4" />
             {isBlocked ? 'Unblock user' : 'Block user'}
@@ -139,6 +166,18 @@ export function UserActions({ user }: UserActionsProps) {
           <div className="grid gap-2"><Label htmlFor="refund-reason">Reason</Label><Input id="refund-reason" value={refundReason} onChange={event => setRefundReason(event.target.value)} placeholder="Market canceled, data issue, manual correction..." /></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button variant="destructive" onClick={refundTrades} disabled={loading}>{loading ? 'Refunding...' : 'Refund matching trades'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={dialog === 'passcode'} onOpenChange={open => !open && setDialog(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Authorize passcode reset</DialogTitle>
+          <DialogDescription>Only continue after support has verified the account owner. The existing passcode cannot be viewed; this invalidates it and asks the user to create a new one.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
+          <Button onClick={resetWithdrawalPasscode} disabled={loading}>{loading ? 'Authorizing...' : 'Authorize reset'}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={dialog === 'block'} onOpenChange={open => !open && setDialog(null)}><DialogContent><DialogHeader><DialogTitle>{isBlocked ? 'Unblock user' : 'Block user'}</DialogTitle><DialogDescription>{isBlocked ? 'Restore this user\'s platform access?' : 'Suspend trading, deposits, and withdrawals while this account is reviewed?'}</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button variant={isBlocked ? 'default' : 'destructive'} onClick={toggleBlock} disabled={loading}>{loading ? 'Saving...' : isBlocked ? 'Unblock' : 'Block'}</Button></DialogFooter></DialogContent></Dialog>

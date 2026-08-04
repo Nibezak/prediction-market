@@ -28,16 +28,20 @@ function normalizeSiteUrl(value: string): string {
 }
 
 export default function resolveSiteUrl(env: NodeJS.ProcessEnv = process.env): string {
-  if (typeof env.SITE_URL === 'string' && env.SITE_URL.trim()) {
-    return normalizeSiteUrl(env.SITE_URL)
+  const candidate = env.SITE_URL
+    || env.NEXT_PUBLIC_SITE_URL
+    || env.NEXT_PUBLIC_HOST_URL
+    || env.RAILWAY_PUBLIC_DOMAIN
+    || env.RAILWAY_STATIC_URL
+    || env.VERCEL_PROJECT_PRODUCTION_URL
+
+  if (typeof candidate === 'string' && candidate.trim()) {
+    return normalizeSiteUrl(candidate)
   }
 
-  if (
-    typeof env.VERCEL_PROJECT_PRODUCTION_URL === 'string'
-    && env.VERCEL_PROJECT_PRODUCTION_URL.trim()
-  ) {
-    return normalizeSiteUrl(env.VERCEL_PROJECT_PRODUCTION_URL)
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000'
   }
 
-  return 'http://localhost:3000'
+  return 'https://slimefish.com'
 }

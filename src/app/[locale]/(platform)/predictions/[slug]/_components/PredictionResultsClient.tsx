@@ -66,7 +66,7 @@ function subscribeToCurrentTimestamp(onStoreChange: () => void) {
 }
 
 function getCurrentTimestampSnapshot() {
-  return Math.floor(Date.now() / TIMESTAMP_REFRESH_MS) * TIMESTAMP_REFRESH_MS
+  return 0
 }
 
 function resolvePrimaryMarket(event: Event): Market | null {
@@ -284,11 +284,15 @@ function usePredictionResultsFilters({
   const [searchParamsString, setSearchParamsString] = useState('')
   const searchDebounceTimeoutRef = useRef<number | null>(null)
 
-  const currentTimestamp = useSyncExternalStore(
-    subscribeToCurrentTimestamp,
-    getCurrentTimestampSnapshot,
-    () => initialCurrentTimestamp,
-  )
+  const [currentTimestamp, setCurrentTimestamp] = useState<number | null>(initialCurrentTimestamp)
+
+  useEffect(() => {
+    setCurrentTimestamp(Math.floor(Date.now() / TIMESTAMP_REFRESH_MS) * TIMESTAMP_REFRESH_MS)
+    const interval = setInterval(() => {
+      setCurrentTimestamp(Math.floor(Date.now() / TIMESTAMP_REFRESH_MS) * TIMESTAMP_REFRESH_MS)
+    }, TIMESTAMP_REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(function cleanupSearchDebounceTimeout() {
     const timeoutRef = searchDebounceTimeoutRef

@@ -85,7 +85,16 @@ export async function GET(request: NextRequest) {
           })
 
       const depositWalletAddress = user.depositWalletAddress
-      const profilePath = buildPublicProfilePath(user.username || depositWalletAddress || user.address || '')
+      const localUser = localUsersMap.get(user.id) as any
+      const email = localUser?.email || user.email || ''
+      const localUsername = String(localUser?.username || '').trim()
+      const ledgerUsername = String(user.username || '').trim()
+      const username = localUsername && !localUsername.startsWith('firebase:')
+        ? localUsername
+        : ledgerUsername && !ledgerUsername.startsWith('firebase:')
+          ? ledgerUsername
+          : email.split('@')[0] || 'Slimefish user'
+      const profilePath = buildPublicProfilePath(username || depositWalletAddress || user.address || '')
 
       let referredDisplay: string | null = null
       let referredProfile: string | null = null
@@ -95,10 +104,8 @@ export async function GET(request: NextRequest) {
         referredDisplay = user.referredBy 
       }
 
-      const localUser = localUsersMap.get(user.id) as any
-      const email = localUser?.email || user.email || ''
       const searchText = [
-        user.username,
+        username,
         email,
         user.address,
         depositWalletAddress,
@@ -110,6 +117,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...user,
+        username,
         // Map ledger backend fields to UI fields where needed.
         address: user.address,
         email,

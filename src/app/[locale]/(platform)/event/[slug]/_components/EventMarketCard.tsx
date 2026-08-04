@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { OUTCOME_INDEX } from '@/lib/constants'
-import { formatCentsLabel, formatSharesLabel } from '@/lib/formatters'
+import { formatCentsLabel, formatCurrency, formatSharesLabel } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 export interface MarketPositionTag {
@@ -109,15 +109,7 @@ function EventMarketCardComponent({
                   <div className="text-sm font-bold underline-offset-2 group-hover:underline">
                     {market.title}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    $
-                    {resolvedVolume?.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }) || '0.00'}
-                    {' '}
-                    Vol.
-                  </div>
+
                 </div>
               </div>
               <EventMarketChance
@@ -142,11 +134,8 @@ function EventMarketCardComponent({
                 onBuy(market, OUTCOME_INDEX.YES, 'mobile')
               }}
             >
-              <span className="truncate opacity-70">
+              <span className="truncate font-bold">
                 {yesOutcomeText}
-              </span>
-              <span className="shrink-0 text-base font-bold">
-                {formatCentsLabel(yesPriceValue)}
               </span>
             </Button>
             <Button
@@ -160,11 +149,8 @@ function EventMarketCardComponent({
                 onBuy(market, OUTCOME_INDEX.NO, 'mobile')
               }}
             >
-              <span className="truncate opacity-70">
+              <span className="truncate font-bold">
                 {noOutcomeText}
-              </span>
-              <span className="shrink-0 text-base font-bold">
-                {formatCentsLabel(noPriceValue)}
               </span>
             </Button>
           </div>
@@ -195,15 +181,7 @@ function EventMarketCardComponent({
                   <div className="font-semibold underline-offset-2 group-hover:underline">
                     {market.title}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    $
-                    {resolvedVolume?.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }) || '0.00'}
-                    {' '}
-                    Vol.
-                  </div>
+
                 </div>
               </div>
             </div>
@@ -230,11 +208,8 @@ function EventMarketCardComponent({
                   onBuy(market, OUTCOME_INDEX.YES, 'desktop')
                 }}
               >
-                <span className="truncate opacity-70">
+                <span className="truncate font-bold">
                   {yesOutcomeText}
-                </span>
-                <span className="shrink-0 text-base font-bold">
-                  {formatCentsLabel(yesPriceValue)}
                 </span>
               </Button>
 
@@ -249,11 +224,8 @@ function EventMarketCardComponent({
                   onBuy(market, OUTCOME_INDEX.NO, 'desktop')
                 }}
               >
-                <span className="truncate opacity-70">
+                <span className="truncate font-bold">
                   {noOutcomeText}
-                </span>
-                <span className="shrink-0 text-base font-bold">
-                  {formatCentsLabel(noPriceValue)}
                 </span>
               </Button>
             </div>

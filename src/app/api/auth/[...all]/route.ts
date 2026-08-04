@@ -50,7 +50,6 @@ export async function POST(req: NextRequest, ctx: any) {
       headers: authResponse.headers,
     })
     response.cookies.set(TELLWISE_LOCAL_SESSION_COOKIE, '', { path: '/', maxAge: 0 })
-    response.cookies.set('mock_logged_in', '', { path: '/', maxAge: 0 })
     await recordAuditEvent({
       eventType: 'auth.logout', category: 'authentication', action: 'User signed out',
       actorUserId: session?.user?.id, subjectUserId: session?.user?.id,

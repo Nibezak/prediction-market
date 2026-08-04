@@ -343,22 +343,28 @@ export async function loadBlockedCountriesForEnforcement() {
     return enforcementCache.blockedCountries
   }
 
-  const rows = await db
-    .select({ value: settingsTable.value })
-    .from(settingsTable)
-    .where(and(
-      eq(settingsTable.group, GENERAL_SETTINGS_GROUP),
-      eq(settingsTable.key, BLOCKED_COUNTRIES_SETTINGS_KEY),
-    ))
-    .limit(1)
+  try {
+    const rows = await db
+      .select({ value: settingsTable.value })
+      .from(settingsTable)
+      .where(and(
+        eq(settingsTable.group, GENERAL_SETTINGS_GROUP),
+        eq(settingsTable.key, BLOCKED_COUNTRIES_SETTINGS_KEY),
+      ))
+      .limit(1)
 
-  const blockedCountries = parseBlockedCountriesFromSettingsValue(rows[0]?.value)
-  enforcementCache = {
-    blockedCountries,
-    expiresAt: now + ENFORCEMENT_CACHE_TTL_MS,
+    const blockedCountries = parseBlockedCountriesFromSettingsValue(rows[0]?.value)
+    enforcementCache = {
+      blockedCountries,
+      expiresAt: now + ENFORCEMENT_CACHE_TTL_MS,
+    }
+
+    return blockedCountries
   }
-
-  return blockedCountries
+  catch (error) {
+    console.error('Failed to load blocked countries for enforcement:', error)
+    return []
+  }
 }
 
 export function validateBlockedCountriesInput(rawValue: string | null | undefined): BlockedCountriesValidationResult {

@@ -122,13 +122,10 @@ export default function EventOrderPanelMobile({
                   state.setIsMobileOrderPanelOpen(true)
                 }}
               >
-                <span className="truncate opacity-70">
+                <span className="truncate font-bold">
                   {t('Buy')}
                   {' '}
                   {buyYesOutcomeLabel}
-                </span>
-                <span className="shrink-0 font-bold">
-                  {yesPriceLabel}
                 </span>
               </Button>
               <Button
@@ -145,13 +142,10 @@ export default function EventOrderPanelMobile({
                   state.setIsMobileOrderPanelOpen(true)
                 }}
               >
-                <span className="truncate opacity-70">
+                <span className="truncate font-bold">
                   {t('Buy')}
                   {' '}
                   {buyNoOutcomeLabel}
-                </span>
-                <span className="shrink-0 font-bold">
-                  {noPriceLabel}
                 </span>
               </Button>
             </div>

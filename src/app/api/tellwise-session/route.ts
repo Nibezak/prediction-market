@@ -12,10 +12,6 @@ function expireLocalCookies(response: NextResponse) {
     path: '/',
     maxAge: 0,
   })
-  response.cookies.set('mock_logged_in', '', {
-    path: '/',
-    maxAge: 0,
-  })
 }
 
 export async function POST() {
@@ -25,10 +21,6 @@ export async function POST() {
 
   const session = await getOrCreateTellwiseLocalDbSession()
   const response = NextResponse.json(session, { status: 200 })
-  response.cookies.set('mock_logged_in', '', {
-    path: '/',
-    maxAge: 0,
-  })
   response.cookies.set(TELLWISE_LOCAL_SESSION_COOKIE, TELLWISE_LOCAL_SESSION_VALUE, {
     path: '/',
     httpOnly: true,

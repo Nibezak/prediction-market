@@ -86,7 +86,7 @@ describe('tradingOnboardingDialogs', () => {
     mocks.useIsMobile.mockReturnValue(false)
   })
 
-  it('does not let the username step close from dialog dismissal controls', async () => {
+  it('lets the username step be dismissed from dialog controls', async () => {
     const user = userEvent.setup()
     const onModalOpenChange = vi.fn()
 
@@ -100,11 +100,11 @@ describe('tradingOnboardingDialogs', () => {
     )
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
 
     await user.keyboard('{Escape}')
 
-    expect(onModalOpenChange).not.toHaveBeenCalled()
+    expect(onModalOpenChange).toHaveBeenCalledWith('username', false)
   })
 
   it('only lets the explicit email skip button skip the email step', async () => {
@@ -134,7 +134,7 @@ describe('tradingOnboardingDialogs', () => {
     expect(onEmailSkip).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps enable trading non-dismissible until an error appears', async () => {
+  it('lets users defer the initial enable trading step', async () => {
     const user = userEvent.setup()
     const onModalOpenChange = vi.fn()
 
@@ -147,11 +147,13 @@ describe('tradingOnboardingDialogs', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
 
     await user.keyboard('{Escape}')
 
-    expect(onModalOpenChange).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(onModalOpenChange).toHaveBeenCalledWith('enable', false)
+    })
 
     view.rerender(
       <TradingOnboardingDialogs

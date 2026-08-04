@@ -74,7 +74,7 @@ export function validateOrder({
     return { ok: false, reason: 'IS_LOADING' }
   }
 
-  if (!isConnected) {
+  if (!user && !isConnected) {
     return { ok: false, reason: 'NOT_CONNECTED' }
   }
 

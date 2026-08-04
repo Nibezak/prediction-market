@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasscodeInput } from '@/components/ui/passcode-input'
 import {
   Select,
   SelectContent,
@@ -173,6 +174,8 @@ function AdminCreateEventFormContent({
     setProposersDialogOpen,
     creatorWalletName,
     setCreatorWalletName,
+    walletPasscode,
+    setWalletPasscode,
     isGeneratingRules,
     isSigningAuth,
     isPreparingSignaturePlan,
@@ -1635,7 +1638,7 @@ function AdminCreateEventFormContent({
 
                     {form.marketMode && (
                       <div className="space-y-2 rounded-md border p-4">
-                        <Label htmlFor="initial-liquidity">Starting liquidity per market</Label>
+                        <Label htmlFor="initial-liquidity">Total starting liquidity</Label>
                         <Input
                           id="initial-liquidity"
                           type="number"
@@ -1645,7 +1648,7 @@ function AdminCreateEventFormContent({
                           onChange={event => handleFieldChange('initialLiquidity', event.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                          This amount is funded from your Slimefish balance and initializes both outcomes.
+                          This amount is allocated from Commissions and initializes both outcomes.
                         </p>
                       </div>
                     )}
@@ -2098,6 +2101,12 @@ function AdminCreateEventFormContent({
                         <p className="text-xs text-muted-foreground">No categories selected.</p>
                       )}
                 </div>
+                {isSlimefishBackendAmm && (
+                  <div className="mt-5 space-y-3 border-t pt-5">
+                    <div><p className="text-sm font-semibold">Sign event creation</p><p className="mt-1 text-xs text-muted-foreground">Enter your wallet passcode. Liquidity is allocated from Treasury only after backend verification.</p></div>
+                    <PasscodeInput value={walletPasscode} onChange={setWalletPasscode} ariaLabel="Wallet passcode for event creation" />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2109,7 +2118,7 @@ function AdminCreateEventFormContent({
               >
                 Back to edit
               </Button>
-              <Button type="button" onClick={continueFromFinalPreview}>
+              <Button type="button" onClick={continueFromFinalPreview} disabled={isSlimefishBackendAmm && !/^\d{4}$/.test(walletPasscode)}>
                 Continue to sign
               </Button>
             </div>
@@ -2178,7 +2187,7 @@ function AdminCreateEventFormContent({
                         <ChevronRightIcon className="size-5 text-muted-foreground" />
                       )}
                   <p className="text-xl font-semibold text-foreground">
-                    {isSlimefishBackendAmm ? 'Slimefish ledger Virtual Balance' : `EOA wallet balance (${requiredTotalRewardUsdc.toFixed(2)} USDC required)`}
+                    {isSlimefishBackendAmm ? `Treasury balance (KES ${Math.floor(Number(form.initialLiquidity || 0)).toLocaleString('en-KE')} required)` : `EOA wallet balance (${requiredTotalRewardUsdc.toFixed(2)} USDC required)`}
                   </p>
                 </button>
                 <CheckIndicator
@@ -2194,7 +2203,7 @@ function AdminCreateEventFormContent({
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {isSlimefishBackendAmm
-                      ? 'Using Slimefish treasury ledger.'
+                      ? `Available in Treasury: KES ${Math.floor(eoaUsdcBalance).toLocaleString('en-KE')}.`
                       : `Need ${requiredRewardUsdc.toFixed(2)} × ${marketCount} markets = ${requiredTotalRewardUsdc.toFixed(2)} USDC. Balance: ${eoaUsdcBalance.toFixed(2)} USDC.`}
                   </p>
                   {!isSlimefishBackendAmm && (

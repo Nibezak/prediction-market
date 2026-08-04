@@ -1,12 +1,24 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 const REFRESH_THRESHOLD = 72
 const MAX_PULL_DISTANCE = 112
 const MIN_TRACK_START_Y = 36
+
+function isPageAtTop() {
+  const scrollingElement = document.scrollingElement
+  return window.scrollY <= 0 && (!scrollingElement || scrollingElement.scrollTop <= 0)
+}
+
+function hasOpenModal() {
+  return Boolean(document.querySelector(`
+    [data-slot="dialog-content"][data-state="open"],
+    [data-slot="drawer-content"][data-state="open"],
+    [data-modal-overlay="true"]
+  `))
+}
 
 function RefreshLoader({ progress, refreshing }: { progress: number, refreshing: boolean }) {
   const normalized = Math.max(0, Math.min(1, progress))
@@ -35,7 +47,6 @@ function RefreshLoader({ progress, refreshing }: { progress: number, refreshing:
 }
 
 export default function PullToRefresh() {
-  const router = useRouter()
   const startY = useRef<number | null>(null)
   const isTracking = useRef(false)
   const hasThresholdHapticFired = useRef(false)
@@ -46,6 +57,7 @@ export default function PullToRefresh() {
 
   function vibrate(pattern: VibratePattern) {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(0)
       navigator.vibrate(pattern)
     }
   }
@@ -68,25 +80,23 @@ export default function PullToRefresh() {
     refreshingRef.current = true
     vibrate([12, 24, 12])
     setTrackedDistance(REFRESH_THRESHOLD)
-    router.refresh()
-    window.setTimeout(() => {
-      setRefreshing(false)
-      refreshingRef.current = false
-      reset()
-    }, 900)
+    window.setTimeout(() => window.location.reload(), 240)
   }
 
   useEffect(function bindPullToRefreshTouchListeners() {
     function handleTouchStart(event: TouchEvent) {
       const touch = event.touches[0]
-      if (window.scrollY <= 0 && !refreshingRef.current && touch && touch.clientY >= MIN_TRACK_START_Y) {
+      if (isPageAtTop() && !hasOpenModal() && !refreshingRef.current && touch && touch.clientY >= MIN_TRACK_START_Y) {
         startY.current = touch.clientY
         isTracking.current = true
       }
     }
 
     function handleTouchMove(event: TouchEvent) {
-      if (!isTracking.current || startY.current == null || window.scrollY > 0) return
+      if (!isTracking.current || startY.current == null || !isPageAtTop() || hasOpenModal()) {
+        reset()
+        return
+      }
       const touch = event.touches[0]
       if (!touch) return
       const nextDistance = Math.max(0, Math.min(MAX_PULL_DISTANCE, touch.clientY - startY.current))
@@ -95,7 +105,7 @@ export default function PullToRefresh() {
       }
       if (nextDistance >= REFRESH_THRESHOLD && !hasThresholdHapticFired.current) {
         hasThresholdHapticFired.current = true
-        vibrate(10)
+        vibrate(24)
       }
       if (nextDistance < REFRESH_THRESHOLD * 0.7) {
         hasThresholdHapticFired.current = false

@@ -26,7 +26,7 @@ export async function fetchCommunityProfileByAddress({
   address: string
   signal?: AbortSignal
 }): Promise<CommunityProfile | null> {
-  if (!communityApiUrl || communityApiUrl.trim() === '') {
+  if (!communityApiUrl || !/^https?:\/\//i.test(communityApiUrl.trim())) {
     return null
   }
 

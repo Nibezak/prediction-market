@@ -32,7 +32,9 @@ export function usePortfolioValue(
           return 0
         }
         const body = await response.json()
-        return body?.data?.netWorth || 0
+        // The overview adds cash separately. Only return the live value of open
+        // positions here or the user's primary balance is counted twice.
+        return body?.data?.otherIncome || 0
       }
       catch (e) {
         return 0

@@ -61,7 +61,6 @@ interface AdminMenuGroup {
 
 export default function AdminSidebar({ role, permissions, riskCount = 0 }: { role: PlatformRole, permissions: StaffPermission[], riskCount?: number }) {
   const t = useExtracted()
-
   const allAdminMenuItems: AdminMenuItem[] = [
     { id: 'dashboard', label: t('Dashboard'), href: '/admin/dashboard' as Route, icon: LayoutDashboardIcon },
     { id: 'operations', label: t('Operations'), href: '/admin/operations' as Route, icon: ListChecksIcon },
@@ -73,7 +72,6 @@ export default function AdminSidebar({ role, permissions, riskCount = 0 }: { rol
     { id: 'approvals', label: t('Approvals'), href: '/admin/approvals' as Route, icon: ClipboardCheckIcon },
     { id: 'audit', label: t('Audit Log'), href: '/admin/audit' as Route, icon: FileClockIcon },
     { id: 'communications', label: t('Communications'), href: '/admin/communications' as Route, icon: BellRingIcon },
-    { id: 'system', label: t('System Health'), href: '/admin/system' as Route, icon: MonitorCogIcon },
     { id: 'access-control', label: t('Access Control'), href: '/admin/access-control' as Route, icon: ShieldCheckIcon },
     { id: 'settings', label: t('Brand & Settings'), href: '/admin/settings' as Route, icon: PaintbrushIcon },
     { id: 'theme', label: t('Theme'), href: '/admin/theme' as Route, icon: SwatchBookIcon },
@@ -136,7 +134,7 @@ export default function AdminSidebar({ role, permissions, riskCount = 0 }: { rol
       id: 'operations-group',
       label: t('Operations'),
       icon: MonitorCogIcon,
-      itemIds: ['operations', 'system', 'audit', 'communications'],
+      itemIds: ['operations', 'audit', 'communications'],
     },
     {
       id: 'finance-group',

@@ -16,7 +16,6 @@ import {
   validateBlockedCountriesInput,
 } from '@/lib/geoblock-settings'
 import {
-  GLOBAL_ANNOUNCEMENT_DISABLE_FAUCET_BANNER_KEY,
   GLOBAL_ANNOUNCEMENT_DISABLED_ON_KEY,
   GLOBAL_ANNOUNCEMENT_LINK_URL_KEY,
   GLOBAL_ANNOUNCEMENT_MESSAGE_KEY,
@@ -59,9 +58,9 @@ function buildTermsOfServicePdfPath() {
   return `legal/terms-of-service-${Date.now()}-${random}.pdf`
 }
 
-function buildSideCardImagePath() {
+function buildSideCardImagePath(extension = 'webp') {
   const random = Math.random().toString(36).slice(2, 10)
-  return `home-featured/side-card-${Date.now()}-${random}.webp`
+  return `home-featured/side-card-${Date.now()}-${random}.${extension}`
 }
 
 function buildSideCardVideoPath(contentType: string) {
@@ -79,23 +78,38 @@ async function processSideCardImageFile(file: File) {
   }
 
   try {
-    const input = Buffer.from(await file.arrayBuffer())
-    const output = await sharp(input)
-      .rotate()
-      .resize(1200, 800, { fit: 'cover', position: 'centre', withoutEnlargement: true })
-      .webp({ quality: 82 })
-      .toBuffer()
-    const path = buildSideCardImagePath()
+    const body = Buffer.from(await file.arrayBuffer())
+    let output = body
+    let extension = file.type.split('/')[1] || 'png'
+    if (extension === 'jpeg') extension = 'jpg'
+
+    try {
+      const sharp = (await import('sharp')).default
+      output = await sharp(body)
+        .rotate()
+        .resize(1200, 800, { fit: 'cover', position: 'centre', withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toBuffer()
+      extension = 'webp'
+    }
+    catch (err) {
+      console.warn('Sharp image processing skipped, uploading raw file buffer:', err)
+    }
+
+    const path = buildSideCardImagePath(extension)
+    const contentType = extension === 'webp' ? 'image/webp' : file.type
     const { error } = await uploadPublicAsset(path, output, {
-      contentType: 'image/webp',
+      contentType,
       cacheControl: '31536000',
+      upsert: true,
     })
     return error
-      ? { path: null as string | null, error: DEFAULT_ERROR_MESSAGE }
+      ? { path: null as string | null, error: `Upload failed: ${error}` }
       : { path, error: null as string | null }
   }
-  catch {
-    return { path: null as string | null, error: 'Side card image could not be processed.' }
+  catch (error) {
+    console.error('Side card image upload error:', error)
+    return { path: null as string | null, error: 'Side card image could not be uploaded.' }
   }
 }
 
@@ -278,7 +292,8 @@ export async function updateGeneralSettingsAction(
   _prevState: GeneralSettingsActionState,
   formData: FormData,
 ): Promise<GeneralSettingsActionState> {
-  const user = await UserRepository.getCurrentUser({ minimal: true })
+  try {
+    const user = await UserRepository.getCurrentUser({ minimal: true })
   if (!user || !user.is_admin) {
     return { error: 'Unauthenticated.' }
   }
@@ -306,12 +321,9 @@ export async function updateGeneralSettingsAction(
   const globalAnnouncementMessageRaw = formData.get('global_announcement_message')
   const globalAnnouncementLinkUrlRaw = formData.get('global_announcement_link_url')
   const globalAnnouncementDisabledOnJsonRaw = formData.get('global_announcement_disabled_on_json')
-  const globalAnnouncementDisableFaucetBannerRaw = formData.get('global_announcement_disable_faucet_banner')
   const customJavascriptCodesJsonRaw = formData.get('custom_javascript_codes_json')
   const tosPdfPathRaw = formData.get('tos_pdf_path')
   const tosPdfFileRaw = formData.get('tos_pdf')
-  const lifiIntegratorRaw = formData.get('lifi_integrator')
-  const lifiApiKeyRaw = formData.get('lifi_api_key')
   const openRouterModelRaw = formData.get('openrouter_model')
   const openRouterApiKeyRaw = formData.get('openrouter_api_key')
   const openRouterEnabledRaw = formData.get('openrouter_enabled')
@@ -361,13 +373,8 @@ export async function updateGeneralSettingsAction(
   const globalAnnouncementDisabledOnJson = typeof globalAnnouncementDisabledOnJsonRaw === 'string'
     ? globalAnnouncementDisabledOnJsonRaw
     : ''
-  const globalAnnouncementDisableFaucetBanner = typeof globalAnnouncementDisableFaucetBannerRaw === 'string'
-    ? globalAnnouncementDisableFaucetBannerRaw
-    : ''
   const customJavascriptCodesJson = typeof customJavascriptCodesJsonRaw === 'string' ? customJavascriptCodesJsonRaw : ''
   let tosPdfPath = typeof tosPdfPathRaw === 'string' ? tosPdfPathRaw : ''
-  const lifiIntegrator = typeof lifiIntegratorRaw === 'string' ? lifiIntegratorRaw : ''
-  const lifiApiKey = typeof lifiApiKeyRaw === 'string' ? lifiApiKeyRaw : ''
   const openRouterModel = typeof openRouterModelRaw === 'string' ? openRouterModelRaw.trim() : ''
   const openRouterApiKey = typeof openRouterApiKeyRaw === 'string' ? openRouterApiKeyRaw.trim() : ''
   const openRouterEnabled = openRouterEnabledRaw === 'true'
@@ -386,7 +393,6 @@ export async function updateGeneralSettingsAction(
     message: globalAnnouncementMessage,
     linkUrl: globalAnnouncementLinkUrl,
     disabledOnJson: globalAnnouncementDisabledOnJson,
-    disableFaucetBanner: globalAnnouncementDisableFaucetBanner,
   })
   if (!validatedGlobalAnnouncement.data) {
     return { error: validatedGlobalAnnouncement.error ?? 'Invalid global announcement input.' }
@@ -493,7 +499,7 @@ export async function updateGeneralSettingsAction(
         if (!processed.path) {
           return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
         }
-        nextSlides.push({ ...slide, imagePath: processed.path })
+        nextSlides.push({ ...slide, imagePath: processed.path, imageUrl: getPublicAssetUrl(processed.path) })
       }
       else if (slide.type === 'video' && videoFile instanceof File && videoFile.size > 0) {
         const processed = await processSideCardVideoFile(videoFile)
@@ -533,15 +539,12 @@ export async function updateGeneralSettingsAction(
     supportUrl,
     customJavascriptCodesJson,
     feeRecipientWallet: '',
-    lifiIntegrator,
-    lifiApiKey,
   })
 
   if (!validated.data) {
     return { error: validated.error ?? 'Invalid input.' }
   }
 
-  let encryptedLiFiApiKey = ''
   let encryptedOpenRouterApiKey = ''
   try {
     const { data: allSettings, error: settingsError } = await SettingsRepository.getSettings()
@@ -549,11 +552,7 @@ export async function updateGeneralSettingsAction(
       return { error: DEFAULT_ERROR_MESSAGE }
     }
 
-    const existingEncryptedLiFiApiKey = allSettings?.general?.lifi_api_key?.value ?? ''
     const existingEncryptedOpenRouterApiKey = allSettings?.ai?.openrouter_api_key?.value ?? ''
-    encryptedLiFiApiKey = validated.data.lifiApiKeyValue
-      ? encryptSecret(validated.data.lifiApiKeyValue)
-      : existingEncryptedLiFiApiKey
     encryptedOpenRouterApiKey = openRouterApiKey
       ? encryptSecret(openRouterApiKey)
       : existingEncryptedOpenRouterApiKey
@@ -585,11 +584,8 @@ export async function updateGeneralSettingsAction(
     { group: 'general', key: GLOBAL_ANNOUNCEMENT_MESSAGE_KEY, value: validatedGlobalAnnouncement.data.messageValue },
     { group: 'general', key: GLOBAL_ANNOUNCEMENT_LINK_URL_KEY, value: validatedGlobalAnnouncement.data.linkUrlValue },
     { group: 'general', key: GLOBAL_ANNOUNCEMENT_DISABLED_ON_KEY, value: validatedGlobalAnnouncement.data.disabledOnValue },
-    { group: 'general', key: GLOBAL_ANNOUNCEMENT_DISABLE_FAUCET_BANNER_KEY, value: validatedGlobalAnnouncement.data.disableFaucetBannerValue },
     { group: 'general', key: 'site_custom_javascript_codes', value: validated.data.customJavascriptCodesValue },
     { group: 'general', key: TERMS_OF_SERVICE_PDF_PATH_KEY, value: tosPdfPath },
-    { group: 'general', key: 'lifi_integrator', value: validated.data.lifiIntegratorValue },
-    { group: 'general', key: 'lifi_api_key', value: encryptedLiFiApiKey },
     { group: 'ai', key: 'openrouter_model', value: openRouterModel },
     { group: 'ai', key: 'openrouter_api_key', value: encryptedOpenRouterApiKey },
     { group: 'ai', key: 'openrouter_enabled', value: String(openRouterEnabled) },
@@ -636,7 +632,12 @@ export async function updateGeneralSettingsAction(
     console.error('Failed to sync geoblock settings (non-fatal)', syncError)
   }
 
-  return { error: null }
+    return { error: null }
+  }
+  catch (error) {
+    console.error('Failed to update general settings:', error)
+    return { error: error instanceof Error ? error.message : 'Failed to update general settings.' }
+  }
 }
 
 export async function removeTermsOfServicePdfAction(): Promise<GeneralSettingsActionState> {

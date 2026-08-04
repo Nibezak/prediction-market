@@ -1,7 +1,8 @@
 import type { Event } from '@/types'
 import { eq } from 'drizzle-orm'
 import { markets } from '@/lib/db/schema'
-import { db, pmSql } from '@/lib/drizzle'
+import { db } from '@/lib/drizzle'
+import { loadMarketVolumeReport } from '@/lib/slimefish-backend-reporting'
 import { readCachedLiveSnapshots } from '@/lib/amm-live'
 
 type AmmVolumeRow = { marketId: string, volume: string, volume24h: string }
@@ -10,23 +11,7 @@ async function loadAmmVolumes(marketIds: string[]) {
   const uniqueIds = [...new Set(marketIds.map(id => id.trim()).filter(Boolean))]
   if (uniqueIds.length === 0) return new Map<string, { volume: number, volume24h: number }>()
 
-  const rows = await pmSql<AmmVolumeRow[]>`
-    SELECT m.id AS "marketId",
-      COALESCE(SUM(ABS(te.amount)) FILTER (
-        WHERE t.type IN ('TRADE_BUY', 'TRADE_SELL')
-          AND te."assetType" = 'CURRENCY' AND te."assetId" = 'PRIMARY'
-      ), 0)::text AS volume,
-      COALESCE(SUM(ABS(te.amount)) FILTER (
-        WHERE t.type IN ('TRADE_BUY', 'TRADE_SELL')
-          AND te."assetType" = 'CURRENCY' AND te."assetId" = 'PRIMARY'
-          AND t."createdAt" >= NOW() - INTERVAL '24 hours'
-      ), 0)::text AS "volume24h"
-    FROM "Market" m
-    LEFT JOIN "Transaction" t ON t."marketId" = m.id
-    LEFT JOIN "TransactionEntry" te ON te."transactionId" = t.id
-    WHERE m.id = ANY(${uniqueIds})
-    GROUP BY m.id
-  `
+  const rows = await loadMarketVolumeReport<AmmVolumeRow[]>(uniqueIds)
 
   return new Map(rows.map(row => [row.marketId, {
     volume: Number(row.volume) || 0,

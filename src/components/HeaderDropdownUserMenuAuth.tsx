@@ -188,8 +188,8 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
             <span>{t('Profile')}</span>
           </button>
         </DrawerTrigger>
-        <DrawerContent className="max-h-[88vh] rounded-t-[1.75rem] border-border/70 bg-background px-4 pt-3 pb-6">
-          <div className="grid gap-4 overflow-y-auto pt-2">
+        <DrawerContent className="max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] rounded-t-[1.75rem] border-border/70 bg-background px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <div className="grid min-h-0 flex-1 gap-4 overflow-x-hidden overflow-y-auto overscroll-contain pt-2 pb-4">
             <div className="rounded-2xl border border-border/70 p-2">
               <UserInfoSection />
             </div>
@@ -239,7 +239,7 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
                 <AppLink
                   intentPrefetch
                   href="/settings"
-                  className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                  className="flex min-h-11 items-center gap-3 px-4 py-3 text-sm font-semibold"
                 >
                   <SettingsIcon className="size-4 text-orange-500" />
                   {t('Settings')}
@@ -265,8 +265,8 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
 
             <div className="overflow-hidden rounded-2xl border border-border/70">
               <DrawerClose asChild>
-                <a href="https://whatsapp.com" target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-muted-foreground">
-                  <MessageCircleIcon className="size-4" />
+                <a href="https://chat.whatsapp.com/CbEzxiNuvTS7utAm5TMD05" target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-emerald-500 hover:text-emerald-400">
+                  <MessageCircleIcon className="size-4 text-emerald-500" />
                   {t('WhatsApp group')}
                 </a>
               </DrawerClose>
@@ -429,18 +429,21 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
           </DropdownMenuItem>
 
           {canShowInstallUi && (
-            <DropdownMenuItem
-              className="py-2 text-sm font-semibold cursor-pointer"
-              onSelect={() => {
-                void handleInstallAction()
-              }}
-              disabled={isPrompting}
-            >
-              <div className="flex w-full items-center gap-1.5">
-                <DownloadIcon className="size-4 text-sky-500" />
-                {t('Install app')}
-              </div>
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="min-h-10 cursor-pointer py-2 text-sm font-semibold"
+                onSelect={() => {
+                  void handleInstallAction()
+                }}
+                disabled={isPrompting}
+              >
+                <div className="flex w-full items-center gap-1.5">
+                  <DownloadIcon className="size-4 text-sky-500" />
+                  {t('Install app')}
+                </div>
+              </DropdownMenuItem>
+            </>
           )}
 
           {/* <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
@@ -492,9 +495,9 @@ export default function HeaderDropdownUserMenuAuth({ displayMode = 'dropdown', o
             <AppLink intentPrefetch href="/docs" target="_blank" data-testid="header-docs-link">{t('Documentation')}</AppLink>
           </DropdownMenuItem> */}
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
-            <a href="https://whatsapp.com" target="_blank" rel="noreferrer" className="flex w-full items-center gap-1.5">
-              <MessageCircleIcon className="size-4" />
+          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-emerald-500 hover:text-emerald-400">
+            <a href="https://chat.whatsapp.com/CbEzxiNuvTS7utAm5TMD05" target="_blank" rel="noreferrer" className="flex w-full items-center gap-1.5 text-emerald-500 hover:text-emerald-400">
+              <MessageCircleIcon className="size-4 text-emerald-500" />
               {t('WhatsApp group')}
             </a>
           </DropdownMenuItem>

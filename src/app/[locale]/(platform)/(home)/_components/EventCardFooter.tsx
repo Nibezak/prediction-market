@@ -43,6 +43,12 @@ export default function EventCardFooter({
           {' '}
           Vol.
         </span>
+        {Boolean(event.trades_count && event.trades_count >= 10) && (
+          <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+            <span>👥</span>
+            <span>{event.trades_count} trades</span>
+          </span>
+        )}
         {recurrenceDisplayLabel && (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Repeat className="size-3" />

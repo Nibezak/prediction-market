@@ -3,12 +3,88 @@
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { UserRepository } from '@/lib/db/queries/user'
+import { SettingsRepository } from '@/lib/db/queries/settings'
 import { jobs, notifications, risk_cases, withdrawal_requests } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
 import { canAccessAdminWorkspace, canMoveUserFunds, canReviewRisk, getUserPlatformRole } from '@/lib/staff-role'
+import { hasStaffPermission } from '@/lib/staff-permissions'
+import { FINANCE_SETTINGS_GROUP, KES_PER_USD_KEY } from '@/lib/finance-display-settings'
 import { recordAuditEvent } from '@/lib/audit'
 import { clearAutomatedRiskHoldIfEligible, setAutomatedRiskHold } from '@/lib/risk/account-restrictions'
 import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
+import { slimefishBackendUserRequest } from '@/lib/slimefish-backend-user-request'
+
+export async function updateLedgerFinanceSettingsAction(formData: FormData) {
+  const currentUser = await UserRepository.getCurrentUser({ minimal: true })
+  if (!currentUser || !hasStaffPermission(currentUser, 'finance.settings.manage')) {
+    throw new Error('You do not have permission to change financial settings.')
+  }
+  const values = [
+    ['trade.minimum_kes', Number(formData.get('minimumTradeKes'))],
+    ['market.initial_liquidity_kes', Number(formData.get('initialLiquidityKes'))],
+    ['commission.profit_base_bps', Number(formData.get('baseCommissionBps'))],
+    ['commission.profit_close_bps', Number(formData.get('closeCommissionBps'))],
+    ['commission.ramp_seconds', Number(formData.get('commissionRampSeconds'))],
+  ] as const
+  if (values.some(([, value]) => !Number.isFinite(value) || value < 0)) throw new Error('Enter valid financial settings.')
+  try {
+    for (const [key, value] of values) {
+      const body = JSON.stringify({ key, value })
+      const { response } = await slimefishBackendUserRequest('admin/finance/settings', { method: 'PATCH', body })
+      if (!response?.ok) {
+        const payload = await response?.json().catch(() => null)
+        throw new Error(payload?.error || 'The ledger service did not accept the financial settings.')
+      }
+    }
+  }
+  catch (error) {
+    await recordAuditEvent({
+      eventType: 'finance.ledger_settings.updated', category: 'money', action: 'Failed to update ledger financial settings',
+      outcome: 'failure', severity: 'high', actorUserId: currentUser.id, actorRole: getUserPlatformRole(currentUser),
+      entityType: 'finance_settings', metadata: { reason: error instanceof Error ? error.message : 'Unknown backend error' },
+      afterValues: Object.fromEntries(values),
+    })
+    throw new Error('Ledger settings could not be saved. Please try again or inspect the audit log.')
+  }
+  await recordAuditEvent({
+    eventType: 'finance.ledger_settings.updated', category: 'money', action: 'Updated ledger financial settings',
+    actorUserId: currentUser.id, actorRole: getUserPlatformRole(currentUser), entityType: 'finance_settings',
+    afterValues: Object.fromEntries(values),
+  })
+  revalidatePath('/[locale]/admin/finance', 'page')
+  revalidatePath('/[locale]/admin/finance/settings', 'page')
+}
+
+export async function updateFinanceRateAction(formData: FormData) {
+  const currentUser = await UserRepository.getCurrentUser({ minimal: true })
+  if (!currentUser || !hasStaffPermission(currentUser, 'finance.settings.manage')) {
+    throw new Error('You do not have permission to change financial settings.')
+  }
+  const rate = Number(formData.get('kesPerUsd'))
+  if (!Number.isFinite(rate) || rate < 1 || rate > 10_000) {
+    throw new Error('Enter a valid KES per USD rate.')
+  }
+  const normalizedRate = rate.toFixed(4).replace(/\.?(?:0+)$/, '')
+  const baseUrl = (process.env.NEXT_PUBLIC_SLIMEFISH_BACKEND_API_URL || 'http://localhost:8000/api').replace(/\/$/, '')
+  const url = `${baseUrl}/v1/settings`
+  const body = JSON.stringify({ settings: [{ group: FINANCE_SETTINGS_GROUP, key: KES_PER_USD_KEY, value: normalizedRate }] })
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: {
+      'Content-Type': 'application/json',
+      'x-tellwise-secret': process.env.TELLWISE_SECRET || '',
+      'x-tellwise-user-id': currentUser.id,
+      'x-tellwise-role': getUserPlatformRole(currentUser),
+    } }),
+    body,
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error('The ledger service did not accept the exchange rate.')
+  const result = await SettingsRepository.updateSettings([{ group: FINANCE_SETTINGS_GROUP, key: KES_PER_USD_KEY, value: normalizedRate }])
+  if (result.error) throw new Error('The exchange rate could not be saved.')
+  await recordAuditEvent({ eventType: 'finance.exchange_rate.updated', category: 'money', action: 'Updated KES display exchange rate', actorUserId: currentUser.id, actorRole: getUserPlatformRole(currentUser), entityType: 'setting', entityId: `${FINANCE_SETTINGS_GROUP}.${KES_PER_USD_KEY}`, afterValues: { kesPerUsd: normalizedRate } })
+  revalidatePath('/[locale]/admin/finance', 'page')
+}
 
 export async function requeueJobAction(formData: FormData) {
   const currentUser = await UserRepository.getCurrentUser({ minimal: true })
@@ -59,28 +135,6 @@ export async function completeRiskReviewAction(formData: FormData) {
 }
 
 export async function reviewWithdrawalAction(formData: FormData) {
-  const currentUser = await UserRepository.getCurrentUser({ minimal: true })
-  if (!currentUser || !canMoveUserFunds(currentUser)) throw new Error('Only finance officers and administrators can release money.')
-  const requestId = String(formData.get('requestId') || '')
-  const decision = String(formData.get('decision') || '')
-  if (!['approve', 'reject'].includes(decision)) throw new Error('Invalid decision.')
-  const [request] = await db.select().from(withdrawal_requests).where(eq(withdrawal_requests.id, requestId)).limit(1)
-  if (!request || !['held', 'approved'].includes(request.status)) throw new Error('This withdrawal is no longer awaiting review.')
-  if (decision === 'reject') {
-    const url = `${process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'}/internal/users/${encodeURIComponent(request.user_id)}/withdrawal-release`
-    const body = JSON.stringify({ amount: Number(request.amount), requestId })
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: signSlimefishBackendRequest({ url, method: 'POST', body, headers: { 'Content-Type': 'application/json', 'x-tellwise-secret': process.env.TELLWISE_SECRET || '', 'x-tellwise-internal-operation': 'withdrawal-release' } }),
-      body,
-    })
-    if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'Could not release reserved funds.')
-  }
-  const status = decision === 'approve' ? 'completed' : 'rejected'
-  await db.transaction(async (tx) => {
-    await tx.update(withdrawal_requests).set({ status, reviewed_by_user_id: currentUser.id, reviewed_at: new Date(), completed_at: decision === 'approve' ? new Date() : null, review_note: decision === 'approve' ? 'Approved by finance' : 'Rejected; reserved funds returned' }).where(eq(withdrawal_requests.id, requestId))
-    await tx.insert(notifications).values({ user_id: request.user_id, category: 'finance', title: decision === 'approve' ? 'Withdrawal approved' : 'Withdrawal was not approved', description: decision === 'approve' ? `Your $${Number(request.amount).toFixed(2)} withdrawal has been approved.` : `Your $${Number(request.amount).toFixed(2)} withdrawal was not approved and the reserved balance was returned.`, metadata: { withdrawalRequestId: requestId }, link_type: 'internal', link_target: 'portfolio', link_url: '/portfolio?tab=history', link_label: 'View activity' })
-  })
-  await recordAuditEvent({ eventType: decision === 'approve' ? 'money.withdrawal.completed' : 'money.withdrawal.rejected', category: 'money', action: decision === 'approve' ? 'Approved and completed withdrawal' : 'Rejected withdrawal and released reserved funds', severity: decision === 'approve' ? 'info' : 'warning', actorUserId: currentUser.id, actorRole: getUserPlatformRole(currentUser), subjectUserId: request.user_id, entityType: 'withdrawal_request', entityId: requestId, metadata: { amount: Number(request.amount), decision } })
-  revalidatePath('/[locale]/admin/[workspace]', 'page')
+  void formData
+  throw new Error('Legacy manual withdrawal review is disabled. Cloud9 settlements are handled by the backend ledger state machine.')
 }

@@ -3,6 +3,7 @@
 import { CheckIcon, XIcon } from 'lucide-react'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { cn } from '@/lib/utils'
 
@@ -37,9 +38,9 @@ function TimelineMarker({ status, isLast }: { status: TimelineStepStatus, isLast
       )}
       >
         {isDone && <CheckIcon className="size-3.5" />}
-        {isActive && <span className="size-3 rounded-full bg-primary/70 animate-pulse" />}
+        {isActive && <Skeleton className="size-3 rounded-full bg-primary/70" />}
         {isFailed && <XIcon className="size-3.5" />}
-        {status === 'pending' && <span className="size-3 rounded-full bg-muted animate-pulse" />}
+        {status === 'pending' && <Skeleton className="size-3 rounded-full" />}
       </span>
       {!isLast && (
         <span className={cn(
@@ -74,7 +75,8 @@ export default function WalletTransactionTimeline({
     || `${title} ${description}`.toLowerCase().includes('payout')
   const method = isWithdrawal ? 'M-Pesa payout' : 'M-Pesa deposit'
   const heading = isWithdrawal ? 'Withdraw to M-Pesa' : 'M-Pesa deposit'
-  const summaryLabel = failed ? 'Failed' : 'In progress'
+  const completed = !failed && steps.length > 0 && steps.every(step => step.status === 'complete')
+  const summaryLabel = failed ? 'Failed' : completed ? 'Completed' : 'In progress'
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-background text-foreground">
@@ -98,7 +100,7 @@ export default function WalletTransactionTimeline({
           </div>
           <span className={cn(
             'rounded-full px-2.5 py-1 text-xs font-semibold',
-            failed ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary',
+            failed ? 'bg-destructive/15 text-destructive' : 'bg-primary/10 text-primary',
           )}
           >
             {summaryLabel}

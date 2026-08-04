@@ -50,8 +50,8 @@ INSERT INTO allowed_market_creators (
 )
 VALUES (
   '0x183d590c4d7f74b11f265ff131bfe3259a25969b',
-  'demo.kuest.com',
-  'https://demo.kuest.com',
+  'kalshi.com',
+  'https://kalshi.com',
   'site'
 )
 ON CONFLICT (wallet_address) DO UPDATE SET

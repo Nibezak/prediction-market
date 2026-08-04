@@ -518,7 +518,7 @@ function useOrderBookComputations({
     }
 
     if (!isLimitOrder && side === ORDER_SIDE.BUY) {
-      return marketBuyFill?.avgPriceCents ?? null
+      return outcomeFallbackBuyPriceCents ?? marketBuyFill?.avgPriceCents ?? null
     }
 
     return outcomeFallbackBuyPriceCents
@@ -546,29 +546,31 @@ function useOrderBookComputations({
       return { payout, cost, profit, changePct, multiplier }
     }
 
-    const fallbackPrice = 0.5
+    const fallbackPrice = outcomeFallbackBuyPriceCents && outcomeFallbackBuyPriceCents > 0
+      ? outcomeFallbackBuyPriceCents / 100
+      : 0.5
     const avgPrice = marketBuyFill?.avgPriceCents != null && marketBuyFill.avgPriceCents > 0
       ? marketBuyFill.avgPriceCents / 100
       : currentBuyPriceCents != null && currentBuyPriceCents > 0
         ? currentBuyPriceCents / 100
         : fallbackPrice
-    const cost = marketBuyFill?.totalCost ?? amountNumber
+    const cost = (marketBuyFill?.totalCost && marketBuyFill.totalCost > 0) ? marketBuyFill.totalCost : amountNumber
     // A winning AMM share settles at $1, so the shares count is the total
     // payout shown to the user. It is not a profit-only figure.
     const rawShares = marketBuyFill?.filledShares && marketBuyFill.filledShares > 0
       ? marketBuyFill.filledShares
       : (cost > 0 && avgPrice > 0 ? cost / avgPrice : 0)
-    // The quote endpoint is authoritative for AMM math. It returns the total
-    // winning payout (not profit) after the configured fee is applied once.
-    const payout = isAmm && ammBuyQuote?.totalPayout && ammBuyQuote.totalPayout > 0
-      ? ammBuyQuote.totalPayout
-      : rawShares > 0 ? rawShares : (cost > 0 ? cost : 0)
+    const uncappedPayout = Math.max(
+      rawShares > 0 ? rawShares : (cost > 0 && avgPrice > 0 ? cost / avgPrice : 0),
+      isAmm && ammBuyQuote?.totalPayout && ammBuyQuote.totalPayout > 0 ? ammBuyQuote.totalPayout : 0,
+    )
+    const payout = uncappedPayout
     const profit = payout - cost
     const changePct = cost > 0 ? (profit / cost) * 100 : 0
     const multiplier = cost > 0 ? payout / cost : 0
 
     return { payout, cost, profit, changePct, multiplier }
-  }, [ammBuyQuote, amountNumber, currentBuyPriceCents, isAmm, isLimitOrder, marketBuyFill, limitPrice, limitShares, side])
+  }, [ammBuyQuote, amountNumber, currentBuyPriceCents, isAmm, isLimitOrder, marketBuyFill, limitPrice, limitShares, outcomeFallbackBuyPriceCents, side])
 
   return {
     limitMatchingShares,
@@ -1234,7 +1236,7 @@ export default function EventOrderPanelForm({
   const effectiveMarketBuyCost = state.side === ORDER_SIDE.BUY && state.type === ORDER_TYPE.MARKET
     ? (marketBuyFill?.totalCost ?? amountNumber)
     : 0
-  const isInteractiveWalletReady = hasMounted && (isSlimefishBackendAmm || isConnected)
+  const isInteractiveWalletReady = hasMounted && (Boolean(user) || isSlimefishBackendAmm || isConnected)
   const shouldShowDepositCta = isInteractiveWalletReady
     && state.side === ORDER_SIDE.BUY
     && state.type === ORDER_TYPE.MARKET
@@ -1350,6 +1352,11 @@ export default function EventOrderPanelForm({
     if (isSlimefishBackendAmm) {
       if (!activeMarket?.condition_id || !activeOutcome?.token_id || amountNumber <= 0) {
         setShowAmountTooLowWarning(true)
+        triggerInputShake()
+        return
+      }
+      if (state.side === ORDER_SIDE.BUY && amountNumber < 1) {
+        setShowMarketMinimumWarning(true)
         triggerInputShake()
         return
       }
@@ -2335,13 +2342,8 @@ export default function EventOrderPanelForm({
                   outcomeButtonStyleVariant={outcomeButtonStyleVariant}
                   submitButtonLabel={submitButtonLabel}
                   onSubmitButtonClick={(event) => {
-                    if (!isInteractiveWalletReady) {
+                    if (!user) {
                       void open()
-                      return
-                    }
-                    if (shouldShowDepositCta) {
-                      focusInput()
-                      startDepositFlow()
                       return
                     }
                     state.setLastMouseEvent(event)

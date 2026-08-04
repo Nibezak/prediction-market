@@ -7,6 +7,7 @@ import { resolveWinningOutcomeIndex } from '@/app/[locale]/(platform)/event/[slu
 import EventIconImage from '@/components/EventIconImage'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { OUTCOME_INDEX } from '@/lib/constants'
+import { formatCurrency } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 export default function ResolvedMarketRow({
@@ -76,14 +77,7 @@ export default function ResolvedMarketRow({
             <div className="text-sm font-bold underline-offset-2 group-hover:underline">
               {market.short_title || market.title}
             </div>
-            <div className="text-sm text-muted-foreground">
-              {t('{amount} Vol.', {
-                amount: `$${resolvedVolume.toLocaleString(locale, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`,
-              })}
-            </div>
+
           </div>
         </div>
 

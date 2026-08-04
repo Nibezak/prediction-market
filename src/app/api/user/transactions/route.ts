@@ -1,37 +1,26 @@
-import { desc, eq } from 'drizzle-orm'
-import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { payment_intents } from '@/lib/db/schema'
-import { db } from '@/lib/drizzle'
+import { slimefishBackendUserRequest } from '@/lib/slimefish-backend-user-request'
 
 export async function GET() {
-  const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const rows = await db
-    .select({
-      id: payment_intents.id,
-      direction: payment_intents.direction,
-      status: payment_intents.status,
-      sourceCurrency: payment_intents.source_currency,
-      destinationCurrency: payment_intents.destination_currency,
-      grossAmount: payment_intents.gross_amount,
-      providerFee: payment_intents.provider_fee,
-      netAmount: payment_intents.net_amount,
-      externalReference: payment_intents.external_reference,
-      failureMessage: payment_intents.failure_message,
-      metadata: payment_intents.metadata,
-      createdAt: payment_intents.created_at,
-      updatedAt: payment_intents.updated_at,
-      completedAt: payment_intents.completed_at,
-    })
-    .from(payment_intents)
-    .where(eq(payment_intents.user_id, session.user.id))
-    .orderBy(desc(payment_intents.created_at))
-    .limit(100)
-
+  const { response } = await slimefishBackendUserRequest('payments')
+  if (!response) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) return NextResponse.json({ error: 'Transactions are temporarily unavailable.' }, { status: response.status })
+  const rows = (payload?.data || []).map((intent: any) => ({
+    id: intent.id,
+    direction: intent.direction === 'WITHDRAWAL' ? 'withdrawal' : 'deposit',
+    status: intent.status === 'SUCCEEDED' ? 'succeeded' : intent.status.toLowerCase(),
+    sourceCurrency: 'KES',
+    destinationCurrency: 'KES',
+    grossAmount: String(intent.requestedAmount),
+    providerFee: String(intent.providerFee || 0),
+    netAmount: String(intent.netAmount),
+    externalReference: intent.providerReference || intent.reference,
+    failureMessage: intent.failureMessage,
+    metadata: intent.metadata,
+    createdAt: intent.createdAt,
+    updatedAt: intent.updatedAt,
+    completedAt: intent.completedAt,
+  }))
   return NextResponse.json({ data: rows })
 }

@@ -103,7 +103,7 @@ async function fetchUserPositions({
   searchQuery?: string
   signal?: AbortSignal
 }): Promise<PublicPosition[]> {
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const isSlimefishBackendAmm = true
   if (isSlimefishBackendAmm) {
     if (pageParam > 0) {
       return []
@@ -111,7 +111,7 @@ async function fetchUserPositions({
     const response = await fetch(`/api/amm/users/me/positions?status=${status}&limit=100`, { signal })
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to load positions')
+      return []
     }
     const rows = Array.isArray(payload?.data) ? payload.data : []
     return rows.map((position: any) => {
@@ -188,9 +188,7 @@ async function fetchUserPositions({
     const response = await fetch(`${dataUrl}${endpoint}?${requestParams.toString()}`, { signal })
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => null)
-      const errorMessage = errorBody?.error || 'Server error occurred. Please try again later.'
-      throw new Error(errorMessage)
+      return []
     }
 
     const result = await response.json()

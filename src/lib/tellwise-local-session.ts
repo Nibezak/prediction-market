@@ -38,16 +38,15 @@ function parseListEnvValue(value: string | undefined) {
     .filter(Boolean)
 }
 
-export function isTellwiseLocalSessionEnabled(env?: NodeJS.ProcessEnv) {
-  if (env) {
-    return env.NEXT_PUBLIC_TELLWISE_LOCAL_LOGIN === 'true'
-      || env.NEXT_PUBLIC_LOCAL_MATCHING === 'true'
-      || env.NEXT_PUBLIC_MOCK_MODE === 'true'
+export function isTellwiseLocalSessionEnabled(env: NodeJS.ProcessEnv = process.env) {
+  // This synthetic session exists only for local development. Never allow a
+  // stale deployment variable or cookie to bypass Firebase in production.
+  if (env.NODE_ENV === 'production') {
+    return false
   }
 
-  return process.env.NEXT_PUBLIC_TELLWISE_LOCAL_LOGIN === 'true'
-    || process.env.NEXT_PUBLIC_LOCAL_MATCHING === 'true'
-    || process.env.NEXT_PUBLIC_MOCK_MODE === 'true'
+  return env.NEXT_PUBLIC_TELLWISE_LOCAL_LOGIN === 'true'
+    || env.NEXT_PUBLIC_LOCAL_MATCHING === 'true'
 }
 
 export function getTellwiseLocalUsername(env: NodeJS.ProcessEnv = process.env) {
@@ -128,7 +127,6 @@ export function getTellwiseLocalSessionFromRequest(request: NextRequest) {
   }
 
   const cookieValue = request.cookies.get(TELLWISE_LOCAL_SESSION_COOKIE)?.value
-    ?? request.cookies.get('mock_logged_in')?.value
 
   return hasActiveTellwiseLocalCookie(cookieValue) ? createTellwiseLocalSession() : null
 }
@@ -153,6 +151,6 @@ export function getTellwiseLocalSessionFromHeaders(headers: Headers) {
       .filter(([name]) => Boolean(name)),
   )
 
-  const cookieValue = cookies.get(TELLWISE_LOCAL_SESSION_COOKIE) ?? cookies.get('mock_logged_in')
+  const cookieValue = cookies.get(TELLWISE_LOCAL_SESSION_COOKIE)
   return hasActiveTellwiseLocalCookie(cookieValue) ? createTellwiseLocalSession() : null
 }

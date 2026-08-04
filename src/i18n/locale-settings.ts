@@ -34,8 +34,13 @@ export function getEnabledLocalesFromSettings(settings?: SettingsMap): Supported
 }
 
 export async function loadEnabledLocales(): Promise<SupportedLocale[]> {
-  const { data } = await SettingsRepository.getSettings()
-  return getEnabledLocalesFromSettings(data ?? undefined)
+  try {
+    const { data } = await SettingsRepository.getSettings()
+    return getEnabledLocalesFromSettings(data ?? undefined)
+  }
+  catch {
+    return [DEFAULT_LOCALE]
+  }
 }
 
 export function getAutomaticTranslationsEnabledFromSettings(settings?: SettingsMap): boolean {
@@ -44,8 +49,13 @@ export function getAutomaticTranslationsEnabledFromSettings(settings?: SettingsM
 }
 
 export async function loadAutomaticTranslationsEnabled(): Promise<boolean> {
-  const { data } = await SettingsRepository.getSettings()
-  return getAutomaticTranslationsEnabledFromSettings(data ?? undefined)
+  try {
+    const { data } = await SettingsRepository.getSettings()
+    return getAutomaticTranslationsEnabledFromSettings(data ?? undefined)
+  }
+  catch {
+    return true
+  }
 }
 
 export function serializeEnabledLocales(locales: SupportedLocale[]): string {

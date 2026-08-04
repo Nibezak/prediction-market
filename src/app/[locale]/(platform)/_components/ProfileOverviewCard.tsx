@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useBalance } from '@/hooks/useBalance'
 import { useClipboard } from '@/hooks/useClipboard'
 import { usePortfolioValue } from '@/hooks/usePortfolioValue'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { formatCompactCount, formatCompactCurrency, formatCurrency } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
@@ -71,11 +72,12 @@ export default function ProfileOverviewCard({
   const totalPortfolioValue = (positionsValue ?? 0) + (balance?.raw ?? 0)
   const areValuesHidden = usePortfolioValueVisibility(state => state.isHidden)
   const toggleValuesHidden = usePortfolioValueVisibility(state => state.toggle)
+  const { formatMoney } = useDisplayCurrency()
   const formattedTotalValue = variant === 'portfolio'
-    ? formatCurrency(totalPortfolioValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ? formatMoney(totalPortfolioValue)
     : formatCompactCurrency(totalPortfolioValue)
   const formattedCashValue = variant === 'portfolio'
-    ? formatCurrency(balance?.raw ?? 0, { minimumFractionDigits: 2, maximumFractionDigits: 2, includeSymbol: false })
+    ? formatMoney(balance?.raw ?? 0)
     : formatCompactCurrency(balance?.raw ?? 0).replace('$', '')
   const avatarUrl = profile.avatarUrl?.trim() ?? ''
   const showPlaceholder = shouldUseAvatarPlaceholder(avatarUrl)
@@ -141,7 +143,7 @@ export default function ProfileOverviewCard({
                                 : (
                                     <>
                                       {snapshot.profitLoss >= 0 ? '+' : '-'}
-                                      {formatCompactCurrency(Math.abs(snapshot.profitLoss))}
+                                      {formatMoney(Math.abs(snapshot.profitLoss))}
                                     </>
                                   )}
                             </span>
@@ -164,10 +166,7 @@ export default function ProfileOverviewCard({
                             {areValuesHidden
                               ? '****'
                               : (
-                                  <>
-                                    $
-                                    {formattedCashValue}
-                                  </>
+                                  formattedCashValue
                                 )}
                           </span>
                         </div>

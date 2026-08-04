@@ -11,7 +11,7 @@ export const payment_intents = pgTable('payment_intents', {
   destination_currency: text().notNull(),
   gross_amount: numeric({ precision: 20, scale: 2 }).notNull(),
   provider_fee: numeric({ precision: 20, scale: 2 }).notNull().default('0'),
-  platform_fee: numeric({ precision: 20, scale: 2 }).notNull().default('0'),
+  platform_fee: numeric({ precision: 20, scale: 8 }).notNull().default('0'),
   net_amount: numeric({ precision: 20, scale: 2 }).notNull(),
   idempotency_key: text().notNull(),
   external_reference: text(),
@@ -22,6 +22,7 @@ export const payment_intents = pgTable('payment_intents', {
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   completed_at: timestamp({ withTimezone: true }),
+  expires_at: timestamp({ withTimezone: true }),
 }, table => ({
   idempotencyIdx: uniqueIndex('idx_payment_intents_idempotency').on(table.idempotency_key),
   userIdx: index('idx_payment_intents_user').on(table.user_id, table.created_at),

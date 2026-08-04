@@ -1,4 +1,3 @@
-import type { ChangeEventHandler, FormEventHandler } from 'react'
 import type { WalletOnrampProgress } from '@/app/[locale]/(platform)/_components/wallet-modal/WalletOnrampForm'
 
 export const MELD_PAYMENT_METHODS = [
@@ -58,11 +57,12 @@ export interface WalletDepositModalProps {
   view: WalletDepositView
   onViewChange: (view: WalletDepositView) => void
   onBuy: (url: string) => void
-  depositWalletBalance?: string | null
+  depositWalletBalance?: number | null
   isDepositWalletBalanceLoading?: boolean
   defaultPhoneNumber?: string
   onrampProgress?: WalletOnrampProgress | null
   onOnrampProgressChange?: (progress: WalletOnrampProgress | null) => void
+  isRestoringPayment?: boolean
 }
 
 export interface WalletWithdrawModalProps {
@@ -71,18 +71,22 @@ export interface WalletWithdrawModalProps {
   isMobile: boolean
   siteName?: string
   sendTo: string
-  onChangeSendTo: ChangeEventHandler<HTMLInputElement>
+  onChangeSendTo: (value: string) => void
   sendAmount: string
   onChangeSendAmount: (value: string) => void
   isSending: boolean
   isSubmitted?: boolean
+  settlementStatus?: 'pending' | 'completed' | 'failed'
   error?: string
   onRetrySend?: () => void
-  onSubmitSend: FormEventHandler<HTMLFormElement>
+  onSubmitSend: () => void | Promise<void>
   connectedWalletAddress?: string | null
   onUseConnectedWallet?: () => void
   availableBalance?: number | null
   onMax?: () => void
   isBalanceLoading?: boolean
   defaultPhoneNumber?: string
+  withdrawalPin: string
+  onWithdrawalPinChange: (value: string) => void
+  isRestoringPayment?: boolean
 }

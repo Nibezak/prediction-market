@@ -25,10 +25,15 @@ export const users = pgTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     two_factor_enabled: boolean().default(false),
+    withdrawal_phone_pin_hash: text('withdrawal_phone_pin_hash'),
+    withdrawal_phone_pin_set_at: timestamp('withdrawal_phone_pin_set_at'),
     username: text(),
     settings: jsonb()
       .$type<Record<string, any>>()
       .default({
+        display: {
+          currency: 'KES',
+        },
         trading: {
           market_order_type: CLOB_ORDER_TYPE.FAK,
           show_slippage_warning: true,

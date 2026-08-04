@@ -76,6 +76,8 @@ export interface Event {
 
   volume: number
 
+  trades_count?: number
+
   start_date?: string | null
 
   end_date: string | null
@@ -734,6 +736,14 @@ interface TradingAuthStatus {
 
 interface UserSettings {
 
+  display?: {
+
+    currency?: 'KES' | 'USD'
+
+    show_home_featured_mobile?: boolean
+
+  }
+
   notifications?: {
 
     email_resolutions?: boolean
@@ -757,6 +767,10 @@ interface UserSettings {
     termsAcceptedAt?: string
     emailSkippedAt?: string
     emailCompletedAt?: string
+  }
+
+  withdrawalSecurity?: {
+    pinSetAt?: string
   }
 
   trading?: {

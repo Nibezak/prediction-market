@@ -199,13 +199,8 @@ export function buildStepErrors(
       return errors
     }
 
-    if (args.contentCheckState === 'idle' || args.contentCheckState === 'checking') {
-      errors.push('Run content AI checker.')
-    }
-    else if (args.hasContentCheckFatalError) {
-      errors.push('Could not run content AI checker right now. Try again.')
-    }
-    else if (args.hasPendingAiErrors) {
+    // Content AI checker is advisory/optional; network or execution errors do not block event creation
+    if (args.hasPendingAiErrors) {
       errors.push('Content AI checker found issues.')
     }
   }

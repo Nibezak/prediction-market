@@ -1,8 +1,9 @@
 import type { RefObject } from 'react'
 import type { OrderSide } from '@/types'
-import { useExtracted, useLocale } from 'next-intl'
+import { useExtracted } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { formatDisplayAmount, getAmountSizeClass, MAX_AMOUNT_INPUT, sanitizeNumericInput } from '@/lib/amount-input'
 import { ORDER_SIDE } from '@/lib/constants'
 import { formatAmountInputValue } from '@/lib/formatters'
@@ -28,7 +29,7 @@ interface EventOrderPanelInputProps {
   shouldShake?: boolean
 }
 
-const BUY_CHIPS = ['+$1', '+$5', '+$10', '+$100']
+const BUY_CHIP_VALUES_USD = [1, 5, 10, 100]
 
 export default function EventOrderPanelInput({
   isMobile,
@@ -43,6 +44,7 @@ export default function EventOrderPanelInput({
   shouldShake,
 }: EventOrderPanelInputProps) {
   const t = useExtracted()
+  const { currency, kesPerUsdc, formatMoney } = useDisplayCurrency()
   const areValuesHidden = usePortfolioValueVisibility(state => state.isHidden)
 
   function focusInput() {
@@ -60,7 +62,7 @@ export default function EventOrderPanelInput({
     const numericValue = Number.parseFloat(cleaned)
 
     if (cleaned === '' || numericValue <= MAX_AMOUNT_INPUT) {
-      onAmountChange(cleaned)
+      onAmountChange(currency === 'KES' && cleaned ? String(numericValue / kesPerUsdc) : cleaned)
     }
   }
 
@@ -77,11 +79,13 @@ export default function EventOrderPanelInput({
       ? numeric
       : Math.min(numeric, MAX_AMOUNT_INPUT)
 
-    onAmountChange(formatAmountInputValue(clampedValue))
+    const ledgerValue = side === ORDER_SIDE.BUY && currency === 'KES' ? clampedValue / kesPerUsdc : clampedValue
+    onAmountChange(formatAmountInputValue(ledgerValue))
   }
 
   function incrementAmount(delta: number) {
-    const nextValue = amountNumber + delta
+    const normalizedDelta = side === ORDER_SIDE.BUY && currency === 'KES' ? delta / kesPerUsdc : delta
+    const nextValue = amountNumber + normalizedDelta
 
     if (side === ORDER_SIDE.SELL) {
       onAmountChange(formatAmountInputValue(nextValue))
@@ -93,7 +97,8 @@ export default function EventOrderPanelInput({
   }
 
   function decrementAmount(delta: number) {
-    const nextValue = Math.max(0, amountNumber - delta)
+    const normalizedDelta = side === ORDER_SIDE.BUY && currency === 'KES' ? delta / kesPerUsdc : delta
+    const nextValue = Math.max(0, amountNumber - normalizedDelta)
     onAmountChange(formatAmountInputValue(nextValue))
   }
 
@@ -138,37 +143,19 @@ export default function EventOrderPanelInput({
       ))
     }
 
-    return BUY_CHIPS.map(chip => (
-      <Button
-        type="button"
-        key={chip}
-        size="sm"
-        variant="outline"
-        className="px-2 text-xs"
-        onClick={() => {
-          const chipValue = Number.parseInt(chip.substring(2), 10)
-          const newValue = amountNumber + chipValue
-
-          const limitedValue = Math.min(newValue, MAX_AMOUNT_INPUT)
-          onAmountChange(formatAmountInputValue(limitedValue))
-          focusInput()
-        }}
-      >
-        {chip}
-      </Button>
-    ))
+    return null
   }
 
-  const locale = useLocale()
   const amountSizeClass = getAmountSizeClass(amount)
-  const formattedBalanceText = Number.isFinite(balance.raw)
-    ? balance.raw.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : '0.00'
+  const formattedBalanceText = formatMoney(Number.isFinite(balance.raw) ? balance.raw : 0)
 
-  const formattedAmount = formatDisplayAmount(amount)
+  const displayAmount = side === ORDER_SIDE.BUY && currency === 'KES' && amount
+    ? String(Math.round(amountNumber * kesPerUsdc))
+    : amount
+  const formattedAmount = formatDisplayAmount(displayAmount)
   const inputValue = side === ORDER_SIDE.SELL
     ? formattedAmount
-    : formattedAmount ? `$${formattedAmount}` : ''
+    : formattedAmount ? `${currency === 'KES' ? 'KES ' : '$'}${formattedAmount}` : ''
   return (
     <>
       {isMobile
@@ -197,7 +184,7 @@ export default function EventOrderPanelInput({
                       amountSizeClass,
                       { 'animate-order-shake': shouldShake },
                     )}
-                    placeholder={side === ORDER_SIDE.SELL ? '0' : '$0'}
+                    placeholder={side === ORDER_SIDE.SELL ? '0' : currency === 'KES' ? 'KES 0' : '$0'}
                     value={inputValue}
                     onChange={e => handleInputChange(e.target.value)}
                     onBlur={e => handleBlur(e.target.value)}
@@ -236,7 +223,7 @@ export default function EventOrderPanelInput({
                           >
                             {t('Balance')}
                             {' '}
-                            {areValuesHidden ? '****' : `$${formattedBalanceText}`}
+                            {areValuesHidden ? '****' : formattedBalanceText}
                           </button>
                         )}
                 </div>
@@ -256,7 +243,7 @@ export default function EventOrderPanelInput({
                     amountSizeClass,
                     { 'animate-order-shake': shouldShake },
                   )}
-                  placeholder={side === ORDER_SIDE.SELL ? '0' : '$0'}
+                  placeholder={side === ORDER_SIDE.SELL ? '0' : currency === 'KES' ? 'KES 0' : '$0'}
                   value={inputValue}
                   onChange={e => handleInputChange(e.target.value)}
                   onBlur={e => handleBlur(e.target.value)}
@@ -267,8 +254,7 @@ export default function EventOrderPanelInput({
 
       <div
         className={cn(
-          'mb-3 flex gap-2',
-          isMobile ? 'justify-center' : 'justify-end',
+          'my-2 flex justify-end gap-2 px-1',
         )}
       >
         {renderActionButtons()}
@@ -277,7 +263,7 @@ export default function EventOrderPanelInput({
           size="sm"
           variant="outline"
           className={cn(
-            'text-xs',
+            'text-xs px-1',
             { 'cursor-not-allowed opacity-50': side === ORDER_SIDE.SELL && availableShares <= 0 },
           )}
           disabled={side === ORDER_SIDE.SELL && availableShares <= 0}

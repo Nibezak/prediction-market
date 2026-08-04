@@ -73,17 +73,40 @@ function useServiceWorkerRegistration() {
       if (!registration.waiting || !canShowUpdatePrompt()) {
         return
       }
-      updateToastId = toast.info('A fresh Slimefish update is ready', {
-        description: 'Update now to get the latest app changes.',
+      updateToastId = toast.custom(toastId => (
+        <div className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl">
+          <div className="flex items-start gap-3 px-4 pt-4 pb-3">
+            <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-5">A fresh Slimefish update is ready</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Get the latest fixes and app changes.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 border-t border-border px-4 py-3">
+            <button
+              type="button"
+              className="h-9 rounded-md px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                remindTomorrow()
+                toast.dismiss(toastId)
+              }}
+            >
+              Tomorrow
+            </button>
+            <button
+              type="button"
+              className="h-9 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              onClick={() => {
+                activateUpdate(registration)
+                toast.dismiss(toastId)
+              }}
+            >
+              Update now
+            </button>
+          </div>
+        </div>
+      ), {
         duration: Number.POSITIVE_INFINITY,
-        action: {
-          label: 'Update now',
-          onClick: () => activateUpdate(registration),
-        },
-        cancel: {
-          label: 'Tomorrow',
-          onClick: remindTomorrow,
-        },
       })
     }
 

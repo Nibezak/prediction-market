@@ -53,7 +53,6 @@ interface InitialGlobalAnnouncementSettings {
   message: string
   linkUrl: string
   disabledOn: CustomJavascriptCodeDisablePage[]
-  disableFaucetBanner: boolean
 }
 
 interface AdminGeneralSettingsFormProps {
@@ -120,11 +119,7 @@ function AdminGeneralSettingsFormInner({
   const initialGlobalAnnouncementMessage = initialGlobalAnnouncement.message
   const initialGlobalAnnouncementLinkUrl = initialGlobalAnnouncement.linkUrl
   const initialGlobalAnnouncementDisabledOn = initialGlobalAnnouncement.disabledOn
-  const initialGlobalAnnouncementDisableFaucetBanner = initialGlobalAnnouncement.disableFaucetBanner
   const initialCustomJavascriptCodes = initialThemeSiteSettings.customJavascriptCodes
-  const initialLiFiIntegrator = initialThemeSiteSettings.lifiIntegrator
-  const initialLiFiApiKey = initialThemeSiteSettings.lifiApiKey
-  const initialLiFiApiKeyConfigured = initialThemeSiteSettings.lifiApiKeyConfigured
   const initialOpenRouterModel = openRouterSettings.defaultModel ?? ''
   const initialOpenRouterEnabled = openRouterSettings.isEnabled
   const initialOpenRouterApiKeyConfigured = openRouterSettings.isApiKeyConfigured
@@ -168,15 +163,10 @@ function AdminGeneralSettingsFormInner({
   const [globalAnnouncementDisabledOn, setGlobalAnnouncementDisabledOn] = useState<CustomJavascriptCodeDisablePage[]>(
     initialGlobalAnnouncementDisabledOn,
   )
-  const [globalAnnouncementDisableFaucetBanner, setGlobalAnnouncementDisableFaucetBanner] = useState(
-    initialGlobalAnnouncementDisableFaucetBanner,
-  )
   const [customJavascriptCodes, setCustomJavascriptCodes] = useState<CustomJavascriptCodeDraft[]>(
     () => initialCustomJavascriptCodes.map(code => createCustomJavascriptCodeDraft(nextCustomJavascriptCodeIdRef.current++, code)),
   )
   const [tosPdfPath, setTosPdfPath] = useState(initialTermsOfServicePdfPath)
-  const [lifiIntegrator, setLifiIntegrator] = useState(initialLiFiIntegrator)
-  const [lifiApiKey, setLifiApiKey] = useState(initialLiFiApiKey)
   const [openRouterApiKey, setOpenRouterApiKey] = useState('')
   const [openRouterEnabled, setOpenRouterEnabled] = useState(initialOpenRouterEnabled)
   const [openRouterModel, setOpenRouterModel] = useState(initialOpenRouterModel)
@@ -200,6 +190,10 @@ function AdminGeneralSettingsFormInner({
   )
   const [homeFeaturedSideCard, setHomeFeaturedSideCard] = useState(initialHomeFeaturedSideCard)
   const [homeFeaturedEvents, setHomeFeaturedEvents] = useState<HomeFeaturedEventAdminItem[]>(resolvedInitialHomeFeaturedEvents)
+  const [sideCardImageFiles, setSideCardImageFiles] = useState<Record<string, File>>({})
+  const handleSideCardImageFileChange = (slideId: string, file: File) => {
+    setSideCardImageFiles(previous => ({ ...previous, [slideId]: file }))
+  }
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
   const [selectedTermsOfServicePdfFile, setSelectedTermsOfServicePdfFile] = useState<File | null>(null)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
@@ -438,7 +432,18 @@ function AdminGeneralSettingsFormInner({
   }
 
   return (
-    <form id="admin-general-settings-form" action={formAction} className="grid max-w-full min-w-0 gap-6">
+    <form
+      id="admin-general-settings-form"
+      action={async (formData: FormData) => {
+        for (const [slideId, file] of Object.entries(sideCardImageFiles)) {
+          if (file && file.size > 0) {
+            formData.set(`home_featured_side_card_image_${slideId}`, file)
+          }
+        }
+        return formAction(formData)
+      }}
+      className="grid max-w-full min-w-0 gap-6"
+    >
       <input type="hidden" name="logo_mode" value={logoMode} />
       <input type="hidden" name="logo_image_path" value={logoImagePath} />
       <input type="hidden" name="logo_svg" value={logoSvg} />
@@ -449,11 +454,6 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="tos_pdf_path" value={tosPdfPath} />
       <input type="hidden" name="custom_javascript_codes_json" value={serializedCustomJavascriptCodes} />
       <input type="hidden" name="global_announcement_disabled_on_json" value={serializedGlobalAnnouncementDisabledOn} />
-      <input
-        type="hidden"
-        name="global_announcement_disable_faucet_banner"
-        value={String(globalAnnouncementDisableFaucetBanner)}
-      />
       <input type="hidden" name="blocked_countries" value={blockedCountriesValue} />
       <input type="hidden" name="home_featured_enabled" value={String(homeFeaturedEnabled)} />
       <input type="hidden" name="home_featured_use_ai" value={String(homeFeaturedUseAi)} />
@@ -541,8 +541,6 @@ function AdminGeneralSettingsFormInner({
           onGlobalAnnouncementLinkUrlChange={setGlobalAnnouncementLinkUrl}
           globalAnnouncementDisabledOn={globalAnnouncementDisabledOn}
           onToggleGlobalAnnouncementDisableOn={handleToggleGlobalAnnouncementDisableOn}
-          globalAnnouncementDisableFaucetBanner={globalAnnouncementDisableFaucetBanner}
-          onGlobalAnnouncementDisableFaucetBannerChange={setGlobalAnnouncementDisableFaucetBanner}
           customJavascriptCodeDisablePageOptions={customJavascriptCodeDisablePageOptions}
         />
 
@@ -571,6 +569,7 @@ function AdminGeneralSettingsFormInner({
           onIncludeNewEventsChange={setHomeFeaturedIncludeNewEvents}
           sideCard={homeFeaturedSideCard}
           onSideCardChange={setHomeFeaturedSideCard}
+          onSideCardImageFileChange={handleSideCardImageFileChange}
           hotPicksTags={homeFeaturedHotPicksTags}
           onHotPicksTagsChange={setHomeFeaturedHotPicksTags}
           featuredEvents={homeFeaturedEvents}
@@ -611,11 +610,6 @@ function AdminGeneralSettingsFormInner({
           trimmedOpenRouterApiKey={trimmedOpenRouterApiKey}
           onRefreshOpenRouterModels={handleRefreshOpenRouterModels}
           initialOpenRouterApiKeyConfigured={initialOpenRouterApiKeyConfigured}
-          lifiIntegrator={lifiIntegrator}
-          onLifiIntegratorChange={setLifiIntegrator}
-          lifiApiKey={lifiApiKey}
-          onLifiApiKeyChange={setLifiApiKey}
-          initialLiFiApiKeyConfigured={initialLiFiApiKeyConfigured}
           customJavascriptCodes={customJavascriptCodes}
           onAddCustomJavascriptCode={handleAddCustomJavascriptCode}
           onRemoveCustomJavascriptCode={handleRemoveCustomJavascriptCode}

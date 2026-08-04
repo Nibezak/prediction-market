@@ -61,6 +61,19 @@ export function resolveFallbackOutcomeUnitPrice(
     ? resolveMarketOutcome(market, outcomeOrIndex)
     : outcomeOrIndex ?? null
 
+  if (outcome) {
+    const rawPrice = Number.isFinite(outcome.buy_price)
+      ? Number(outcome.buy_price)
+      : Number.isFinite(outcome.price)
+        ? Number(outcome.price)
+        : Number.isFinite(outcome.probability)
+          ? Number(outcome.probability) / 100
+          : null
+    if (rawPrice != null && rawPrice > 0) {
+      return clampUnitPrice(rawPrice > 1 ? rawPrice / 100 : rawPrice)
+    }
+  }
+
   const isNoOutcome = outcome?.outcome_index === OUTCOME_INDEX.NO || outcomeOrIndex === OUTCOME_INDEX.NO
 
   const marketPrice = normalizeMarketUnitPrice(market)
@@ -70,11 +83,7 @@ export function resolveFallbackOutcomeUnitPrice(
       : marketPrice
   }
 
-  if (outcome && Number.isFinite(outcome.buy_price)) {
-    return clampUnitPrice(Number(outcome.buy_price))
-  }
-
-  return null
+  return 0.5
 }
 
 function resolveOutcomeSelectionUnitPrice(

@@ -12,14 +12,17 @@ import { synchronizeAmmMarketVolumes } from '@/lib/amm-volume'
 import { recordAuditEvent, requestAuditContext } from '@/lib/audit'
 import { auth } from '@/lib/auth'
 import { UserRepository } from '@/lib/db/queries/user'
-import { conditions, event_sports, events, markets, outcomes } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+import { conditions, event_sports, event_tags, events, markets, outcomes, tags } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
 import { loadEventActivities } from '@/lib/event-activity'
 import { assertOperationEnabled } from '@/lib/operations/controls'
 import { getAccountRestriction } from '@/lib/risk/account-restrictions'
 import { enforceRateLimit } from '@/lib/security/rate-limit'
+import { getClientNetworkIdentity } from '@/lib/security/client-identity'
 import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
 import { getUserPlatformRole } from '@/lib/staff-role'
+import { getStaffPermissions } from '@/lib/staff-permissions'
 
 const AMM_BASE_URL = process.env.AMM_BASE_URL || 'http://localhost:8000/api/v1'
 const TELLWISE_SECRET = process.env.TELLWISE_SECRET?.trim()
@@ -169,7 +172,16 @@ async function proxyRequest(
       catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Trading is unavailable' }, { status: 503 }) }
     }
     try {
-      await enforceRateLimit({ scope: req.method === 'GET' ? 'amm-user-read' : 'amm-user-write', identifier: effectiveUser.id, limit: req.method === 'GET' ? 180 : 30, windowSeconds: 60 })
+      const isWrite = req.method !== 'GET' && req.method !== 'OPTIONS'
+      const client = getClientNetworkIdentity(req.headers)
+      await enforceRateLimit({ scope: isWrite ? 'amm-user-write' : 'amm-user-read', identifier: effectiveUser.id, limit: isWrite ? 30 : 180, windowSeconds: 60 })
+      if (isWrite) {
+        await Promise.all([
+          enforceRateLimit({ scope: 'amm-user-burst', identifier: effectiveUser.id, limit: 8, windowSeconds: 10 }),
+          enforceRateLimit({ scope: 'amm-ip-write', identifier: client.ip, limit: 60, windowSeconds: 60 }),
+          enforceRateLimit({ scope: 'amm-client-write', identifier: client.fingerprint, limit: 24, windowSeconds: 60 }),
+        ])
+      }
     }
     catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : 'Too many requests' }, { status: 429, headers: { 'retry-after': String((error as any)?.retryAfter || 60) } })
@@ -274,6 +286,7 @@ async function proxyRequest(
   proxyHeaders.set('x-tellwise-secret', TELLWISE_SECRET)
   proxyHeaders.set('x-tellwise-user-id', userId)
   proxyHeaders.set('x-tellwise-role', getUserPlatformRole(effectiveUser as any))
+  proxyHeaders.set('x-tellwise-permissions', getStaffPermissions(effectiveUser as any).join(','))
   proxyHeaders.set('x-request-id', req.headers.get('x-request-id') || randomUUID())
   if (req.method !== 'GET' && req.method !== 'HEAD' && !isPublicQuote) {
     proxyHeaders.set('idempotency-key', req.headers.get('idempotency-key') || randomUUID())
@@ -357,7 +370,7 @@ async function proxyRequest(
           // In the internal-ledger model this field records the authenticated
           // staff user who created the market, not a retired EOA address.
           creator: userId,
-          icon_url: createdEvent.iconUrl || '/images/branding/slimefish.svg',
+          icon_url: (typeof requestBody.eventImageUrl === 'string' && requestBody.eventImageUrl) ? requestBody.eventImageUrl : (createdEvent.iconUrl || '/images/branding/slimefish.png'),
           is_hidden: false,
           rules: firstMarket?.description || '',
           status: 'active',
@@ -374,7 +387,7 @@ async function proxyRequest(
           slug: createdMarket.slug,
           question: createdMarket.question,
           market_rules: createdMarket.description || '',
-          icon_url: typeof requestedOptions[index]?.imageUrl === 'string' ? requestedOptions[index].imageUrl as string : null,
+          icon_url: typeof requestedOptions[index]?.imageUrl === 'string' ? requestedOptions[index].imageUrl as string : (typeof requestBody.eventImageUrl === 'string' && requestBody.eventImageUrl ? requestBody.eventImageUrl : null),
           is_active: true,
           is_resolved: false,
           volume: '0',
@@ -397,8 +410,41 @@ async function proxyRequest(
           await tx.insert(outcomes).values(createdOutcomes).onConflictDoNothing()
         }
 
-        const mainTag = String(requestBody.mainTag || requestBody.category || '').toLowerCase()
-        const tagsArray = Array.isArray(requestBody.tags) ? requestBody.tags.map(t => String(t).toLowerCase()) : []
+        // Insert and link category tags so the event shows in its category (Culture, etc.) instead of defaulting to World
+        const categoryList: string[] = []
+        if (typeof requestBody.mainCategorySlug === 'string' && requestBody.mainCategorySlug.trim()) {
+          categoryList.push(requestBody.mainCategorySlug.trim().toLowerCase())
+        }
+        if (Array.isArray(requestBody.categories)) {
+          for (const item of requestBody.categories) {
+            const slug = typeof item === 'string' ? item : item?.slug
+            if (typeof slug === 'string' && slug.trim() && !categoryList.includes(slug.trim().toLowerCase())) {
+              categoryList.push(slug.trim().toLowerCase())
+            }
+          }
+        }
+        if (categoryList.length === 0) {
+          const fallbackTag = String(requestBody.mainTag || requestBody.category || '').trim().toLowerCase()
+          if (fallbackTag) categoryList.push(fallbackTag)
+        }
+
+        const MAIN_CATEGORIES = ['politics', 'sports', 'crypto', 'esports', 'finance', 'geopolitics', 'tech', 'culture', 'world', 'economy', 'weather', 'elections', 'mentions']
+        for (const catSlug of categoryList) {
+          const isMain = MAIN_CATEGORIES.includes(catSlug)
+          const name = catSlug.charAt(0).toUpperCase() + catSlug.slice(1)
+          const existing = await tx.select({ id: tags.id }).from(tags).where(eq(tags.slug, catSlug)).limit(1)
+          let tagId: number | undefined = existing[0]?.id
+          if (!tagId) {
+            const inserted = await tx.insert(tags).values({ name, slug: catSlug, is_main_category: isMain }).returning({ id: tags.id })
+            tagId = inserted[0]?.id
+          }
+          if (tagId) {
+            await tx.insert(event_tags).values({ event_id: createdEvent.id, tag_id: tagId }).onConflictDoNothing()
+          }
+        }
+
+        const mainTag = String(requestBody.mainTag || requestBody.category || requestBody.mainCategorySlug || '').toLowerCase()
+        const tagsArray = categoryList
         const isSports = mainTag === 'sports' || mainTag === 'esports' || tagsArray.includes('sports') || tagsArray.includes('esports')
         if (isSports || requestBody.sportsSportSlug || requestBody.sportSlug) {
           const sportSlug = String(requestBody.sportsSportSlug || requestBody.sportSlug || (mainTag === 'esports' ? 'esports' : 'sports')).toLowerCase()

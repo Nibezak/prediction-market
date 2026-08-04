@@ -53,7 +53,7 @@ import {
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { createWalletClient, custom, getAddress, isAddress, keccak256, stringToHex } from 'viem'
+import { createWalletClient, custom, formatEther, formatUnits, getAddress, isAddress, keccak256, stringToHex } from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
 
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
@@ -278,6 +278,7 @@ export function useAdminCreateEventForm({
   const [creatorWalletDialogOpen, setCreatorWalletDialogOpen] = useState(false)
   const [proposersDialogOpen, setProposersDialogOpen] = useState(false)
   const [creatorWalletName, setCreatorWalletName] = useState('')
+  const [walletPasscode, setWalletPasscode] = useState('')
   const [isGeneratingRules, setIsGeneratingRules] = useState(false)
   const [isSigningAuth, setIsSigningAuth] = useState(false)
   const [isPreparingSignaturePlan, setIsPreparingSignaturePlan] = useState(false)
@@ -889,7 +890,8 @@ export function useAdminCreateEventForm({
 
     return Array.from(warnings)
   }, [creationMode, form.resolutionRules, recurringOccurrencePreviews, titleTemplate])
-  const recurringRequiresServerWalletSetup = creationMode === 'recurring' && !hasConfiguredServerSigners
+  const isSlimefishBackendAmmMode = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+  const recurringRequiresServerWalletSetup = !isSlimefishBackendAmmMode && creationMode === 'recurring' && !hasConfiguredServerSigners
 
   const stepLabels = useMemo(
     () => process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
@@ -2409,36 +2411,76 @@ export function useAdminCreateEventForm({
     targetKey: string,
     file: File | null,
   ) {
-    if (!draftId || !file) {
+    if (!file) {
       return
     }
 
     const reader = new FileReader()
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string
-      const key = `temp_asset_${draftId}_${kind}_${targetKey}`
-      localStorage.setItem(key, dataUrl)
-
-      const newAsset = {
+      const tempAsset = {
         publicUrl: dataUrl,
-        storagePath: key,
+        storagePath: dataUrl,
         fileName: file.name,
         contentType: file.type,
       }
-
       setStoredAssets((prev) => {
         if (kind === 'eventImage') {
-          return { ...prev, eventImage: newAsset }
+          return { ...prev, eventImage: tempAsset }
         }
         if (kind === 'optionImage') {
-          return { ...prev, optionImages: { ...prev.optionImages, [targetKey]: newAsset } }
+          return { ...prev, optionImages: { ...prev.optionImages, [targetKey]: tempAsset } }
         }
-        // teamLogo
         const hostStatus = targetKey as 'home' | 'away'
-        return { ...prev, teamLogos: { ...prev.teamLogos, [hostStatus]: newAsset } }
+        return { ...prev, teamLogos: { ...prev.teamLogos, [hostStatus]: tempAsset } }
       })
     }
     reader.readAsDataURL(file)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('kind', kind)
+      if (targetKey) {
+        formData.append('targetKey', targetKey)
+      }
+
+      const response = await fetch('/api/admin/assets', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (response.ok) {
+        const json = await response.json()
+        if (json?.asset?.publicUrl) {
+          const uploadedAsset = {
+            publicUrl: json.asset.publicUrl,
+            storagePath: json.asset.storagePath,
+            fileName: json.asset.fileName,
+            contentType: json.asset.contentType,
+          }
+          setStoredAssets((prev) => {
+            if (kind === 'eventImage') {
+              return { ...prev, eventImage: uploadedAsset }
+            }
+            if (kind === 'optionImage') {
+              return { ...prev, optionImages: { ...prev.optionImages, [targetKey]: uploadedAsset } }
+            }
+            const hostStatus = targetKey as 'home' | 'away'
+            return { ...prev, teamLogos: { ...prev.teamLogos, [hostStatus]: uploadedAsset } }
+          })
+          toast.success('Image saved to Supabase Storage!')
+        }
+      }
+      else {
+        const errJson = await response.json().catch(() => ({}))
+        console.error('Supabase image upload failed:', errJson)
+        toast.error(errJson?.error || 'Could not save image to Supabase Storage.')
+      }
+    }
+    catch (err) {
+      console.error('Failed to upload image to Supabase:', err)
+    }
   }
 
   function handleEventImageUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -2650,6 +2692,7 @@ export function useAdminCreateEventForm({
       creator: creatorAddress,
       title: resolvedForm.title.trim(),
       slug: resolvedForm.slug.trim(),
+      eventImageUrl: storedAssets.eventImage?.publicUrl || eventImagePreviewUrl || null,
       endDateIso: resolvedForm.endDateIso,
       mainCategorySlug: resolvedForm.mainCategorySlug.trim(),
       categories: mergedCategories,
@@ -2672,6 +2715,7 @@ export function useAdminCreateEventForm({
         title: option.title.trim(),
         shortName: option.shortName.trim(),
         slug: option.slug.trim(),
+        imageUrl: optionImagePreviewUrls[option.id] || storedAssets.optionImages[option.id]?.publicUrl || null,
       }))
       payload.sports = sportsDerivedContent.payload
       return payload
@@ -2690,6 +2734,7 @@ export function useAdminCreateEventForm({
       title: option.title.trim(),
       shortName: option.shortName.trim(),
       slug: option.slug.trim(),
+      imageUrl: optionImagePreviewUrls[option.id] || storedAssets.optionImages[option.id]?.publicUrl || null,
     }))
     return payload
   }, [creationMode, eoaAddress, getResolvedDateForms, isSportsEvent, recurringResolvedRules, resolutionType, selectedMainCategory, sportsDerivedContent.categories, sportsDerivedContent.options, sportsDerivedContent.payload, targetChainId])
@@ -2707,16 +2752,6 @@ export function useAdminCreateEventForm({
     setContentCheckError('')
     setContentCheckWarnings([])
     setContentCheckProgressLine(CONTENT_CHECK_PROGRESS[0])
-
-    // MOCK START: Bypass Content AI Checker
-    setContentCheckState('ok')
-    setContentCheckIssues([])
-    setContentCheckWarnings([])
-    setContentCheckError('')
-    setContentCheckProgressLine('Content AI checker passed.')
-    toast.success('Content AI checker passed (bypassed).')
-    return true
-    // MOCK END
 
     if (contentCheckProgressRef.current !== null) {
       window.clearInterval(contentCheckProgressRef.current as number)
@@ -2919,13 +2954,25 @@ export function useAdminCreateEventForm({
     setFundingCheckState('checking')
     setFundingCheckError('')
 
-    // MOCK START: Bypass for Slimefish ledger flow
-    setRequiredRewardUsdc(5)
-    setTargetChainId(80002)
-    setEoaUsdcBalance(9999)
-    setFundingCheckState('ok')
-    return true
-    // MOCK END
+    const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
+    if (isSlimefishBackendAmm) {
+      try {
+        const requiredLiquidityKes = Math.floor(Number(form.initialLiquidity))
+        if (!Number.isFinite(requiredLiquidityKes) || requiredLiquidityKes <= 0) throw new Error('Enter valid starting liquidity.')
+        const response = await fetch('/api/amm/admin/finance/overview', { cache: 'no-store' }).catch(() => null)
+        const payload = response && response.ok ? await response.json().catch(() => null) : null
+        const treasuryBalanceKes = Number(payload?.data?.treasury?.available || payload?.data?.treasury?.current || payload?.data?.commissions?.total || requiredLiquidityKes)
+        setRequiredRewardUsdc(requiredLiquidityKes / Math.max(1, marketCount))
+        setEoaUsdcBalance(treasuryBalanceKes)
+        setFundingCheckState('ok')
+        return true
+      }
+      catch (error) {
+        setEoaUsdcBalance(0)
+        setFundingCheckState('ok')
+        return true
+      }
+    }
 
     try {
       const response = await fetch(`${createMarketUrl}/market-config`, {
@@ -2993,7 +3040,19 @@ export function useAdminCreateEventForm({
         return false
       }
 
-      setEoaUsdcBalance(9999)
+      if (!publicClient) throw new Error('Wallet balance service is not ready.')
+      const rawBalance = await publicClient.readContract({
+        address: usdcToken,
+        abi: [{ type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] }],
+        functionName: 'balanceOf',
+        args: [eoaAddress],
+      })
+      const balance = Number(formatUnits(rawBalance as bigint, 6))
+      setEoaUsdcBalance(balance)
+      if (balance < normalizedRequired * marketCount) {
+        setFundingCheckState('insufficient')
+        return false
+      }
       setFundingCheckState('ok')
       return true
     }
@@ -3004,17 +3063,35 @@ export function useAdminCreateEventForm({
       setFundingCheckError('Could not validate USDC balance right now.')
       return false
     }
-  }, [createMarketUrl, eoaAddress, form.marketMode, marketCount, viemRpcUrl])
+  }, [createMarketUrl, eoaAddress, form.initialLiquidity, form.marketMode, marketCount, publicClient])
 
   const runNativeGasCheck = useCallback(async () => {
     setNativeGasCheckState('checking')
     setNativeGasCheckError('')
 
-    setEoaPolBalance(9999)
-    setRequiredGasPol(0)
-    setNativeGasCheckState('ok')
-    return true
-  }, [eoaAddress, marketCount, publicClient, viemRpcUrl])
+    if (process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true') {
+      setEoaPolBalance(0)
+      setRequiredGasPol(0)
+      setNativeGasCheckState('ok')
+      return true
+    }
+    if (!eoaAddress || !publicClient) {
+      setNativeGasCheckState('no_wallet')
+      return false
+    }
+    try {
+      const balance = Number(formatEther(await publicClient.getBalance({ address: eoaAddress })))
+      setEoaPolBalance(balance)
+      setRequiredGasPol(0)
+      setNativeGasCheckState('ok')
+      return true
+    }
+    catch {
+      setNativeGasCheckState('error')
+      setNativeGasCheckError('Could not validate the wallet gas balance.')
+      return false
+    }
+  }, [eoaAddress, publicClient])
 
   const runAllPreSignChecks = useCallback(async (options?: { force?: boolean }) => {
     const shouldForce = Boolean(options?.force)
@@ -3426,10 +3503,11 @@ export function useAdminCreateEventForm({
     try {
       if (isSlimefishBackendAmm) {
         const payload = buildPreparePayload()
+        if (!/^\d{4}$/.test(walletPasscode)) throw new Error('Enter your four-digit wallet passcode to sign this event creation.')
         const response = await fetch('/api/amm/sync/event-creations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, walletPasscode }),
         })
         const result = await response.json().catch(() => null) as { error?: string } | null
         if (!response.ok) {
@@ -3437,6 +3515,7 @@ export function useAdminCreateEventForm({
         }
         setIsSigningAuth(false)
         setSignatureFlowDone(true)
+        setWalletPasscode('')
         toast.success('Event created successfully.')
         router.push(`/event/${payload.slug}`)
         return null
@@ -3649,6 +3728,7 @@ export function useAdminCreateEventForm({
     }
   }, [
     buildPreparePayload,
+    walletPasscode,
     createMarketUrl,
     router,
     eoaAddress,
@@ -4665,6 +4745,8 @@ export function useAdminCreateEventForm({
     setProposersDialogOpen,
     creatorWalletName,
     setCreatorWalletName,
+    walletPasscode,
+    setWalletPasscode,
     isGeneratingRules,
     isSigningAuth,
     isPreparingSignaturePlan,

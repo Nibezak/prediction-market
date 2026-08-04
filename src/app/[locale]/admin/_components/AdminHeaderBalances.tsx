@@ -1,138 +1,75 @@
 'use client'
 
-import { useAppKitAccount } from '@reown/appkit/react'
 import { useQuery } from '@tanstack/react-query'
-import { useExtracted } from 'next-intl'
-import { useCallback, useMemo } from 'react'
-import { toast } from 'sonner'
-import { createPublicClient, formatUnits, getAddress, http, isAddress } from 'viem'
+import { LandmarkIcon, ReceiptTextIcon, WalletCardsIcon } from 'lucide-react'
+import AppLink from '@/components/AppLink'
+import HeaderCurrencyToggle from '@/components/HeaderCurrencyToggle'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useBalance } from '@/hooks/useBalance'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { resolveProposerWhitelistAddress } from '@/lib/proposer-whitelist'
-import { defaultViemNetwork, resolveViemRpcUrl } from '@/lib/viem-network'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
+import { hasStaffPermission } from '@/lib/staff-permissions'
 import { useUser } from '@/stores/useUser'
 
-const ADMIN_POL_BALANCE_QUERY_KEY = 'admin-eoa-pol-balance'
-
-function formatAdminBalance(value: number | null | undefined, decimals = 2) {
-  if (!Number.isFinite(value)) {
-    return '0.00'
-  }
-
-  return Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })
+interface FinanceOverview {
+  treasury?: { available?: string | number }
+  wallet?: { total?: string | number }
+  commissions?: { total?: string | number }
 }
 
-export default function AdminHeaderBalances() {
-  const t = useExtracted()
-  const user = useUser()
-  const isSlimefishBackendAmm = process.env.NEXT_PUBLIC_USE_SLIMEFISH_BACKEND_AMM === 'true'
-  const { polygonRpcUrl } = usePublicRuntimeConfig()
-  const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
-  const { address: connectedAddress } = useAppKitAccount()
-  const publicClient = useMemo(
-    () => createPublicClient({
-      chain: defaultViemNetwork,
-      transport: http(rpcUrl),
-    }),
-    [rpcUrl],
-  )
-  const eoaAddress = useMemo(
-    () => resolveProposerWhitelistAddress(connectedAddress, user?.address),
-    [connectedAddress, user?.address],
-  )
-  const normalizedEoaAddress = useMemo(
-    () => eoaAddress && isAddress(eoaAddress) ? getAddress(eoaAddress) : null,
-    [eoaAddress],
-  )
-  const { balance: usdcBalance, isLoadingBalance: isLoadingUsdcBalance } = useBalance({
-    enabled: isSlimefishBackendAmm || Boolean(normalizedEoaAddress),
-    depositWalletAddress: isSlimefishBackendAmm ? null : normalizedEoaAddress,
-  })
-  const { data: polBalance, isLoading: isLoadingPolBalance } = useQuery({
-    queryKey: [ADMIN_POL_BALANCE_QUERY_KEY, normalizedEoaAddress],
-    enabled: Boolean(!isSlimefishBackendAmm && publicClient && normalizedEoaAddress),
-    staleTime: 10_000,
-    gcTime: 5 * 60 * 1000,
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
-    queryFn: async () => {
-      if (!publicClient || !normalizedEoaAddress) {
-        return 0
-      }
+const accounts = [
+  { key: 'treasury', label: 'Treasury', icon: LandmarkIcon, href: '/admin/finance/treasury' },
+  { key: 'wallet', label: 'Wallet', icon: WalletCardsIcon, href: '/admin/finance/wallet' },
+  { key: 'commissions', label: 'Commissions', icon: ReceiptTextIcon, href: '/admin/finance/commissions' },
+] as const
 
-      const rawBalance = await publicClient.getBalance({ address: normalizedEoaAddress })
-      return Number(formatUnits(rawBalance, 18))
+export default function AdminHeaderBalances() {
+  const user = useUser()
+  const { formatMoney } = useDisplayCurrency()
+  const canViewFinance = hasStaffPermission(user, 'finance.view') || hasStaffPermission(user, 'finance.ledger.view')
+  const query = useQuery({
+    queryKey: ['admin-finance-overview'],
+    enabled: canViewFinance,
+    staleTime: 2_000,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+    queryFn: async (): Promise<FinanceOverview> => {
+      const response = await fetch('/api/amm/admin/finance/overview', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Finance balances are unavailable.')
+      const payload = await response.json().catch(() => null)
+      return payload?.data ?? {}
     },
   })
 
-  const handleCopyEoa = useCallback(async () => {
-    if (!normalizedEoaAddress) {
-      return
-    }
+  if (!canViewFinance) return null
 
-    try {
-      await navigator.clipboard.writeText(normalizedEoaAddress)
-      toast.success(t('EOA wallet copied.'))
-    }
-    catch (error) {
-      console.error('Failed to copy admin EOA wallet address:', error)
-      toast.error(t('Could not copy EOA wallet.'))
-    }
-  }, [normalizedEoaAddress, t])
-
-  if (isSlimefishBackendAmm) {
-    return (
-      <div className="grid grid-cols-1 gap-x-1">
-        <Button type="button" variant="ghost" size="header" className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-[6px] px-2.5 py-1">
-          <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Admin balance')}</div>
-          <div className="-translate-y-px text-base/tight font-semibold text-foreground">
-            {isLoadingUsdcBalance
-              ? <Skeleton className="h-5 w-12" />
-              : formatAdminBalance(usdcBalance.raw)}
-          </div>
-        </Button>
-      </div>
-    )
+  const values = {
+    treasury: Number(query.data?.treasury?.available ?? 0),
+    wallet: Number(query.data?.wallet?.total ?? 0),
+    commissions: Number(query.data?.commissions?.total ?? 0),
   }
 
   return (
-    <div className="grid grid-cols-2 gap-x-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="header"
-        className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-[6px] px-2.5 py-1"
-        onClick={() => void handleCopyEoa()}
-        disabled={!normalizedEoaAddress}
-      >
-        <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Admin POL')}</div>
-        <div className="-translate-y-px text-base/tight font-semibold text-foreground">
-          {isLoadingPolBalance
-            ? <Skeleton className="h-5 w-12" />
-            : formatAdminBalance(polBalance)}
-        </div>
-      </Button>
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="header"
-        className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-[6px] px-2.5 py-1"
-        onClick={() => void handleCopyEoa()}
-        disabled={!normalizedEoaAddress}
-      >
-        <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Admin USDC')}</div>
-        <div className="-translate-y-px text-base/tight font-semibold text-foreground">
-          {isLoadingUsdcBalance
-            ? <Skeleton className="h-5 w-12" />
-            : formatAdminBalance(usdcBalance.raw)}
-        </div>
-      </Button>
+    <div className="flex items-center gap-1">
+      <HeaderCurrencyToggle showBoth />
+      {accounts.map(({ key, label, icon: Icon, href }) => (
+        <Button
+          key={key}
+          variant="ghost"
+          size="header"
+          className="flex h-11 flex-col items-start justify-center gap-0.5 rounded-md px-2.5 py-1"
+          asChild
+        >
+          <AppLink href={href as any}>
+            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Icon className="size-3.5" />
+              {label}
+            </span>
+            {query.isLoading
+              ? <Skeleton className="h-4 w-14" />
+              : <span className="text-sm font-semibold tabular-nums text-foreground">{formatMoney(values[key])}</span>}
+          </AppLink>
+        </Button>
+      ))}
     </div>
   )
 }

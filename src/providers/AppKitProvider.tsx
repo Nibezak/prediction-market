@@ -12,6 +12,7 @@ import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
 const legacyWagmiConfig = createConfig({
   chains: [polygonAmoy],
+  multiInjectedProviderDiscovery: false,
   transports: { [polygonAmoy.id]: http() },
 })
 
@@ -43,8 +44,8 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <WagmiProvider config={legacyWagmiConfig}>
-      <AppKitContext.Provider value={value}>
+    <WagmiProvider config={legacyWagmiConfig} reconnectOnMount={false}>
+      <AppKitContext value={value}>
         {children}
         <AuthDialog
           key={mode}
@@ -53,7 +54,7 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
           onOpenChange={setOpen}
           onAuthenticated={handleAuthenticated}
         />
-      </AppKitContext.Provider>
+      </AppKitContext>
     </WagmiProvider>
   )
 }

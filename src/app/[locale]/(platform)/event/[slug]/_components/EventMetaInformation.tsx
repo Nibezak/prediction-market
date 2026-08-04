@@ -6,7 +6,7 @@ import { useExtracted } from 'next-intl'
 import { useMemo } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAmmLiveMarkets } from '@/hooks/useAmmLiveMarkets'
-import { formatDate } from '@/lib/formatters'
+import { formatDate, formatVolume } from '@/lib/formatters'
 import { isMarketNew } from '@/lib/utils'
 
 interface EventMetaInformationProps {
@@ -46,13 +46,7 @@ export default function EventMetaInformation({ event, currentTimestamp }: EventM
     'This is estimated end date.<br></br>See rules below for specific resolution details.',
     { br: () => ' ' },
   )
-  const formattedVolume = Number.isFinite(resolvedVolume)
-    ? (resolvedVolume || 0).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : '0.00'
-  const volumeLabel = t('{amount} Vol.', { amount: `$${formattedVolume}` })
+  const volumeLabel = `${formatVolume(resolvedVolume)} Vol.`
 
   const parsedEndTimestamp = event.end_date ? Date.parse(event.end_date) : Number.NaN
   const expiryTimestamp = Number.isFinite(parsedEndTimestamp) ? parsedEndTimestamp : null

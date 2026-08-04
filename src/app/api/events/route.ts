@@ -2,16 +2,12 @@ import type { SportsVertical } from '@/lib/sports-vertical'
 import { NextResponse } from 'next/server'
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
-import { seedMockData } from '@/lib/db/mock-seed'
 import { EventRepository } from '@/lib/db/queries/event'
 import { UserRepository } from '@/lib/db/queries/user'
 import { isEventListSortBy, isEventListStatusFilter } from '@/lib/event-list-filters'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 
 export async function GET(request: Request) {
-  if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
-    await seedMockData()
-  }
   const { searchParams } = new URL(request.url)
   const tag = searchParams.get('tag') || 'trending'
   const mainTag = searchParams.get('mainTag') || ''

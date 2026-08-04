@@ -12,6 +12,7 @@ import EventOrderPanelInput from '@/app/[locale]/(platform)/event/[slug]/_compon
 import EventOrderPanelLimitControls from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelLimitControls'
 import EventOrderPanelSubmitButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelSubmitButton'
 import EventOrderPanelUserShares from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelUserShares'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { ORDER_SIDE } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
@@ -125,6 +126,7 @@ export default function EventOrderPanelOrderInput({
   onSubmitButtonClick,
 }: EventOrderPanelOrderInputProps) {
   const t = useExtracted()
+  const { formatMoney } = useDisplayCurrency()
 
   return (
     <>
@@ -213,7 +215,7 @@ export default function EventOrderPanelOrderInput({
                   `)}
                 >
                   <TriangleAlertIcon className="size-4" />
-                  {t('Market buys must be at least $1')}
+                  {t('Market buys must be at least {amount}', { amount: formatMoney(130) })}
                 </div>
               )}
               {shouldShowResolvedNoLiquidityWarning && (

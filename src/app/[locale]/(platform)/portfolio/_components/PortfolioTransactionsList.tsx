@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { cn } from '@/lib/utils'
 
 interface PortfolioTransaction {
@@ -19,19 +21,11 @@ interface PortfolioTransaction {
   createdAt: string
 }
 
-function formatTransactionAmount(transaction: PortfolioTransaction) {
-  const amountKes = typeof transaction.metadata?.amountKes === 'number'
-    ? transaction.metadata.amountKes
-    : Number(transaction.grossAmount)
-  if (transaction.direction === 'deposit') {
-    return `KES ${Number(transaction.grossAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
-  return `KES ${Number(amountKes).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
 function formatDate(value: string) {
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
   return new Intl.DateTimeFormat('en-KE', {
     month: 'short',
     day: 'numeric',
@@ -41,6 +35,7 @@ function formatDate(value: string) {
 }
 
 export default function PortfolioTransactionsList() {
+  const { formatMoney } = useDisplayCurrency()
   const [transactions, setTransactions] = useState<PortfolioTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -51,7 +46,9 @@ export default function PortfolioTransactionsList() {
     fetch('/api/user/transactions', { cache: 'no-store' })
       .then(async (response) => {
         const body = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(body?.error || 'Failed to load transactions.')
+        if (!response.ok) {
+          throw new Error(body?.error || 'Failed to load transactions.')
+        }
         return body?.data ?? []
       })
       .then((rows) => {
@@ -61,10 +58,14 @@ export default function PortfolioTransactionsList() {
         }
       })
       .catch((fetchError) => {
-        if (active) setError(fetchError instanceof Error ? fetchError.message : 'Failed to load transactions.')
+        if (active) {
+          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load transactions.')
+        }
       })
       .finally(() => {
-        if (active) setIsLoading(false)
+        if (active) {
+          setIsLoading(false)
+        }
       })
     return () => {
       active = false
@@ -93,7 +94,7 @@ export default function PortfolioTransactionsList() {
       {transactions.map(transaction => (
         <div key={transaction.id} className="flex items-center justify-between gap-4 p-4 sm:p-6">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold capitalize text-foreground">
+            <p className="truncate text-sm font-semibold text-foreground capitalize">
               {transaction.direction}
             </p>
             <p className="truncate text-xs text-muted-foreground">
@@ -105,15 +106,18 @@ export default function PortfolioTransactionsList() {
             )}
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-sm font-semibold text-foreground">{formatTransactionAmount(transaction)}</p>
-            <p
+            <p className="text-sm font-semibold text-foreground">{formatMoney(Number(transaction.netAmount))}</p>
+            <Badge
+              variant="outline"
               className={cn(
-                'text-xs capitalize',
-                transaction.status === 'failed' ? 'text-destructive' : 'text-muted-foreground',
+                'mt-1 border-transparent text-xs capitalize',
+                transaction.status === 'failed'
+                  ? 'bg-destructive/15 text-destructive'
+                  : 'bg-primary/10 text-primary',
               )}
             >
-              {transaction.status.replace(/_/g, ' ')}
-            </p>
+              {transaction.status === 'succeeded' ? 'completed' : 'failed'}
+            </Badge>
           </div>
         </div>
       ))}

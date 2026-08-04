@@ -12,7 +12,6 @@ import {
   HouseIcon,
   InfoIcon,
   SearchIcon,
-  UnplugIcon,
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { lazy, Suspense, useEffect, useState } from 'react'
@@ -273,20 +272,6 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                   </AppLink>
                 </DrawerClose> */}
 
-                <div className="mx-4 h-px bg-border/70" />
-
-                <DrawerClose asChild>
-                  <AppLink
-                    intentPrefetch
-                    href="/docs/api-reference"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
-                  >
-                    <UnplugIcon className="size-4 text-pink-500" />
-                    {t('APIs')}
-                  </AppLink>
-                </DrawerClose>
               </div>
 
               <div className="rounded-2xl border border-border/70 px-4 py-3">
@@ -397,17 +382,22 @@ interface MobileNavLinkProps {
 }
 
 function MobileNavLink({ active, href, icon: Icon, label }: MobileNavLinkProps) {
+  const [pressed, setPressed] = useState(false)
+
   return (
     <AppLink
       intentPrefetch
       href={href}
       aria-current={active ? 'page' : undefined}
+      aria-busy={pressed || undefined}
+      onClick={() => setPressed(true)}
       className={cn(
         `
           flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
-          transition-colors
+          touch-manipulation transition-[color,opacity,transform] duration-150 active:scale-95
         `,
         active ? 'text-foreground' : 'text-muted-foreground',
+        pressed && !active && 'scale-95 text-foreground opacity-70',
       )}
     >
       <Icon className="size-[17px]" />
@@ -432,6 +422,7 @@ function MobileNavButton({ active, icon: Icon, label, onClick }: MobileNavButton
         `
           flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
           transition-colors
+          touch-manipulation active:scale-95 active:opacity-70
           focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none
         `,
         active ? 'text-foreground' : 'text-muted-foreground',

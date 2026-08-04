@@ -82,11 +82,8 @@ export default function EventOrderPanelOutcomeButton({
               style={selectedAccentConfig.overlayStyle}
             />
           )}
-          <span className="relative z-10 truncate opacity-70">
+          <span className="relative z-10 truncate font-bold">
             {label}
-          </span>
-          <span className="relative z-10 shrink-0 text-base font-bold">
-            {priceLabel}
           </span>
         </button>
       </div>
@@ -106,11 +103,8 @@ export default function EventOrderPanelOutcomeButton({
       )}
       onClick={onSelect}
     >
-      <span className="truncate opacity-70">
+      <span className="truncate font-bold">
         {label}
-      </span>
-      <span className="shrink-0 text-base font-bold">
-        {priceLabel}
       </span>
     </Button>
   )

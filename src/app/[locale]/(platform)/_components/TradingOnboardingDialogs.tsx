@@ -1,13 +1,15 @@
 import type { FormEvent, ReactNode } from 'react'
 import type { User } from '@/types'
 import {
-  ArrowRightLeftIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
   AtSignIcon,
   CheckIcon,
   CircleCheckIcon,
   ClockIcon,
   Loader2Icon,
   LockKeyholeIcon,
+  InfoIcon,
   MailIcon,
   PhoneIcon,
   WalletIcon,
@@ -39,6 +41,8 @@ import {
 } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/ui/input-error'
+import { PasscodeInput } from '@/components/ui/passcode-input'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
@@ -72,7 +76,7 @@ interface TradingOnboardingDialogsProps {
   phoneDefaultValue: string
   phoneError: string | null
   isPhoneSubmitting: boolean
-  onPhoneSubmit: (phoneNumber: string) => void
+  onPhoneSubmit: (phoneNumber: string, withdrawalPin: string) => void
   enableTradingStep: EnableTradingStep
   enableTradingError: string | null
   onCreateDepositWallet: () => void
@@ -107,7 +111,7 @@ function OnboardingDialogShell({
   children,
   dismissible = true,
   dialogContentClassName = 'max-w-md border bg-background p-8',
-  drawerContentClassName = 'max-h-[90vh] w-full bg-background px-4 pt-4 pb-6',
+  drawerContentClassName = 'max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] w-full bg-background px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]',
   headerClassName = 'space-y-3 text-center',
   titleClassName = 'text-center text-2xl font-bold text-foreground',
   descriptionClassName = 'text-center text-base text-muted-foreground',
@@ -153,7 +157,9 @@ function OnboardingDialogShell({
               </DrawerDescription>
             )}
           </DrawerHeader>
-          {children}
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+            {children}
+          </div>
         </DrawerContent>
       </Drawer>
     )
@@ -221,7 +227,7 @@ function UsernameDialog({
       onOpenChange={onOpenChange}
       title={t('Choose a username')}
       description={t('You can update this later.')}
-      dismissible={false}
+      dismissible
     >
       <UsernameDialogForm
         key={open ? 'open' : 'closed'}
@@ -558,7 +564,7 @@ function EmailDialog({
 function PhoneDialog({
   open,
   onOpenChange,
-  defaultValue,
+  defaultValue = '',
   error,
   isSubmitting,
   onSubmit,
@@ -568,84 +574,171 @@ function PhoneDialog({
   defaultValue: string
   error: string | null
   isSubmitting: boolean
-  onSubmit: (phoneNumber: string) => void
+  onSubmit: (phoneNumber: string, withdrawalPin: string) => void
 }) {
   const t = useExtracted()
   const site = useSiteIdentity()
   const [phoneNumber, setPhoneNumber] = useState(defaultValue)
+  const [withdrawalPin, setWithdrawalPin] = useState('')
+  const [confirmedWithdrawalPin, setConfirmedWithdrawalPin] = useState('')
+  const initialStep = normalizeKenyanPhone(defaultValue) ? 'passcode' : 'phone'
+  const [step, setStep] = useState<'phone' | 'passcode' | 'confirm'>(initialStep)
   const normalizedPhone = normalizeKenyanPhone(phoneNumber)
 
   useEffect(() => {
     if (open) {
       setPhoneNumber(defaultValue)
+      setWithdrawalPin('')
+      setConfirmedWithdrawalPin('')
+      setStep(normalizeKenyanPhone(defaultValue) ? 'passcode' : 'phone')
     }
   }, [defaultValue, open])
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!normalizedPhone) {
+    if (step === 'phone') {
+      if (normalizedPhone) {
+        setStep('passcode')
+      }
       return
     }
-    onSubmit(normalizedPhone)
+    if (step === 'passcode') {
+      if (/^\d{4}$/.test(withdrawalPin)) {
+        setStep('confirm')
+      }
+      return
+    }
+    if (!normalizedPhone || !/^\d{4}$/.test(withdrawalPin) || withdrawalPin !== confirmedWithdrawalPin) {
+      return
+    }
+    onSubmit(normalizedPhone, withdrawalPin)
   }
+
+  const title = step === 'phone'
+    ? t('Add your phone number')
+    : step === 'passcode'
+      ? 'Create a passcode'
+      : 'Confirm your passcode'
 
   return (
     <OnboardingDialogShell
       open={open}
       onOpenChange={onOpenChange}
-      title={t('Add your phone number')}
+      title={title}
       description={null}
       dismissible
       dialogContentClassName="max-w-sm border bg-background p-5"
-      drawerContentClassName="max-h-[78vh] w-full bg-background px-4 pt-4 pb-5"
+      drawerContentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] w-full bg-background px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
       headerClassName="space-y-3 text-center"
       titleClassName="text-center text-xl font-bold text-foreground"
       icon={(
         <div className="mx-auto flex items-center justify-center gap-2">
-          <div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <div className="flex size-12 items-center justify-center rounded-md bg-primary/10 text-primary">
             <SiteLogoIcon
               logoSvg={site.logoSvg}
               logoImageUrl={site.logoImageUrl}
               alt={`${site.name} logo`}
-              size={28}
-              className="size-7"
-              imageClassName="size-7 object-contain"
+              size={34}
+              className="size-8"
+              imageClassName="size-8 object-contain"
             />
           </div>
-          <ArrowRightLeftIcon className="size-4 text-muted-foreground" />
-          <div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <PhoneIcon className="size-5" />
+          <ArrowRightIcon className="size-5 text-muted-foreground" />
+          <div className="flex size-12 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <PhoneIcon className="size-7" />
           </div>
         </div>
       )}
     >
       <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
-        <div className="flex h-12 items-center rounded-md border border-input bg-background px-3 shadow-xs">
-          <KenyanFlagIcon className="mr-2 shrink-0" />
-          <Input
-            value={phoneNumber}
-            onChange={event => setPhoneNumber(event.target.value)}
-            placeholder="+254, 07, 254, or 7..."
-            type="tel"
-            inputMode="tel"
-            className="h-10 border-0 px-0 text-base shadow-none focus-visible:ring-0"
-            disabled={isSubmitting}
-            autoFocus
-          />
-        </div>
+        {step === 'phone' && (
+          <div className="space-y-3">
+            <div className="flex h-12 items-center rounded-md border border-input bg-background px-3 shadow-xs">
+              <KenyanFlagIcon className="mr-2 shrink-0" />
+              <Input
+                value={phoneNumber}
+                onChange={event => setPhoneNumber(event.target.value)}
+                placeholder="07xx xxx xxx"
+                type="tel"
+                inputMode="tel"
+                className="h-10 border-0 px-0 text-base shadow-none focus-visible:ring-0"
+                disabled={isSubmitting}
+                autoFocus
+              />
+            </div>
+          </div>
+        )}
+
+        {step !== 'phone' && (
+          <div className="space-y-3">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <span>Withdrawal passcode</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" aria-label="Why a withdrawal passcode is required" className="text-muted-foreground">
+                    <InfoIcon className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>This passcode authorizes withdrawals and changes to your withdrawal settings.</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          {step === 'passcode'
+            ? (
+                <PasscodeInput
+                  value={withdrawalPin}
+                  onChange={setWithdrawalPin}
+                  disabled={isSubmitting}
+                  autoFocus
+                  ariaLabel="Create withdrawal passcode"
+                />
+              )
+            : (
+                <>
+                  <PasscodeInput
+                    value={confirmedWithdrawalPin}
+                    onChange={setConfirmedWithdrawalPin}
+                    disabled={isSubmitting}
+                    autoFocus
+                    ariaLabel="Confirm withdrawal passcode"
+                  />
+                  {confirmedWithdrawalPin.length === 4 && withdrawalPin !== confirmedWithdrawalPin && (
+                    <InputError message="Passcodes do not match." />
+                  )}
+                </>
+              )}
+          <p className="text-center text-xs text-muted-foreground">Forgotten passcodes are reset through support.</p>
+          </div>
+        )}
 
         {error && <InputError message={error} />}
-        {!error && phoneNumber.trim() && !normalizedPhone && (
+        {!error && step === 'phone' && phoneNumber.trim() && !normalizedPhone && (
           <InputError message={t('Enter a valid Kenyan phone number.')} />
         )}
 
         <Button
           type="submit"
           className="h-11 w-full text-base"
-          disabled={isSubmitting || !normalizedPhone}
+          disabled={isSubmitting
+            || (step === 'phone' && !normalizedPhone)
+            || (step === 'passcode' && !/^\d{4}$/.test(withdrawalPin))
+            || (step === 'confirm' && (!/^\d{4}$/.test(confirmedWithdrawalPin) || withdrawalPin !== confirmedWithdrawalPin))}
         >
-          {isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : t('Continue')}
+          {isSubmitting ? <Loader2Icon className="size-4 animate-spin" /> : step === 'confirm' ? t('Continue') : 'Next'}
         </Button>
+
+        {step !== 'phone' && (
+          <button
+            type="button"
+            className="mx-auto flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            disabled={isSubmitting}
+            onClick={() => setStep(step === 'confirm' ? 'passcode' : 'phone')}
+          >
+            <ArrowLeftIcon className="size-4" />
+            Back
+          </button>
+        )}
 
         <button
           type="button"
@@ -655,6 +748,14 @@ function PhoneDialog({
         >
           {t('Do this later')}
         </button>
+
+        {step === 'phone' && (
+          <div className="flex items-center justify-center gap-4 border-t border-border pt-3 text-xs font-medium text-muted-foreground">
+            <AppLink href="/tos" className="underline-offset-4 hover:text-foreground hover:underline">
+              Read terms and conditions
+            </AppLink>
+          </div>
+        )}
       </form>
     </OnboardingDialogShell>
   )

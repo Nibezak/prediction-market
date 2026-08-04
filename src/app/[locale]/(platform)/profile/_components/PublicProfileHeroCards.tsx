@@ -15,9 +15,9 @@ import ProfileOverviewCard from '@/app/[locale]/(platform)/_components/ProfileOv
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
-import { formatCurrency } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { usePortfolioValueVisibility } from '@/stores/usePortfolioValueVisibility'
 
@@ -477,6 +477,7 @@ function ProfitLossCard({
   fallbackChartEndDate?: string
 }) {
   const t = useExtracted()
+  const { formatMoney } = useDisplayCurrency()
   const site = useSiteIdentity()
   const { userPnlUrl } = usePublicRuntimeConfig()
   const platformName = site.name ?? ''
@@ -626,7 +627,7 @@ function ProfitLossCard({
                     : (
                         <>
                           {displayNetValue < 0 ? '-' : '+'}
-                          {formatCurrency(Math.abs(displayNetValue))}
+                          {formatMoney(Math.abs(displayNetValue))}
                         </>
                       )}
                 </span>
@@ -653,7 +654,7 @@ function ProfitLossCard({
                             : (
                                 <>
                                   +
-                                  {formatCurrency(Math.abs(gainTotal))}
+                                  {formatMoney(Math.abs(gainTotal))}
                                 </>
                               )}
                         </span>
@@ -666,7 +667,7 @@ function ProfitLossCard({
                             : (
                                 <>
                                   -
-                                  {formatCurrency(Math.abs(lossTotal))}
+                                  {formatMoney(Math.abs(lossTotal))}
                                 </>
                               )}
                         </span>
@@ -680,7 +681,7 @@ function ProfitLossCard({
                             : (
                                 <>
                                   {displayNetValue < 0 ? '-' : '+'}
-                                  {formatCurrency(Math.abs(displayNetValue))}
+                                  {formatMoney(Math.abs(displayNetValue))}
                                 </>
                               )}
                         </span>

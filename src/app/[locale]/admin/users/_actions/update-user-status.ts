@@ -202,6 +202,62 @@ export async function updateUserRole(userId: string, role: typeof USER_ROLES[num
   }
 }
 
+export async function authorizeWithdrawalPasscodeReset(userId: string) {
+  const currentUser = await UserRepository.getCurrentUser({ minimal: true })
+  if (!canManageUsers(currentUser)) {
+    return { error: 'Unauthorized' }
+  }
+
+  try {
+    const targetRows = await db.select({ email: users.email, settings: users.settings }).from(users).where(eq(users.id, userId)).limit(1)
+    const target = targetRows[0]
+    if (!target) {
+      return { error: 'User not found' }
+    }
+    if (isProtectedSuperAdmin(target as any)) {
+      return { error: 'The super admin account cannot be modified by another account.' }
+    }
+
+    await db.update(users).set({
+      withdrawal_phone_pin_hash: null,
+      withdrawal_phone_pin_set_at: null,
+      settings: sql`${safeSettingsBase()} #- '{withdrawalSecurity,pinSetAt}'`,
+    }).where(eq(users.id, userId))
+
+    await recordAuditEvent({
+      eventType: 'user.withdrawal_passcode.reset_authorized',
+      category: 'security',
+      action: 'Authorized withdrawal passcode reset',
+      severity: 'high',
+      actorUserId: currentUser.id,
+      actorRole: getUserPlatformRole(currentUser),
+      subjectUserId: userId,
+      entityType: 'user',
+      entityId: userId,
+      metadata: { identityVerifiedBySupport: true },
+    })
+
+    await db.insert(notifications).values({
+      user_id: userId,
+      category: 'security',
+      title: 'Create a new withdrawal passcode',
+      description: 'Support authorized a passcode reset. Open Slimefish to create a new passcode before withdrawing.',
+      metadata: { action: 'withdrawal_passcode_reset', actorUserId: currentUser.id },
+      link_type: 'settings',
+      link_target: '/settings',
+      link_url: '/settings',
+      link_label: 'Secure account',
+    })
+    updateTag(cacheTags.notifications(userId))
+    revalidatePath('/[locale]/admin/users', 'page')
+    return { success: true }
+  }
+  catch (error) {
+    console.error('Error authorizing withdrawal passcode reset:', error)
+    return { error: 'Could not authorize the passcode reset. Please try again.' }
+  }
+}
+
 export async function bulkToggleUserBlockedStatus(userIds: string[], isBlocked: boolean) {
   if (!Array.isArray(userIds) || userIds.length === 0) {
     return { error: 'No users selected' }

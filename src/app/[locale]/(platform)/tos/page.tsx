@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import resolveSiteUrl from '@/lib/site-url'
@@ -8,15 +9,11 @@ import { getThemeSiteSettingsFormState, loadRuntimeThemeState } from '@/lib/them
 export async function generateMetadata({ params }: PageProps<'/[locale]/tos'>): Promise<Metadata> {
   const { locale } = await params
   setRequestLocale(locale)
-
   const t = await getExtracted()
-
   const runtimeTheme = await loadRuntimeThemeState()
-  const siteName = runtimeTheme.site.name
-
   return {
     title: t('Terms of Use'),
-    description: t(`Terms of Use for {siteName}`, { siteName }),
+    description: t(`Terms of Use for {siteName}`, { siteName: runtimeTheme.site.name }),
   }
 }
 
@@ -35,328 +32,180 @@ export default async function TermsOfUsePage({ params }: PageProps<'/[locale]/to
     const pdfViewerUrl = termsOfServicePdfUrl.includes('#')
       ? termsOfServicePdfUrl
       : `${termsOfServicePdfUrl}#view=FitH&zoom=page-width&pagemode=none`
-
     return (
-      <main className="h-[calc(100dvh-5rem)] w-full overflow-x-hidden">
-        <iframe
-          src={pdfViewerUrl}
-          title="Terms of Use PDF"
-          className="block size-full border-0"
-        />
+      <main className="h-[calc(100dvh-var(--header-height,0px))] w-full bg-background">
+        <iframe className="h-full w-full border-0" src={pdfViewerUrl} title={`${siteName} Terms of Use`} />
       </main>
     )
   }
 
   return (
-    <main className="container mx-auto max-w-4xl space-y-10 py-12 leading-relaxed text-foreground dark:text-foreground">
-      <header className="space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight lg:text-4xl">
-          {siteName}
-          {' '}
-          Terms of Use
-        </h1>
-        <p className="text-muted-foreground">
-          These Terms of Use ("Terms") govern your access to and use of the Interfaces and Features offered by
-          {' '}
-          {siteName}
-          .
+    <main className="mx-auto w-full max-w-4xl space-y-10 px-4 py-10 text-sm leading-7 text-foreground sm:px-6 lg:px-8 lg:py-14">
+      <header className="space-y-3 border-b border-border pb-8">
+        <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">Terms of Use</h1>
+        <p className="text-muted-foreground">Effective 2 August 2026</p>
+        <p>
+          These Terms govern your use of {siteName} through {siteUrl}. By creating an account, depositing funds,
+          placing a trade, or otherwise using the platform, you confirm that you have read and accepted these Terms.
         </p>
       </header>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Introduction</h2>
+      <TermsSection title="1. The Slimefish service">
         <p>
-          These Terms of Use ("Terms") govern how you, whether personally or on behalf of an entity, may access, use, or
-          otherwise interact with the interfaces, websites, applications, and related features made available through
-          {' '}
-          {siteUrl}
-          .
-          The Terms include any policies or documents that expressly incorporate these Terms by reference, as well as our
-          Privacy Policy (collectively, the "Agreement"). By accessing or using any interface, website, or feature provided
-          by
-          {' '}
-          {siteName}
-          {' '}
-          (collectively, the "Interfaces" and "Features"), you agree to be bound by this Agreement.
+          {siteName} operates an event-outcome trading platform. Users may deposit supported fiat currency, hold a
+          balance recorded in our internal ledger, buy or sell positions in available markets, receive settlement when
+          markets resolve, and request withdrawals through supported payment providers.
         </p>
-        <p className="font-medium">
-          NOTICE: PLEASE READ THESE TERMS CAREFULLY. BY ACCESSING OR USING ANY INTERFACE OR FEATURE (INCLUDING CONNECTING A
-          SELF-HOSTED WALLET OR CREATING AN IDENTIFIER), YOU REPRESENT THAT YOU CAN ENTER INTO A BINDING AGREEMENT AND THAT
-          YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY THESE TERMS, INCLUDING THE BINDING ARBITRATION AND CLASS
-          ACTION WAIVER BELOW. IF YOU DO NOT AGREE, DO NOT ACCESS OR USE THE INTERFACES OR FEATURES.
+        <p>
+          Market prices represent the trading activity and available liquidity on {siteName}; they are not statements
+          of fact, guarantees, investment advice, or promises that an outcome will occur.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Scope and Description of the Interfaces and Features</h2>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>
-            Content Features (optional): Some Interfaces may provide informational content, data, or commentary on markets,
-            events, or other topics ("Content Features"). Such information is provided for general informational purposes
-            only and does not constitute financial, legal, tax, or other professional advice.
-          </li>
-          <li>
-            Technology Features: Some Interfaces may allow you to connect a self-hosted cryptocurrency wallet ("Wallet") to
-            broadcast transactions to supported blockchain networks to interact with event-based contracts or similar on-chain
-            mechanisms ("Contracts") in a non-custodial manner (together with any related user interface components, the
-            "Technology Features").
-          </li>
+      <TermsSection title="2. Eligibility and account registration">
+        <ul>
+          <li>You must be at least 18 years old and legally able to enter a binding agreement.</li>
+          <li>You must provide accurate information and complete any identity, age, sanctions, or source-of-funds checks we require.</li>
+          <li>You may not use the platform from a jurisdiction we block or where event-outcome trading is unlawful.</li>
+          <li>You may maintain only accounts that belong to you and may not sell, transfer, share, or disguise control of an account.</li>
+          <li>You must not use a VPN, proxy, false identity, or other method to evade location, eligibility, or account controls.</li>
+        </ul>
+      </TermsSection>
+
+      <TermsSection title="3. Account and transaction security">
+        <p>
+          You are responsible for protecting your email account, password, withdrawal passcode, two-factor
+          authentication methods, and devices. Staff accounts and other privileged accounts may be required to use
+          additional authentication. Tell support immediately if you suspect unauthorized access.
+        </p>
+        <p>
+          We may delay, reject, or review a deposit, withdrawal, trade, refund, or administrative action when required
+          to protect users, investigate fraud, comply with law, or reconcile provider and ledger records.
+        </p>
+      </TermsSection>
+
+      <TermsSection title="4. Balances, deposits, and withdrawals">
+        <ul>
+          <li>Your displayed balance is based on entries in the {siteName} ledger and may include available, reserved, or unsettled funds.</li>
+          <li>A deposit is credited only after the payment provider confirms successful settlement and our reconciliation controls accept it.</li>
+          <li>A withdrawal is limited to your available balance after applicable provider costs, limits, reserves, and pending obligations.</li>
+          <li>Funds reserved for open trades, pending withdrawals, investigations, chargebacks, or market resolution are not available for withdrawal.</li>
+          <li>Provider delays, reversals, duplicate messages, failed payouts, or incorrect recipient details may delay settlement while records are reconciled.</li>
         </ul>
         <p>
-          You acknowledge that
-          {' '}
-          {siteName}
-          {' '}
-          does not operate a centralized exchange, does not provide trade execution or clearing
-          services, does not take possession or custody of your assets, and does not act on your behalf. Pricing or market
-          data displayed via the Interfaces is informational and not an offer, solicitation, recommendation, or advice.
+          You must review the recipient number and transaction details before confirming. We do not guarantee recovery
+          when funds are delivered to a recipient you supplied incorrectly.
         </p>
-        <p>When you choose to connect a Wallet, you understand and agree that:</p>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>You control your Wallet and are solely responsible for safeguarding private keys, seed phrases, passwords, and security settings.</li>
-          <li>
-            {siteName}
-            {' '}
-            cannot access your private keys, cannot reverse transactions, and cannot control, guarantee, or ensure the success or outcome of any transaction you initiate.
-          </li>
-          <li>Transactions may require non-refundable network fees, which are solely your responsibility.</li>
-          <li>
-            Blockchain networks and any contracts or protocols you interact with are operated by third parties;
-            {' '}
-            {siteName}
-            {' '}
-            does not own or control them and makes no promises about their availability, security, or performance.
-          </li>
+      </TermsSection>
+
+      <TermsSection title="5. Trading and market resolution">
+        <ul>
+          <li>Every market is governed by its displayed question, outcomes, closing time, resolution source, and market-specific rules.</li>
+          <li>Orders and trades may move prices, incur disclosed fees, or receive partial execution depending on liquidity.</li>
+          <li>Open positions can lose some or all of their value. Do not trade money you cannot afford to lose.</li>
+          <li>We may pause, cancel, correct, extend, void, or refund a market affected by ambiguity, a data-source failure, manipulation, a manifest error, or an extraordinary event.</li>
+          <li>Settlement is final after the applicable review or dispute period, except where correction is required by law or to remedy a material operational error.</li>
         </ul>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Eligibility; Sanctions; Restricted Jurisdictions</h2>
+      <TermsSection title="6. Insider trading and market abuse">
         <p>
-          You represent and warrant that you are at least 18 years old (or the age of majority in your jurisdiction) and have
-          the authority to enter into this Agreement. You further represent and warrant that you are not:
+          You must not trade using material non-public information about an event or its resolution. This includes
+          confidential information obtained through employment, public office, a sports team, an election campaign, a
+          market participant, a resolution source, {siteName}, or any person directly involved in the event.
         </p>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>The subject of economic or trade sanctions, and that you comply with applicable anti-money laundering and counter-terrorist financing laws.</li>
-          <li>
-            Accessing, using, or attempting to use the Technology Features (including trading Contracts) from any jurisdiction
-            in which such activity is prohibited ("Restricted Jurisdictions"). Without limiting the foregoing, use of
-            Technology Features for trading is not permitted by persons or entities who reside in, are located in, are
-            incorporated in, have a registered office in, or have their principal place of business in the United States of
-            America, the United Kingdom, France, Ontario (Canada), Singapore, Poland, Thailand, Australia, Belgium, Taiwan, any
-            comprehensively sanctioned country or region (including, without limitation, Iran, Syria, Cuba, North Korea, and
-            the Crimea, Donetsk, or Luhansk regions), or in any other jurisdiction where applicable law prohibits such use.
-          </li>
+        <p>You must not:</p>
+        <ul>
+          <li>manipulate or attempt to manipulate a market, price, volume, liquidity, or resolution;</li>
+          <li>wash trade, self-trade, spoof, layer orders, coordinate deceptive trades, or create misleading activity;</li>
+          <li>use multiple accounts, bots, scripts, stolen identities, or collusion to avoid limits or obtain an unfair advantage;</li>
+          <li>bribe, threaten, influence, or impersonate a resolution source, participant, administrator, or other user;</li>
+          <li>exploit a software, pricing, settlement, or payment error instead of reporting it promptly.</li>
         </ul>
-        <p>You also represent and warrant that you will not use VPNs or similar tools to circumvent geoblocking or other access controls.</p>
-        <p>If any of the above becomes untrue, you must immediately stop accessing the Technology Features.</p>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Your Acknowledgements; Risks</h2>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>Information Only. Content Features are for informational purposes only; you should independently verify information before relying on it.</li>
-          <li>No Advice or Fiduciary Duty. Nothing on the Interfaces or via the Features constitutes investment, legal, tax, accounting, or other professional advice, and no fiduciary duties are created by your use of the Interfaces or Features. Seek independent professional advice before making decisions.</li>
-          <li>Experimental or Risky Technology. Interacting with blockchain technology involves significant risks, including smart-contract vulnerabilities, UI or UX bugs, hacks, phishing, social-engineering attacks, volatility, and irreversible transactions. You may lose some or all of the assets you use in connection with Contracts.</li>
-          <li>
-            Third-Party Infrastructure.
-            {' '}
-            {siteName}
-            {' '}
-            does not control blockchain networks, validators, oracles, bridges, indexers, RPC providers, or other third-party services. Outages, congestion, reorganizations, forks, or other issues may impact availability or functionality.
-          </li>
-          <li>
-            Contract Resolution. Resolution of Contracts (if applicable) occurs solely per the market-specific rules and any third-party oracle or dispute mechanism referenced in the relevant market terms.
-            {' '}
-            {siteName}
-            {' '}
-            is not responsible for resolution outcomes or disputes between market participants.
-          </li>
-        </ul>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Modifications to the Terms and to the Interfaces or Features</h2>
         <p>
-          We may update these Terms and modify, suspend, or discontinue any Interface or Feature (in whole or in part) at our
-          discretion, with or without notice, including restricting access (for example, placing Features in a close-only mode).
-          Your continued use after changes become effective constitutes your acceptance of the updated Terms. If you do not agree,
-          you must stop using the Interfaces and Features.
+          Suspected abuse may result in cancelled trades, withheld settlement, account restriction, forfeiture of
+          improperly obtained gains where permitted by law, permanent removal, and referral to payment providers,
+          regulators, or law-enforcement authorities. We may preserve and disclose relevant records where legally allowed.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Your Responsibilities and Prohibited Conduct</h2>
-        <p>You agree to use the Interfaces and Features lawfully and appropriately. Without limitation, you must not:</p>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>Violate any applicable law, regulation, or order.</li>
-          <li>Use the Technology Features from a Restricted Jurisdiction or for or on behalf of a restricted person.</li>
-          <li>Use VPNs or similar tools to circumvent geoblocking or access controls.</li>
-          <li>Provide false, inaccurate, or misleading information.</li>
-          <li>Interfere with or disrupt the Interfaces or Features, introduce malware, or attempt unauthorized access.</li>
-          <li>Scrape, harvest, or use automated tools (including bots or crawlers) to extract data except as expressly permitted.</li>
-          <li>Reverse engineer or decompile software except to the limited extent required by applicable law.</li>
-          <li>Sublicense, sell, or commercially exploit the Interfaces or Features except as expressly allowed.</li>
-          <li>Engage in abusive or manipulative market behavior, including spoofing, layering, wash trading, pre-arranged trades, cornering, or other deceptive or disruptive practices.</li>
-          <li>Infringe or misappropriate the intellectual property or other rights of any person.</li>
-        </ul>
-        <p>We may investigate suspected violations and take any action we deem appropriate, including suspending or terminating access and cooperating with law enforcement.</p>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Additional Information; Verification</h2>
+      <TermsSection title="7. Fees, rates, and rounding">
         <p>
-          We or compliance vendors acting on our behalf may request information to confirm your eligibility (for example, that
-          you are not a restricted person). Failure to provide satisfactory information may result in denial or loss of access to
-          some or all Features.
+          Applicable trading commissions, payment-provider charges, exchange rates, and other costs are shown before
+          confirmation or in the relevant market rules. Kenyan-shilling displays use whole shillings and may be rounded
+          down as described in the interface. Rates and provider fees may change before a transaction is completed.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Ownership; License; Your Feedback and Content</h2>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>
-            Ownership. Except for rights expressly granted to you,
-            {' '}
-            {siteName}
-            {' '}
-            and its licensors retain all right, title, and interest in and to the Interfaces and Features, including all associated intellectual property.
-          </li>
-          <li>
-            Limited License to You. Subject to these Terms,
-            {' '}
-            {siteName}
-            {' '}
-            grants you a personal, revocable, non-exclusive, non-transferable, non-sublicensable license to access and use the Interfaces and Features as provided to you.
-          </li>
-          <li>
-            Your Feedback and Content. If you submit feedback, suggestions, support requests, or content ("Feedback/Content"), you grant
-            {' '}
-            {siteName}
-            {' '}
-            a worldwide, royalty-free, transferable, sublicensable, irrevocable, perpetual license to use, host, reproduce, modify, adapt, publish, display, create derivative works from, and otherwise exploit such Feedback/Content for business purposes (including providing and improving the Interfaces and Features). You represent and warrant that you own or control the necessary rights to grant this license and that your Feedback/Content does not infringe others' rights.
-          </li>
-        </ul>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Third-Party Services and Links</h2>
+      <TermsSection title="8. Compliance, investigations, and refunds">
         <p>
-          The Interfaces and Features may integrate with or link to third-party sites, applications, services, protocols, or
-          content ("Third-Party Services"). Your use of Third-Party Services is at your sole risk and is subject to their terms
-          and privacy policies.
-          {' '}
-          {siteName}
-          {' '}
-          does not control, endorse, or assume responsibility for Third-Party Services and is not
-          liable for any damages arising from your use of them.
+          We may monitor transactions and account activity for fraud, sanctions, money laundering, market abuse,
+          security threats, and legal compliance. We may request supporting information, restrict trading or
+          withdrawals, reverse erroneous internal ledger entries, or refund selected transactions when reasonably
+          necessary. Refusing a lawful verification request may result in account restriction or closure.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Indemnification</h2>
+      <TermsSection title="9. Availability and operational risk">
         <p>
-          You agree to defend, indemnify, and hold harmless
-          {' '}
-          {siteName}
-          , its licensors, and their respective officers, directors,
-          employees, and representatives (collectively, the "Protected Parties") from and against any and all claims, demands,
-          actions, investigations, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising
-          out of or relating to: (i) your use or misuse of the Interfaces or Features; (ii) your violation of these Terms or
-          applicable law; (iii) your disputes with any third party; (iv) your actual or alleged infringement or misappropriation
-          of any third-party rights; or (v) your Feedback/Content. If we receive a subpoena or compulsory order related to the
-          foregoing, you will reimburse reasonable time, materials, and legal expenses incurred in responding.
+          The platform depends on internet, database, hosting, identity, messaging, market-data, and payment services.
+          Maintenance, cyberattacks, provider failures, network interruption, or events outside our control may delay or
+          prevent access, trading, settlement, deposits, or withdrawals. We will use reasonable controls to restore and
+          reconcile service, but uninterrupted availability is not guaranteed.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Disclaimers</h2>
+      <TermsSection title="10. Intellectual property and acceptable use">
         <p>
-          THE INTERFACES AND FEATURES ARE PROVIDED "AS IS" AND "AS AVAILABLE." TO THE MAXIMUM EXTENT PERMITTED BY LAW,
-          {' '}
-          {siteNameUpper}
-          {' '}
-          AND ITS LICENSORS DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY, QUIET ENJOYMENT, AND ANY WARRANTIES ARISING FROM COURSE OF DEALING OR USAGE OF TRADE. WE DO NOT WARRANT THAT THE INTERFACES OR FEATURES WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR VIRUS-FREE, OR THAT ANY CONTENT OR DATA WILL BE ACCURATE OR RELIABLE.
+          {siteName}, its software, branding, interfaces, and original content are protected by applicable intellectual
+          property laws. We grant you a limited, personal, revocable right to use the platform under these Terms. You
+          may not attack, scrape at harmful volume, reverse engineer, resell, copy, interfere with, or obtain
+          unauthorized access to the platform or another user's information.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Limitation of Liability</h2>
+      <TermsSection title="11. Suspension and account closure">
         <p>
-          TO THE MAXIMUM EXTENT PERMITTED BY LAW: (A) IN NO EVENT WILL
-          {' '}
-          {siteNameUpper}
-          {' '}
-          OR ITS SERVICE PROVIDERS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, GOODWILL, DATA, OR OTHER INTANGIBLE LOSSES, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES; AND (B)
-          {' '}
-          {siteNameUpper}
-          'S AGGREGATE LIABILITY FOR ALL CLAIMS RELATING TO THE INTERFACES OR FEATURES WILL NOT EXCEED USD $100. THESE LIMITATIONS APPLY TO ALL CAUSES OF ACTION, WHETHER IN CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY, OR OTHERWISE.
+          We may restrict or close an account for a Terms violation, suspected fraud or abuse, legal or compliance
+          requirements, security risk, unpaid obligation, or material threat to the platform. Where lawful and safe,
+          legitimate remaining funds will be made available after open obligations and investigations are resolved.
         </p>
+      </TermsSection>
+
+      <TermsSection title="12. Disclaimers and liability">
         <p>
-          Some jurisdictions do not allow certain exclusions or limitations of liability; in such cases, the above will apply to the fullest extent permitted by applicable law.
+          THE PLATFORM IS PROVIDED "AS IS" AND "AS AVAILABLE." TO THE MAXIMUM EXTENT PERMITTED BY LAW, {siteNameUpper}
+          DISCLAIMS IMPLIED WARRANTIES AND IS NOT LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+          LOSS. NOTHING IN THESE TERMS EXCLUDES LIABILITY THAT CANNOT LAWFULLY BE EXCLUDED, INCLUDING LIABILITY ARISING
+          FROM FRAUD, WILFUL MISCONDUCT, OR OTHER NON-EXCLUDABLE OBLIGATIONS.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Governing Law; Dispute Resolution; Class Action Waiver</h2>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>
-            Governing Law. These Terms and any dispute or claim arising out of or relating to them or the Interfaces or Features will be governed by the laws of the jurisdiction where
-            {' '}
-            {siteName}
-            {' '}
-            is organized or primarily conducts business, without regard to conflict-of-laws rules.
-          </li>
-          <li>Informal Resolution. Before starting arbitration or litigation, the aggrieved party must send a written notice describing the claim and desired relief. The parties will attempt in good faith to resolve the dispute within 45 days of notice.</li>
-          <li>
-            Mandatory Arbitration. Any dispute, claim, or controversy that is not resolved informally shall be finally resolved by binding arbitration before a single arbitrator administered by a reputable arbitration institution in the governing-law jurisdiction, under its rules in effect when the claim is filed. Either party may seek provisional remedies in aid of arbitration from a court of competent jurisdiction. You and
-            {' '}
-            {siteName}
-            {' '}
-            waive any right to a jury trial.
-          </li>
-          <li>Class Action Waiver. All proceedings must be brought in the parties' individual capacities, not as a plaintiff or class member in any purported class, collective, consolidated, or representative action. The arbitrator may not consolidate claims or preside over any form of class or representative proceeding.</li>
-        </ul>
-        <p>If a court finds the class action waiver unenforceable, then the entirety of the arbitration agreement shall be null and void, and the dispute will proceed in court.</p>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Taxes</h2>
-        <p>You are solely responsible for determining and fulfilling any tax obligations arising from your activities via the Interfaces or Features and for complying with applicable tax laws and reporting requirements.</p>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">Termination</h2>
+      <TermsSection title="13. Governing law and disputes">
         <p>
-          We may suspend or terminate your access to some or all Interfaces or Features at any time for any reason, including if
-          we believe you have violated these Terms or applicable law. Upon termination, your right to use the Interfaces or
-          Features ceases immediately. Sections intended to survive (including Ownership, Indemnification, Disclaimers, Limitation
-          of Liability, Governing Law or Dispute Resolution, and General Terms) shall survive termination.
+          These Terms are governed by the laws of Kenya, without limiting any mandatory consumer rights that apply to
+          you. Before filing a claim, contact support and allow 30 days for a good-faith attempt to resolve the matter.
+          Unresolved disputes are subject to the courts or lawful dispute-resolution process with jurisdiction in Kenya.
         </p>
-      </section>
+      </TermsSection>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">General Terms</h2>
-        <ul className="ml-6 list-disc space-y-2">
-          <li>
-            Entire Agreement. These Terms (including documents incorporated by reference) are the entire agreement between you and
-            {' '}
-            {siteName}
-            {' '}
-            regarding the subject matter and supersede all prior or contemporaneous understandings.
-          </li>
-          <li>
-            No Agency. Nothing in these Terms creates any partnership, joint venture, employment, or agency relationship between you and
-            {' '}
-            {siteName}
-            .
-          </li>
-          <li>Assignment. You may not assign or transfer these Terms or any rights hereunder without our prior written consent. We may assign or transfer these Terms without restriction.</li>
-          <li>Severability; Waiver. If any provision is held invalid or unenforceable, the remaining provisions remain in full force and effect. Our failure to enforce any provision is not a waiver of our right to do so later.</li>
-          <li>Remedies. Our rights and remedies are cumulative and in addition to any rights and remedies available at law or in equity.</li>
-          <li>Contact. Questions, complaints, or claims regarding the Interfaces or Features should be directed via the contact method provided within the Interface.</li>
-        </ul>
-      </section>
+      <TermsSection title="14. Changes and contact">
+        <p>
+          We may update these Terms to reflect product, payment, legal, security, or regulatory changes. Material
+          changes will be communicated through the platform or your registered contact details. Continued use after the
+          effective date means you accept the revised Terms. Questions and complaints should be submitted through the
+          support channel shown in {siteName}.
+        </p>
+      </TermsSection>
     </main>
+  )
+}
+
+function TermsSection({ children, title }: { children: ReactNode, title: string }) {
+  return (
+    <section className="space-y-4">
+      <h2 className="text-xl font-semibold tracking-tight lg:text-2xl">{title}</h2>
+      <div className="space-y-4 [&_ul]:ml-6 [&_ul]:list-disc [&_ul]:space-y-2">{children}</div>
+    </section>
   )
 }

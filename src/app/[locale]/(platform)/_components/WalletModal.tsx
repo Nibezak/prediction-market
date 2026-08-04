@@ -8,7 +8,9 @@ import WalletReceiveView from '@/app/[locale]/(platform)/_components/wallet-moda
 import WalletSendForm from '@/app/[locale]/(platform)/_components/wallet-modal/WalletSendForm'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency'
 import { cn } from '@/lib/utils'
 
 export type { WalletDepositModalProps, WalletWithdrawModalProps }
@@ -30,13 +32,12 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     defaultPhoneNumber,
     onrampProgress,
     onOnrampProgressChange,
+    isRestoringPayment = false,
   } = props
 
   const [copied, setCopied] = useState(false)
   const site = useSiteIdentity()
-  const formattedDepositWalletBalance = depositWalletBalance && depositWalletBalance !== ''
-    ? depositWalletBalance
-    : '0.00'
+  const { formatMoney } = useDisplayCurrency()
   const balanceDisplay = isDepositWalletBalanceLoading
     ? (
         <span className="inline-flex align-middle">
@@ -44,13 +45,12 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         </span>
       )
     : (
-        <>
-          $
-          {formattedDepositWalletBalance}
-        </>
+        <>{formatMoney(depositWalletBalance ?? 0)}</>
       )
 
-  const content = view === 'fund'
+  const content = isRestoringPayment
+    ? <PaymentRecoverySkeleton />
+    : view === 'fund'
     ? (
         <WalletFundMenu
           onBuy={(url) => {
@@ -217,6 +217,7 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
     onChangeSendAmount,
     isSending,
     isSubmitted,
+    settlementStatus,
     error,
     onRetrySend,
     onSubmitSend,
@@ -226,9 +227,14 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
     onMax,
     isBalanceLoading,
     defaultPhoneNumber,
+    withdrawalPin,
+    onWithdrawalPinChange,
+    isRestoringPayment = false,
   } = props
 
-  const content = (
+  const { formatMoney } = useDisplayCurrency()
+
+  const content = isRestoringPayment ? <PaymentRecoverySkeleton /> : (
     <WalletSendForm
       sendTo={sendTo}
       onChangeSendTo={onChangeSendTo}
@@ -236,15 +242,19 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
       onChangeSendAmount={onChangeSendAmount}
       isSending={isSending}
       isSubmitted={isSubmitted}
+      settlementStatus={settlementStatus}
       error={error}
       onRetrySend={onRetrySend}
       onSubmitSend={onSubmitSend}
       connectedWalletAddress={connectedWalletAddress}
       onUseConnectedWallet={onUseConnectedWallet}
       availableBalance={availableBalance}
+      formattedBalance={formatMoney(availableBalance ?? 0)}
       onMax={onMax}
       isBalanceLoading={isBalanceLoading}
       defaultPhoneNumber={defaultPhoneNumber}
+      withdrawalPin={withdrawalPin}
+      onWithdrawalPinChange={onWithdrawalPinChange}
     />
   )
 
@@ -256,6 +266,9 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
             <DrawerTitle className="text-center text-foreground">
               Withdraw
             </DrawerTitle>
+            <DrawerDescription className="text-center text-xs text-muted-foreground">
+              Send funds from your Slimefish balance to M-Pesa.
+            </DrawerDescription>
           </DrawerHeader>
           <div className="w-full px-4 pb-4">
             <div className="space-y-4 pt-4">
@@ -274,9 +287,31 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
           <DialogTitle className="text-center text-foreground">
             Withdraw
           </DialogTitle>
+          <DialogDescription className="text-center text-xs text-muted-foreground">
+            Send funds from your Slimefish balance to M-Pesa.
+          </DialogDescription>
         </DialogHeader>
         {content}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function PaymentRecoverySkeleton() {
+  return (
+    <div className="space-y-5 rounded-md border p-5" aria-label="Checking transaction status">
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-11" />
+        <div className="grid flex-1 gap-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-48 max-w-full" />
+        </div>
+      </div>
+      <div className="grid gap-3">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+      </div>
+    </div>
   )
 }

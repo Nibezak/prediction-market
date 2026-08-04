@@ -38,12 +38,27 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<'div'>) {
 function InputOTPSlot({
   index,
   className,
+  mask = false,
+  revealDuration = 700,
   ...props
 }: React.ComponentProps<'div'> & {
   index: number
+  mask?: boolean
+  revealDuration?: number
 }) {
   const inputOTPContext = React.use(OTPInputContext)
   const { char, hasFakeCaret, isActive } = inputOTPContext?.slots[index] ?? {}
+  const [isRevealed, setIsRevealed] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!mask || !char) {
+      setIsRevealed(false)
+      return
+    }
+    setIsRevealed(true)
+    const timer = window.setTimeout(() => setIsRevealed(false), revealDuration)
+    return () => window.clearTimeout(timer)
+  }, [char, mask, revealDuration])
 
   return (
     <div
@@ -66,7 +81,7 @@ function InputOTPSlot({
       )}
       {...props}
     >
-      {char}
+      {mask && char && !isRevealed ? '\u2022' : char}
       {hasFakeCaret && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />

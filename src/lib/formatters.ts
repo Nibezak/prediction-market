@@ -2,6 +2,20 @@ import { MICRO_UNIT } from '@/lib/constants'
 
 const DEFAULT_LOCALE = 'en-US'
 const DEFAULT_CURRENCY = 'USD'
+let clientDisplayCurrency: 'USD' | 'KES' = 'USD'
+let clientKesPerUsdc = 129.5
+
+export function configureClientMoneyDisplay(currency: 'USD' | 'KES', kesPerUsdc: number) {
+  clientDisplayCurrency = currency
+  if (Number.isFinite(kesPerUsdc) && kesPerUsdc > 0) clientKesPerUsdc = kesPerUsdc
+}
+
+function getDisplayMoneyConfig() {
+  if (typeof window === 'undefined' || /\/(?:[a-z]{2}\/)?admin(?:\/|$)/.test(window.location.pathname)) {
+    return { currency: 'USD' as const, rate: 1 }
+  }
+  return { currency: clientDisplayCurrency, rate: clientDisplayCurrency === 'KES' ? clientKesPerUsdc : 1 }
+}
 
 const priceFormatter = new Intl.NumberFormat(DEFAULT_LOCALE, {
   minimumFractionDigits: 0,
@@ -122,6 +136,17 @@ export function formatCurrency(
   const includeSymbol = options.includeSymbol ?? true
   const formatter = getUsdFormatter(minimumFractionDigits, maximumFractionDigits)
   const safeValue = typeof value === 'number' && Number.isFinite(value) ? value : 0
+  const display = getDisplayMoneyConfig()
+  if (display.currency === 'KES') {
+    const converted = Math.max(0, Math.round(safeValue * display.rate))
+    const formatted = new Intl.NumberFormat('en-KE', {
+      style: includeSymbol ? 'currency' : 'decimal',
+      currency: includeSymbol ? 'KES' : undefined,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(converted)
+    return includeSymbol ? formatted.replace('KES', 'Ksh') : formatted
+  }
 
   if (includeSymbol) {
     return formatter.format(safeValue)
@@ -150,6 +175,9 @@ export function formatDollarValueLabel(
   }
 
   if (Math.abs(numeric) < 1) {
+    if (getDisplayMoneyConfig().currency === 'KES') {
+      return formatCurrency(numeric, { ...options, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    }
     const cents = toCents(Math.abs(numeric))
     if (cents === null) {
       return fallback
@@ -179,21 +207,24 @@ export function formatPercent(value: number, options: PercentFormatOptions = {})
   return includeSymbol ? `${formatted}%` : formatted
 }
 
-export function formatVolume(volume: number): string {
-  if (!Number.isFinite(volume) || volume < 0) {
-    return '$0'
-  }
+export function formatVolume(volume: number, liquidity: number = 0): string {
+  const DEFAULT_INITIAL_LIQUIDITY_USD = 2
+  const safeVolume = Number.isFinite(volume) && volume > 0 ? volume : 0
+  const safeLiquidity = Number.isFinite(liquidity) && liquidity > 0 ? liquidity : DEFAULT_INITIAL_LIQUIDITY_USD
+  const totalDisplay = safeVolume + safeLiquidity
 
-  if (volume >= 1_000_000_000) {
-    return `$${(volume / 1_000_000_000).toFixed(1)}B`
+  if (getDisplayMoneyConfig().currency === 'KES') return formatCompactCurrency(totalDisplay)
+
+  if (totalDisplay >= 1_000_000_000) {
+    return `$${(totalDisplay / 1_000_000_000).toFixed(1)}B`
   }
-  if (volume >= MICRO_UNIT) {
-    return `$${(volume / MICRO_UNIT).toFixed(1)}M`
+  if (totalDisplay >= MICRO_UNIT) {
+    return `$${(totalDisplay / MICRO_UNIT).toFixed(1)}M`
   }
-  if (volume >= 1_000) {
-    return `$${(volume / 1_000).toFixed(0)}k`
+  if (totalDisplay >= 1_000) {
+    return `$${(totalDisplay / 1_000).toFixed(0)}k`
   }
-  return `$${volume.toFixed(0)}`
+  return `$${totalDisplay.toFixed(0)}`
 }
 
 const COMPACT_THRESHOLD = 100_000
@@ -230,21 +261,27 @@ export function formatCompactCurrency(value: number) {
     return '—'
   }
 
-  const abs = Math.abs(value)
-  if (abs >= COMPACT_BILLION) {
-    const compact = (abs / COMPACT_BILLION).toFixed(1).replace(/\.0$/, '')
-    return `${value < 0 ? '-' : ''}$${compact}B`
+  const display = getDisplayMoneyConfig()
+  const safeValue = value <= 0 ? 2 : value
+  const convertedValue = display.currency === 'KES' ? Math.floor(safeValue * display.rate) : safeValue
+  const abs = Math.abs(convertedValue)
+  const symbol = display.currency === 'KES' ? 'Ksh ' : '$'
+  const sign = convertedValue < 0 ? '-' : ''
+
+  if (abs >= 1_000_000_000) {
+    const compact = (abs / 1_000_000_000).toFixed(1).replace(/\.0$/, '')
+    return `${sign}${symbol}${compact}B`
   }
-  if (abs >= COMPACT_MILLION) {
-    const compact = (abs / COMPACT_MILLION).toFixed(1).replace(/\.0$/, '')
-    return `${value < 0 ? '-' : ''}$${compact}M`
+  if (abs >= 1_000_000) {
+    const compact = (abs / 1_000_000).toFixed(1).replace(/\.0$/, '')
+    return `${sign}${symbol}${compact}M`
   }
-  if (abs >= COMPACT_THRESHOLD) {
-    const compact = Math.round(abs / 1_000).toLocaleString(DEFAULT_LOCALE)
-    return `${value < 0 ? '-' : ''}$${compact}k`
+  if (abs >= 1_000) {
+    const compact = (abs / 1_000).toFixed(1).replace(/\.0$/, '')
+    return `${sign}${symbol}${compact}k`
   }
 
-  return formatCurrency(value)
+  return formatCurrency(safeValue)
 }
 
 export function formatDate(dateInput: Date | number): string {
@@ -336,6 +373,11 @@ export function formatCentsLabel(
     return fallback
   }
 
+  if (getDisplayMoneyConfig().currency === 'KES') {
+    const dollarValue = numeric <= 1 ? numeric : numeric / 100
+    return formatCurrency(dollarValue, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  }
+
   if (numeric <= 1) {
     const cents = toCents(numeric)
     return cents === null ? fallback : `${priceFormatter.format(cents)}¢`
@@ -360,6 +402,9 @@ export function formatCentsValueLabel(
   }
 
   const cents = Math.max(0, Number(numeric.toFixed(1)))
+  if (getDisplayMoneyConfig().currency === 'KES') {
+    return formatCurrency(cents / 100, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  }
   return `${priceFormatter.format(cents)}¢`
 }
 
@@ -432,6 +477,12 @@ interface AmountInputFormatOptions {
 export function formatAmountInputValue(value: number, options: AmountInputFormatOptions = {}): string {
   if (!Number.isFinite(value)) {
     return ''
+  }
+
+  const display = getDisplayMoneyConfig()
+  if (display.currency === 'KES') {
+    const kesValue = Math.round(value)
+    return kesValue <= 0 ? '' : kesValue.toString()
   }
 
   const roundingMode = options.roundingMode ?? 'round'

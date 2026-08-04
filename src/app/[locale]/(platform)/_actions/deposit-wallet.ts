@@ -3,7 +3,6 @@
 import type { TradingAuthSecrets } from '@/lib/trading-auth/server'
 import type { DepositWalletStatus } from '@/types'
 import { eq } from 'drizzle-orm'
-import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { DEPOSIT_WALLET_FACTORY_ADDRESS } from '@/lib/contracts'
@@ -15,16 +14,12 @@ import { db } from '@/lib/drizzle'
 import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
 import { buildClobHmacSignature } from '@/lib/hmac'
 import { signSlimefishBackendRequest } from '@/lib/slimefish-backend-auth'
-import {
-  getL2AuthContextCookieName,
-  L2_AUTH_CONTEXT_TTL_SECONDS,
-} from '@/lib/l2-auth-context'
+import { hashWithdrawalPhonePin } from '@/lib/withdrawal-phone-pin'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
 import {
   getUserTradingAuthSecrets,
   markAutoRedeemApprovalCompleted,
-  saveUserTradingAuthCredentials,
 } from '@/lib/trading-auth/server'
 import {
   getTradingFlowErrorPreview,
@@ -66,12 +61,7 @@ const OnboardingPhoneSchema = z.object({
   phoneNumber: z.string().transform(value => normalizeKenyanPhone(value)).pipe(
     z.string({ error: 'Enter a valid Kenyan phone number.' }),
   ),
-})
-
-const TradingAuthSignatureSchema = z.object({
-  signature: z.string().min(1),
-  timestamp: z.string().min(1),
-  nonce: z.string().min(1),
+  withdrawalPin: z.string().regex(/^\d{4}$/, 'Passcode must contain exactly 4 digits.'),
 })
 
 interface DepositWalletActionUserData {
@@ -91,16 +81,6 @@ interface EnableDepositWalletTradingActionResult {
       clob?: { enabled: boolean, updatedAt: string }
     }
   }) | null
-}
-
-interface EnableTradingAuthActionResult {
-  error: string | null
-  data: {
-    tradingAuth: {
-      relayer: { enabled: boolean, updatedAt: string }
-      clob: { enabled: boolean, updatedAt: string }
-    }
-  } | null
 }
 
 interface MarkAutoRedeemApprovalActionResult {
@@ -262,21 +242,6 @@ async function requestApiKey(baseUrl: string, headers: Record<string, string>) {
     secret: payload.secret as string,
     passphrase: payload.passphrase as string,
   }
-}
-
-async function persistL2AuthCookie(userId: string, l2AuthContextId: string) {
-  const cookieStore = await cookies()
-  const isProduction = process.env.NODE_ENV === 'production'
-
-  cookieStore.set({
-    name: getL2AuthContextCookieName({ secure: isProduction, userId }),
-    value: l2AuthContextId,
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: isProduction,
-    path: '/',
-    maxAge: L2_AUTH_CONTEXT_TTL_SECONDS,
-  })
 }
 
 async function submitWalletCreate({
@@ -565,6 +530,7 @@ export async function updateOnboardingEmailAction(input: {
 
 export async function updateOnboardingPhoneAction(input: {
   phoneNumber: string
+  withdrawalPin: string
 }) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
@@ -599,16 +565,29 @@ export async function updateOnboardingPhoneAction(input: {
       profile,
     }
 
+    const withdrawalPinHash = await hashWithdrawalPhonePin(parsed.data.withdrawalPin)
+    const withdrawalPinSetAt = new Date()
+
     await db
       .update(users)
-      .set({ settings: nextSettings })
+      .set({
+        settings: {
+          ...nextSettings,
+          withdrawalSecurity: { pinSetAt: withdrawalPinSetAt.toISOString() },
+        },
+        withdrawal_phone_pin_hash: withdrawalPinHash,
+        withdrawal_phone_pin_set_at: withdrawalPinSetAt,
+      })
       .where(eq(users.id, user.id))
 
     return {
       error: null,
       data: {
         phoneNumber: parsed.data.phoneNumber,
-        settings: nextSettings,
+        settings: {
+          ...nextSettings,
+          withdrawalSecurity: { pinSetAt: withdrawalPinSetAt.toISOString() },
+        },
       },
     }
   }
@@ -729,63 +708,6 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
     console.error('Failed to create Deposit Wallet', error)
     captureDepositWalletError(error, {
       operation: 'wallet_create',
-      userAddress: user.address,
-      depositWallet: user.deposit_wallet_address,
-    })
-    const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE
-    return { error: message, data: null }
-  }
-}
-
-export async function enableTradingAuthAction(
-  input: z.input<typeof TradingAuthSignatureSchema>,
-): Promise<EnableTradingAuthActionResult> {
-  const user = await UserRepository.getCurrentUser({ disableCookieCache: true })
-  if (!user) {
-    return { error: 'Unauthenticated.', data: null }
-  }
-
-  const parsed = TradingAuthSignatureSchema.safeParse(input)
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Invalid signature.', data: null }
-  }
-
-  try {
-    const relayerCreds = {
-      key: 'mock-relayer-key',
-      secret: 'mock-relayer-secret',
-      passphrase: 'mock-passphrase',
-    }
-    const clobCreds = {
-      key: 'mock-clob-key',
-      secret: 'mock-clob-secret',
-      passphrase: 'mock-passphrase',
-    }
-
-    const l2AuthContextId = await saveUserTradingAuthCredentials(user.id, {
-      relayer: relayerCreds,
-      clob: clobCreds,
-    })
-    if (!l2AuthContextId) {
-      return { error: DEFAULT_ERROR_MESSAGE, data: null }
-    }
-    await persistL2AuthCookie(user.id, l2AuthContextId)
-
-    const updatedAt = new Date().toISOString()
-    return {
-      error: null,
-      data: {
-        tradingAuth: {
-          relayer: { enabled: true, updatedAt },
-          clob: { enabled: true, updatedAt },
-        },
-      },
-    }
-  }
-  catch (error) {
-    console.error('Failed to enable trading auth', error)
-    captureDepositWalletError(error, {
-      operation: 'enable_trading_auth',
       userAddress: user.address,
       depositWallet: user.deposit_wallet_address,
     })

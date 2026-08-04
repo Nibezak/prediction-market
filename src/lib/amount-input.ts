@@ -1,19 +1,24 @@
 const INTEGER_FORMATTER = new Intl.NumberFormat('en-US')
 
-export const MAX_AMOUNT_INPUT = 999_999_999
+export const MAX_AMOUNT_INPUT = 100_000_000
 const MAX_WHOLE_DIGITS = String(MAX_AMOUNT_INPUT).length
 
 export function sanitizeNumericInput(rawValue: string) {
   const digitsAndDots = rawValue.replace(/[^0-9.]/g, '')
   const [wholePart, ...decimalSegments] = digitsAndDots.split('.')
   const limitedWhole = wholePart.slice(0, MAX_WHOLE_DIGITS)
+  const boundedWhole = BigInt(limitedWhole || '0') > BigInt(MAX_AMOUNT_INPUT)
+    ? String(MAX_AMOUNT_INPUT)
+    : limitedWhole
 
   if (decimalSegments.length === 0) {
-    return limitedWhole
+    return boundedWhole
   }
 
   const decimals = decimalSegments.join('').slice(0, 2)
-  return `${limitedWhole}.${decimals}`
+  return boundedWhole === String(MAX_AMOUNT_INPUT)
+    ? boundedWhole
+    : `${boundedWhole}.${decimals}`
 }
 
 export function formatDisplayAmount(rawAmount: string) {

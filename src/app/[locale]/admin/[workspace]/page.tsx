@@ -2,6 +2,7 @@ import type { Route } from 'next'
 import type { AdminWorkspaceId } from '@/lib/staff-role'
 import type { SQL } from 'drizzle-orm'
 import { and, count, desc, eq, gte, ilike, inArray, lt, lte, or, sql } from 'drizzle-orm'
+import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import AppLink from '@/components/AppLink'
@@ -13,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { UserRepository } from '@/lib/db/queries/user'
+import { getAdminWorkspaceSections, getDefaultAdminWorkspaceSection } from '@/lib/admin-workspace-sections'
 import {
   audit_events,
   conditions_audit,
@@ -20,17 +22,25 @@ import {
   events,
   jobs,
   markets,
+  notification_campaigns,
   notifications,
+  payment_intents,
   risk_cases,
   risk_signals,
   sessions,
   users,
   withdrawal_requests,
 } from '@/lib/db/schema'
-import { db, pmSql } from '@/lib/drizzle'
+import { db } from '@/lib/drizzle'
+import { loadLedgerDashboardReport } from '@/lib/slimefish-backend-reporting'
 import { ADMIN_WORKSPACES_BY_ROLE, getUserPlatformRole } from '@/lib/staff-role'
 import { canAccessWorkspaceWithPermissions } from '@/lib/staff-permissions'
-import { claimRiskCaseAction, completeRiskReviewAction, requeueJobAction, reviewWithdrawalAction } from './actions'
+import { loadKesPerUsdRate } from '@/lib/finance-display-settings'
+import { slimefishBackendUserRequest } from '@/lib/slimefish-backend-user-request'
+import { claimRiskCaseAction, completeRiskReviewAction, requeueJobAction, reviewWithdrawalAction, updateFinanceRateAction, updateLedgerFinanceSettingsAction } from './actions'
+import AdminNotificationComposer from './AdminNotificationComposer'
+import AdminLiveRefresh from './AdminLiveRefresh'
+import AdminWorkspaceTrend from './AdminWorkspaceTrend'
 
 const WORKSPACE_COPY: Record<AdminWorkspaceId, { title: string, description: string }> = {
   'operations': {
@@ -91,6 +101,55 @@ function readSetting(settings: Record<string, unknown> | null | undefined, key: 
   return settings?.[key] === true || settings?.[key] === 'true'
 }
 
+function buildStatusTrend(rows: Array<{ date: Date | string | null, status: string | null | undefined }>) {
+  const byDay = new Map<string, { date: string, success: number, pending: number, failed: number }>()
+  for (const row of rows) {
+    if (!row.date) continue
+    const date = new Date(row.date)
+    if (Number.isNaN(date.getTime())) continue
+    const key = date.toISOString().slice(0, 10)
+    const point = byDay.get(key) || { date: `${key}T00:00:00.000Z`, success: 0, pending: 0, failed: 0 }
+    const status = String(row.status || '').toLowerCase()
+    if (['completed', 'success', 'succeeded', 'delivered', 'approved'].includes(status)) point.success += 1
+    else if (['failed', 'failure', 'denied', 'rejected', 'expired'].includes(status)) point.failed += 1
+    else point.pending += 1
+    byDay.set(key, point)
+  }
+  return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-30)
+}
+
+function statusTotals(rows: Array<{ status: string | null | undefined }>) {
+  return rows.reduce((totals, row) => {
+    const status = String(row.status || '').toLowerCase()
+    if (['completed', 'success', 'succeeded', 'delivered', 'approved'].includes(status)) totals.success += 1
+    else if (['failed', 'failure', 'denied', 'rejected', 'expired'].includes(status)) totals.failed += 1
+    else totals.pending += 1
+    return totals
+  }, { success: 0, pending: 0, failed: 0 })
+}
+
+function StatusDistribution({ title, totals }: { title: string, totals: { success: number, pending: number, failed: number } }) {
+  const rows = [
+    { label: 'Successful', value: totals.success, color: 'bg-yes' },
+    { label: 'Pending', value: totals.pending, color: 'bg-chart-4' },
+    { label: 'Failed', value: totals.failed, color: 'bg-no' },
+  ]
+  const maximum = Math.max(1, ...rows.map(row => row.value))
+  return (
+    <Card className="rounded-md">
+      <CardHeader className="border-b"><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <CardContent className="space-y-5 p-5">
+        {rows.map(row => (
+          <div key={row.label} className="grid gap-2">
+            <div className="flex items-center justify-between text-sm"><span>{row.label}</span><span className="font-medium tabular-nums">{row.value}</span></div>
+            <div className="h-2 overflow-hidden rounded-sm bg-muted"><div className={`h-full ${row.color}`} style={{ width: `${(row.value / maximum) * 100}%` }} /></div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 type AuditFilters = {
   query: string
   outcome: string
@@ -98,7 +157,7 @@ type AuditFilters = {
   to: string
 }
 
-async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { query: '', outcome: 'all', from: '', to: '' }) {
+async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { query: '', outcome: 'all', from: '', to: '' }, financeQuery = '') {
   const auditPageSize = 100
   const safeAuditPage = Math.max(1, Math.floor(auditPage))
   const [
@@ -113,6 +172,7 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
     recentAudits,
     recentJobs,
     recentNotifications,
+    recentCampaigns,
     overdueEvents,
   ] = await Promise.all([
     db.select({ value: count() }).from(users),
@@ -168,6 +228,7 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
       userId: notifications.user_id,
       createdAt: notifications.created_at,
     }).from(notifications).orderBy(desc(notifications.created_at)).limit(25),
+    db.select().from(notification_campaigns).orderBy(desc(notification_campaigns.created_at)).limit(50),
     db.select({
       id: events.id,
       title: events.title,
@@ -183,6 +244,7 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
     || readSetting(user.settings, 'tradingBlocked')
     || readSetting(user.settings, 'suspicious'),
   )
+  const kesPerUsdRate = await loadKesPerUsdRate()
 
   const auditConditions: SQL[] = []
   const auditSearch = auditFilters.query.trim()
@@ -217,7 +279,20 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
   }
   const auditWhere = auditConditions.length > 0 ? and(...auditConditions) : undefined
 
-  const [recentAuditEvents, auditEventCountRows, openRiskCases, recentRiskSignals, recentWithdrawals] = await Promise.all([
+  const normalizedFinanceQuery = financeQuery.trim().slice(0, 200)
+  const financePattern = `%${normalizedFinanceQuery}%`
+  const paymentSearch = normalizedFinanceQuery
+    ? or(
+        ilike(payment_intents.id, financePattern),
+        ilike(payment_intents.external_reference, financePattern),
+        ilike(payment_intents.ledger_transaction_id, financePattern),
+        ilike(payment_intents.user_id, financePattern),
+        ilike(users.username, financePattern),
+        ilike(users.email, financePattern),
+      )
+    : undefined
+
+  const [recentAuditEvents, auditEventCountRows, openRiskCases, recentRiskSignals, recentWithdrawals, legacyRecentPayments] = await Promise.all([
     db.select().from(audit_events).where(auditWhere).orderBy(desc(audit_events.occurred_at)).limit(auditPageSize).offset((safeAuditPage - 1) * auditPageSize),
     db.select({ value: count() }).from(audit_events).where(auditWhere),
     db.select({
@@ -242,7 +317,65 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
       .orderBy(desc(risk_cases.created_at)).limit(100),
     db.select().from(risk_signals).orderBy(desc(risk_signals.created_at)).limit(500),
     db.select().from(withdrawal_requests).orderBy(desc(withdrawal_requests.requested_at)).limit(100),
+    db.select({
+      id: payment_intents.id,
+      userId: payment_intents.user_id,
+      username: users.username,
+      email: users.email,
+      direction: payment_intents.direction,
+      status: payment_intents.status,
+      grossAmount: payment_intents.gross_amount,
+      sourceCurrency: payment_intents.source_currency,
+      netAmount: payment_intents.net_amount,
+      destinationCurrency: payment_intents.destination_currency,
+      externalReference: payment_intents.external_reference,
+      ledgerTransactionId: payment_intents.ledger_transaction_id,
+      failureMessage: payment_intents.failure_message,
+      createdAt: payment_intents.created_at,
+    }).from(payment_intents)
+      .leftJoin(users, eq(users.id, payment_intents.user_id))
+      .where(paymentSearch)
+      .orderBy(desc(payment_intents.created_at))
+      .limit(200),
   ])
+
+  async function financeApi(path: string) {
+    try {
+      const { response } = await slimefishBackendUserRequest(`admin/finance/${path}`)
+      if (!response?.ok) return null
+      return await response.json()
+    }
+    catch {
+      return null
+    }
+  }
+  const encodedFinanceQuery = encodeURIComponent(normalizedFinanceQuery)
+  const [financeOverviewPayload, settlementsPayload, treasuryPayload, walletPayload, commissionsPayload, financeSettingsPayload] = await Promise.all([
+    financeApi('overview'),
+    financeApi(`settlements?search=${encodedFinanceQuery}`),
+    financeApi(`accounts/treasury/transactions?search=${encodedFinanceQuery}`),
+    financeApi(`accounts/wallet/transactions?search=${encodedFinanceQuery}`),
+    financeApi(`accounts/commissions/transactions?search=${encodedFinanceQuery}`),
+    financeApi('settings'),
+  ])
+  const recentPayments = Array.isArray(settlementsPayload?.data)
+    ? settlementsPayload.data.map((row: any) => ({
+        id: row.id,
+        userId: row.user?.id || row.userId,
+        username: row.user?.username || null,
+        email: row.user?.email || null,
+        direction: String(row.direction).toLowerCase(),
+        status: String(row.status).toLowerCase(),
+        grossAmount: row.requestedAmount,
+        sourceCurrency: 'KES',
+        netAmount: row.netAmount,
+        destinationCurrency: 'KES',
+        externalReference: row.providerReference || row.reference,
+        ledgerTransactionId: row.ledgerTransactionId,
+        failureMessage: row.failureMessage,
+        createdAt: row.createdAt,
+      }))
+    : []
 
   const auditUserIds = Array.from(new Set(recentAuditEvents.flatMap(row => [
     row.actor_user_id,
@@ -266,44 +399,12 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
   let ledgerError: string | null = null
   const ledgerStartedAt = Date.now()
   try {
-    const rows = await pmSql`
-      SELECT t.id, t.type, t."createdAt" AS "createdAt", u.username, m.question AS market,
-        COALESCE(SUM(ABS(te.amount)) FILTER (WHERE te."assetType" = 'CURRENCY' AND te."assetId" = 'PRIMARY'), 0)::text AS amount
-      FROM "Transaction" t
-      LEFT JOIN "User" u ON u.id = t."initiatorId"
-      LEFT JOIN "Market" m ON m.id = t."marketId"
-      LEFT JOIN "TransactionEntry" te ON te."transactionId" = t.id
-      WHERE t.type IN ('TRADE_BUY', 'TRADE_SELL')
-      GROUP BY t.id, u.username, m.question
-      ORDER BY t."createdAt" DESC LIMIT 25
-    `
-    recentTrades = rows.map(row => ({ ...row }))
-    ledgerRiskRows = (await pmSql`
-      SELECT u.id AS "userId", u.username, u.email,
-        COALESCE(b.total, 0)::text AS cash,
-        CASE
-          WHEN COALESCE((u.settings->>'is_blocked')::boolean, false) THEN 'Account blocked'
-          WHEN COALESCE((u.settings->>'tradingBlocked')::boolean, false) THEN 'Trading suspended'
-          WHEN COALESCE((u.settings->>'suspicious')::boolean, false) THEN 'Flagged for review'
-          WHEN COALESCE(b.total, 0) < 0 THEN 'Negative cash balance'
-          ELSE 'Review requested'
-        END AS signal,
-        u.settings AS settings,
-        u."updatedAt" AS "updatedAt"
-      FROM "User" u
-      LEFT JOIN "Balance" b ON b."accountId" = u."primaryAccountId"
-        AND b."assetType" = 'CURRENCY' AND b."assetId" = 'PRIMARY' AND b."marketId" IS NULL
-      WHERE lower(COALESCE(u.email, '')) <> 'treasury@slimefish.local'
-        AND lower(COALESCE(u.username, '')) <> 'house'
-        AND (
-          COALESCE((u.settings->>'is_blocked')::boolean, false)
-          OR COALESCE((u.settings->>'tradingBlocked')::boolean, false)
-          OR COALESCE((u.settings->>'suspicious')::boolean, false)
-          OR COALESCE(b.total, 0) < 0
-        )
-      ORDER BY u."updatedAt" DESC
-      LIMIT 100
-    `).map(row => ({ ...row }))
+    const report = await loadLedgerDashboardReport<{
+      recentTrades: Array<Record<string, unknown>>
+      riskSignals: Array<Record<string, unknown>>
+    }>()
+    recentTrades = report.recentTrades.slice(0, 25)
+    ledgerRiskRows = report.riskSignals
   }
   catch (error) {
     ledgerStatus = 'unavailable'
@@ -380,6 +481,7 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
     recentAudits,
     recentJobs,
     recentNotifications,
+    recentCampaigns,
     recentAuditEvents: enrichedAuditEvents,
     auditPagination: {
       page: safeAuditPage,
@@ -390,6 +492,17 @@ async function loadWorkspaceData(auditPage = 1, auditFilters: AuditFilters = { q
     openRiskCases: [...ledgerRiskCases, ...openRiskCases],
     recentRiskSignals: [...ledgerSignals, ...recentRiskSignals],
     recentWithdrawals,
+    recentPayments,
+    legacyRecentPaymentCount: legacyRecentPayments.length,
+    financeOverview: financeOverviewPayload?.data || null,
+    financeAccounts: {
+      treasury: treasuryPayload?.data?.rows || [],
+      wallet: walletPayload?.data?.rows || [],
+      commissions: commissionsPayload?.data?.rows || [],
+    },
+    financeSettings: financeSettingsPayload?.data || [],
+    kesPerUsdRate,
+    financeQuery: normalizedFinanceQuery,
     overdueEvents,
     recentTrades,
     health: {
@@ -428,6 +541,20 @@ function MetricCards({ metrics }: { metrics: Awaited<ReturnType<typeof loadWorks
   )
 }
 
+function WorkspaceOverview({ workspace }: { workspace: AdminWorkspaceId }) {
+  const sections = getAdminWorkspaceSections(workspace).slice(1).filter(section => section.showInTabs !== false)
+  return (
+    <div className="overflow-hidden border">
+      {sections.map(section => (
+        <AppLink key={section.id} href={`/admin/${workspace}/${section.id}` as Route} className="flex items-center justify-between gap-4 border-b p-4 transition-colors last:border-b-0 hover:bg-muted/30 sm:px-6">
+          <span className="flex items-start gap-3"><section.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span className="grid gap-1"><span className="font-medium">{section.label}</span><span className="text-sm text-muted-foreground">{section.description}</span></span></span>
+          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+        </AppLink>
+      ))}
+    </div>
+  )
+}
+
 function UserQueue({ users: rows, emptyLabel }: {
   users: Awaited<ReturnType<typeof loadWorkspaceData>>['recentUsers']
   emptyLabel: string
@@ -443,7 +570,7 @@ function UserQueue({ users: rows, emptyLabel }: {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.length === 0 && <TableRow><TableCell colSpan={4}>{emptyLabel}</TableCell></TableRow>}
+        {rows.length === 0 && <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">{emptyLabel}</TableCell></TableRow>}
         {rows.map(user => (
           <TableRow key={user.id}>
             <TableCell>
@@ -523,6 +650,9 @@ function EventQueue({ rows, resolutionOnly = false }: {
         </TableRow>
       </TableHeader>
       <TableBody>
+        {visibleRows.length === 0 && (
+          <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">No markets in this queue.</TableCell></TableRow>
+        )}
         {visibleRows.map(row => (
           <TableRow key={row.id}>
             <TableCell className="font-medium">{row.title}</TableCell>
@@ -596,12 +726,13 @@ function JobsTable({ rows, allowRetry = false }: {
   )
 }
 
-function OperationsConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceData>> }) {
-  const failedJobs = data.recentJobs.filter(job => job.status === 'failed')
+function OperationsConsole({ data, section }: { data: Awaited<ReturnType<typeof loadWorkspaceData>>, section: string }) {
   const pendingCreations = data.recentCreations.filter(item => item.status === 'draft' || item.status === 'pending')
+  if (section === 'overview') return <WorkspaceOverview workspace="operations" />
+  if (section === 'services') return <SystemConsole data={data} section="services" />
   return (
     <div className="grid gap-5">
-      <Card>
+      <Card className={section === 'markets' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Ended markets awaiting action</CardTitle>
           <CardDescription>Active events whose end date has passed. These require outcome review or an explicit extension.</CardDescription>
@@ -610,7 +741,7 @@ function OperationsConsole({ data }: { data: Awaited<ReturnType<typeof loadWorks
           <EventQueue rows={data.overdueEvents} resolutionOnly />
         </CardContent>
       </Card>
-      <Card>
+      <Card className={section === 'publishing' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Publishing queue</CardTitle>
           <CardDescription>Drafts and requests that have not reached deployment.</CardDescription>
@@ -650,16 +781,16 @@ function OperationsConsole({ data }: { data: Awaited<ReturnType<typeof loadWorks
           </Table>
         </CardContent>
       </Card>
-      <Card>
+      <Card className={section === 'jobs' ? undefined : 'hidden'}>
         <CardHeader>
-          <CardTitle>Failed background work</CardTitle>
-          <CardDescription>Failures with exact retry counts and errors. Authorized staff can requeue them from System Health.</CardDescription>
+          <CardTitle>Background jobs</CardTitle>
+          <CardDescription>Current worker activity, retry counts, and failures in one queue.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <JobsTable rows={failedJobs} />
+          <JobsTable rows={data.recentJobs} allowRetry />
         </CardContent>
       </Card>
-      <Card>
+      <Card className={section === 'accounts' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Restricted accounts</CardTitle>
           <CardDescription>Blocked, trading-suspended, or suspicious users currently requiring review.</CardDescription>
@@ -668,7 +799,7 @@ function OperationsConsole({ data }: { data: Awaited<ReturnType<typeof loadWorks
           <UserQueue users={data.restrictedUsers} emptyLabel="No restricted accounts." />
         </CardContent>
       </Card>
-      <Card>
+      <Card className={section === 'trades' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Latest ledger trades</CardTitle>
           <CardDescription>Most recent completed AMM transactions from the internal ledger.</CardDescription>
@@ -715,10 +846,10 @@ function OperationsConsole({ data }: { data: Awaited<ReturnType<typeof loadWorks
   )
 }
 
-function SystemConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceData>> }) {
+function SystemConsole({ data, section }: { data: Awaited<ReturnType<typeof loadWorkspaceData>>, section: string }) {
   return (
     <div className="grid gap-6 pt-4">
-      <div className="overflow-hidden border">
+      <div className={section === 'services' ? 'overflow-hidden border' : 'hidden'}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -740,7 +871,7 @@ function SystemConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspace
           </TableBody>
         </Table>
       </div>
-      <div className="overflow-hidden border">
+      <div className={section === 'jobs' ? 'overflow-hidden border' : 'hidden'}>
         <div className="border-b p-4 sm:px-6">
           <CardTitle>Background job control</CardTitle>
           <CardDescription className="mt-1">Live queue state. Requeue resets a failed job for another worker attempt; it does not duplicate completed work.</CardDescription>
@@ -751,7 +882,7 @@ function SystemConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspace
   )
 }
 
-function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceData>> }) {
+function AuditConsole({ data, section }: { data: Awaited<ReturnType<typeof loadWorkspaceData>>, section: string }) {
   const totalPages = Math.max(1, Math.ceil(data.auditPagination.total / data.auditPagination.pageSize))
   const auditPageHref = (page: number) => {
     const params = new URLSearchParams()
@@ -764,27 +895,18 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
   }
   return (
     <div className="grid gap-5">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardDescription>Condition changes retained</CardDescription>
-            <CardTitle>{data.recentAudits.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Creation records retained</CardDescription>
-            <CardTitle>{data.recentCreations.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Notification records retained</CardDescription>
-            <CardTitle>{data.recentNotifications.length}</CardTitle>
-          </CardHeader>
-        </Card>
+      <div className={section === 'overview' ? 'grid gap-5' : 'hidden'}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card><CardHeader><CardDescription>Condition changes retained</CardDescription><CardTitle>{data.recentAudits.length}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Creation records retained</CardDescription><CardTitle>{data.recentCreations.length}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Notification records retained</CardDescription><CardTitle>{data.recentNotifications.length}</CardTitle></CardHeader></Card>
+        </div>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]">
+          <AdminWorkspaceTrend title="Platform action outcomes" description="Successful, pending, and unsuccessful staff or system actions in the retained audit window." points={buildStatusTrend(data.recentAuditEvents.map(row => ({ date: row.occurred_at, status: row.outcome })))} emptyMessage="No audited platform actions yet." />
+          <StatusDistribution title="Outcome distribution" totals={statusTotals(data.recentAuditEvents.map(row => ({ status: row.outcome })))} />
+        </div>
       </div>
-      <Card>
+      <Card className={section === 'actions' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Platform action ledger</CardTitle>
           <CardDescription>
@@ -903,7 +1025,7 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
           </div>
         </CardContent>
       </Card>
-      <Card>
+      <Card className={section === 'conditions' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Condition and resolution changes</CardTitle>
           <CardDescription>Exact database before/after snapshots produced by the condition audit trigger.</CardDescription>
@@ -955,7 +1077,7 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
           </Table>
         </CardContent>
       </Card>
-      <Card>
+      <Card className={section === 'creations' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Market creation history</CardTitle>
           <CardDescription>Who created each recent market request and whether deployment failed.</CardDescription>
@@ -972,6 +1094,9 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
               </TableRow>
             </TableHeader>
             <TableBody>
+              {data.recentCreations.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No market creation records.</TableCell></TableRow>
+              )}
               {data.recentCreations.map(row => (
                 <TableRow key={row.id}>
                   <TableCell>{formatDate(row.updatedAt)}</TableCell>
@@ -993,10 +1118,10 @@ function AuditConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceD
   )
 }
 
-function RiskConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceData>> }) {
+function RiskConsole({ data, section }: { data: Awaited<ReturnType<typeof loadWorkspaceData>>, section: string }) {
   return (
     <div className="grid gap-5">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={section === 'overview' ? 'grid gap-3 sm:grid-cols-3' : 'hidden'}>
         <Card>
           <CardHeader>
             <CardDescription>Open review cases</CardDescription>
@@ -1019,7 +1144,7 @@ function RiskConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceDa
           </CardHeader>
         </Card>
       </div>
-      <Card>
+      <Card className={section === 'cases' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Investigation queue</CardTitle>
           <CardDescription>Explainable cases with their score, source, evidence count, held value, and account link.</CardDescription>
@@ -1152,33 +1277,97 @@ function RiskConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceDa
   )
 }
 
-function FinanceConsole({ data }: { data: Awaited<ReturnType<typeof loadWorkspaceData>> }) {
+function FinanceAccountTable({ account, rows }: { account: 'treasury' | 'wallet' | 'commissions', rows: any[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="capitalize">{account} transactions</CardTitle>
+        <CardDescription>{account === 'treasury' ? 'Provider statement entries from the Cloud9 main wallet.' : account === 'wallet' ? 'Customer balances, market reserves, deposits, withdrawals, and trades.' : 'Company commissions and market-liquidity allocations.'}</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader><TableRow><TableHead>Created</TableHead><TableHead>Reference</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status / route</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {rows.length === 0 && <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No {account} transactions recorded.</TableCell></TableRow>}
+            {rows.map((row: any) => {
+              const transaction = row.transaction || row
+              return (
+                <TableRow key={row.id || row.providerEntryId}>
+                  <TableCell>{formatDate(row.providerCreatedAt || row.createdAt || transaction.createdAt)}</TableCell>
+                  <TableCell className="max-w-56 truncate font-mono text-xs">{row.providerEntryId || transaction.externalId || transaction.id}</TableCell>
+                  <TableCell>{row.type || transaction.type || 'Ledger entry'}</TableCell>
+                  <TableCell className="tabular-nums">KES {Math.floor(Number(row.amount || 0)).toLocaleString('en-KE')}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{row.status || `${row.fromAccount?.name || 'Account'} to ${row.toAccount?.name || 'Account'}`}</TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
+
+function FinanceConsole({ data, section }: { data: Awaited<ReturnType<typeof loadWorkspaceData>>, section: string }) {
+  const overview = data.financeOverview
+  const settings = new Map((data.financeSettings as any[]).map(row => [row.key, Number(row.value)]))
   return (
     <div className="grid gap-5">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardDescription>Withdrawal requests</CardDescription>
-            <CardTitle>{data.recentWithdrawals.length}</CardTitle>
+      <div className={section === 'overview' ? 'grid gap-5' : 'hidden'}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {([
+            ['Treasury', overview?.treasury?.available ?? 0, 'Cloud9 available balance', 'treasury'],
+            ['Wallet', overview?.wallet?.total ?? 0, `${overview?.wallet?.reserved ?? 0} KES reserved`, 'wallet'],
+            ['Commissions', overview?.commissions?.total ?? 0, 'Company funds and fees', 'commissions'],
+          ] as const).map(([label, value, description, target]) => (
+            <AppLink key={label} href={`/admin/finance/${target}` as Route}>
+              <Card className="h-full transition-colors hover:bg-muted/20"><CardHeader><CardDescription>{label}</CardDescription><CardTitle>KES {Math.floor(Number(value)).toLocaleString('en-KE')}</CardTitle><p className="text-xs text-muted-foreground">{description}</p></CardHeader></Card>
+            </AppLink>
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card><CardHeader><CardDescription>Accounted balance</CardDescription><CardTitle>KES {Math.floor(Number(overview?.solvency?.accounted || 0)).toLocaleString('en-KE')}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Solvency variance</CardDescription><CardTitle className={Number(overview?.solvency?.variance || 0) < 0 ? 'text-destructive' : ''}>KES {Number(overview?.solvency?.variance || 0).toLocaleString('en-KE')}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Pending settlements</CardDescription><CardTitle>{Number(overview?.pending?.deposits || 0) + Number(overview?.pending?.withdrawals || 0)}</CardTitle></CardHeader></Card>
+        </div>
+        <Card className="rounded-md">
+          <CardHeader className="border-b">
+            <CardTitle className="text-base">Platform exchange rate</CardTitle>
+            <CardDescription>Controls every user-facing USD/KES conversion. KES values are always rounded down to whole shillings.</CardDescription>
           </CardHeader>
+          <CardContent className="p-5">
+            <form action={updateFinanceRateAction} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="grid flex-1 gap-1.5 text-sm font-medium">
+                KES per USD
+                <Input name="kesPerUsd" type="number" min="1" max="10000" step="0.0001" defaultValue={data.kesPerUsdRate} required />
+              </label>
+              <div className="text-sm text-muted-foreground sm:pb-2">$1.00 = KSh {Math.floor(data.kesPerUsdRate).toLocaleString('en-KE')}</div>
+              <Button type="submit">Save rate</Button>
+            </form>
+          </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Held for review</CardDescription>
-            <CardTitle>{data.recentWithdrawals.filter(row => row.status === 'held').length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Value in review</CardDescription>
-            <CardTitle>
-              $
-              {data.recentWithdrawals.filter(row => row.status === 'held').reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]">
+          <AdminWorkspaceTrend title="Payment outcomes" description="Deposit and withdrawal outcomes in the current transaction window." points={buildStatusTrend(data.recentPayments.map((row: any) => ({ date: row.createdAt, status: row.status })))} emptyMessage="No payment transactions yet." />
+          <StatusDistribution title="Transaction distribution" totals={statusTotals(data.recentPayments.map((row: any) => ({ status: row.status })))} />
+        </div>
       </div>
-      <Card>
+      <div className={section === 'treasury' ? undefined : 'hidden'}><FinanceAccountTable account="treasury" rows={data.financeAccounts.treasury} /></div>
+      <div className={section === 'wallet' ? undefined : 'hidden'}><FinanceAccountTable account="wallet" rows={data.financeAccounts.wallet} /></div>
+      <div className={section === 'commissions' ? undefined : 'hidden'}><FinanceAccountTable account="commissions" rows={data.financeAccounts.commissions} /></div>
+      <Card className={section === 'settings' ? undefined : 'hidden'}>
+        <CardHeader><CardTitle>Ledger settings</CardTitle><CardDescription>These values are enforced by the backend. Commission rates apply only to realized profit and rise gradually near market close.</CardDescription></CardHeader>
+        <CardContent>
+          <form action={updateLedgerFinanceSettingsAction} className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-medium">Minimum trade (KES)<Input name="minimumTradeKes" type="number" min="1" defaultValue={settings.get('trade.minimum_kes') ?? 130} /></label>
+            <label className="grid gap-1.5 text-sm font-medium">Initial market liquidity (KES)<Input name="initialLiquidityKes" type="number" min="1" defaultValue={settings.get('market.initial_liquidity_kes') ?? 260} /></label>
+            <label className="grid gap-1.5 text-sm font-medium">Base profit commission (bps)<Input name="baseCommissionBps" type="number" min="0" max="10000" defaultValue={settings.get('commission.profit_base_bps') ?? 500} /></label>
+            <label className="grid gap-1.5 text-sm font-medium">At-close profit commission (bps)<Input name="closeCommissionBps" type="number" min="0" max="10000" defaultValue={settings.get('commission.profit_close_bps') ?? 800} /></label>
+            <label className="grid gap-1.5 text-sm font-medium">Commission ramp (seconds)<Input name="commissionRampSeconds" type="number" min="0" defaultValue={settings.get('commission.ramp_seconds') ?? 43200} /></label>
+            <div className="flex items-end"><Button type="submit">Save ledger settings</Button></div>
+          </form>
+        </CardContent>
+      </Card>
+      <Card className={section === 'withdrawals' ? undefined : 'hidden'}>
         <CardHeader>
           <CardTitle>Withdrawal control queue</CardTitle>
           <CardDescription>Requests stay visible from initial risk decision through review and completion.</CardDescription>
@@ -1252,27 +1441,73 @@ Case{row.risk_case_id}</div>
           </Table>
         </CardContent>
       </Card>
+      <Card className={section === 'transactions' ? undefined : 'hidden'}>
+        <CardHeader>
+          <CardTitle>Transactions</CardTitle>
+          <CardDescription>Search deposits and withdrawals by transaction ID, provider reference, ledger ID, user ID, username, or email.</CardDescription>
+          <form method="get" className="flex gap-2 pt-2">
+            <Input name="financeQuery" defaultValue={data.financeQuery} placeholder="Search transactions" className="max-w-xl" />
+            <Button type="submit" variant="outline">Search</Button>
+          </form>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Created</TableHead>
+                <TableHead>User</TableHead>
+                <TableHead>Transaction</TableHead>
+                <TableHead>Direction</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.recentPayments.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="h-20 text-center text-muted-foreground">No matching transactions.</TableCell></TableRow>
+              )}
+              {data.recentPayments.map((row: any) => (
+                <TableRow key={row.id}>
+                  <TableCell>{formatDate(row.createdAt)}</TableCell>
+                  <TableCell>
+                    <div>{row.username || 'Unknown user'}</div>
+                    <div className="text-xs text-muted-foreground">{row.email || row.userId}</div>
+                  </TableCell>
+                  <TableCell className="max-w-xs">
+                    <div className="font-mono text-xs">{row.id}</div>
+                    <div className="truncate font-mono text-xs text-muted-foreground">{row.externalReference || row.ledgerTransactionId || 'No external reference'}</div>
+                  </TableCell>
+                  <TableCell className="capitalize">{row.direction}</TableCell>
+                  <TableCell>{row.grossAmount} {row.sourceCurrency}</TableCell>
+                  <TableCell><Badge variant={row.status === 'failed' ? 'destructive' : 'outline'}>{row.status}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-function WorkspaceBody({ workspace, data, role, supportQuery }: {
+function WorkspaceBody({ workspace, section, data, role, supportQuery }: {
   workspace: AdminWorkspaceId
+  section: string
   data: Awaited<ReturnType<typeof loadWorkspaceData>>
   role: ReturnType<typeof getUserPlatformRole>
   supportQuery: string
 }) {
   if (workspace === 'operations') {
-    return <OperationsConsole data={data} />
+    return <OperationsConsole data={data} section={section} />
   }
   if (workspace === 'market-review' || workspace === 'resolutions') {
     return <EventQueue rows={data.recentEvents} resolutionOnly={workspace === 'resolutions'} />
   }
   if (workspace === 'risk') {
-    return <RiskConsole data={data} />
+    return <RiskConsole data={data} section={section} />
   }
   if (workspace === 'finance') {
-    return <FinanceConsole data={data} />
+    return <FinanceConsole data={data} section={section} />
   }
   if (workspace === 'support') {
     return <SupportConsole users={data.recentUsers} query={supportQuery} />
@@ -1290,6 +1525,9 @@ function WorkspaceBody({ workspace, data, role, supportQuery }: {
           </TableRow>
         </TableHeader>
         <TableBody>
+          {data.recentCreations.length === 0 && (
+            <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No approval requests.</TableCell></TableRow>
+          )}
           {data.recentCreations.map(row => (
             <TableRow key={row.id}>
               <TableCell>
@@ -1307,37 +1545,47 @@ function WorkspaceBody({ workspace, data, role, supportQuery }: {
     )
   }
   if (workspace === 'audit') {
-    return <AuditConsole data={data} />
+    return <AuditConsole data={data} section={section} />
   }
   if (workspace === 'communications') {
+    if (section === 'compose') {
+      return <AdminNotificationComposer users={data.recentUsers.map(user => ({ id: user.id, username: user.username, email: user.email }))} />
+    }
     return (
-      <Table>
+      <div className="overflow-hidden border bg-background">
+        <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Notification</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Recipient</TableHead>
-            <TableHead>Sent</TableHead>
+            <TableHead>Campaign</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Audience</TableHead>
+            <TableHead>Delivery</TableHead>
+            <TableHead>Scheduled</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.recentNotifications.map(row => (
+          {data.recentCampaigns.length === 0 && (
+            <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">No communication campaigns yet. Create one when you are ready to reach users.</TableCell></TableRow>
+          )}
+          {data.recentCampaigns.map(row => (
             <TableRow key={row.id}>
               <TableCell>
                 <div className="font-medium">{row.title}</div>
-                <div className="text-xs text-muted-foreground">{row.description}</div>
+                <div className="line-clamp-1 max-w-xl text-xs text-muted-foreground">{row.body}</div>
               </TableCell>
-              <TableCell><Badge variant="outline">{row.category}</Badge></TableCell>
-              <TableCell className="font-mono text-xs">{row.userId}</TableCell>
-              <TableCell>{formatDate(row.createdAt)}</TableCell>
+              <TableCell><Badge variant="outline">{row.status}</Badge></TableCell>
+              <TableCell>{row.audience_count}</TableCell>
+              <TableCell>{row.delivered_count} delivered / {row.failed_count} failed</TableCell>
+              <TableCell>{formatDate(row.scheduled_for || row.sent_at || row.created_at)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
     )
   }
   if (workspace === 'system') {
-    return <SystemConsole data={data} />
+    return <SystemConsole data={data} section={section} />
   }
 
   const permissionRows = Object.entries(ADMIN_WORKSPACES_BY_ROLE).filter(([name]) => name !== 'USER')
@@ -1367,7 +1615,7 @@ export default async function AdminWorkspacePage({
   params,
   searchParams,
 }: {
-  params: Promise<{ locale: string, workspace: string }>
+  params: Promise<{ locale: string, workspace: string, section?: string }>
   searchParams: Promise<{
     auditPage?: string
     auditQuery?: string
@@ -1375,9 +1623,10 @@ export default async function AdminWorkspacePage({
     auditFrom?: string
     auditTo?: string
     supportQuery?: string
+    financeQuery?: string
   }>
 }) {
-  const { locale, workspace } = await params
+  const { locale, workspace, section: requestedSection } = await params
   setRequestLocale(locale)
   const currentUser = await UserRepository.getCurrentUser({ minimal: true })
   const role = getUserPlatformRole(currentUser)
@@ -1387,6 +1636,7 @@ export default async function AdminWorkspacePage({
 
   const query = await searchParams
   const supportQuery = query.supportQuery?.slice(0, 200) || ''
+  const financeQuery = query.financeQuery?.slice(0, 200) || ''
   const requestedAuditPage = Number.parseInt(query.auditPage || '1', 10)
   const data = await loadWorkspaceData(
     Number.isFinite(requestedAuditPage) ? requestedAuditPage : 1,
@@ -1396,40 +1646,51 @@ export default async function AdminWorkspacePage({
       from: query.auditFrom || '',
       to: query.auditTo || '',
     },
+    financeQuery,
   )
-  const copy = WORKSPACE_COPY[workspace]
-  const workspaceTabs = (Object.keys(WORKSPACE_COPY) as AdminWorkspaceId[]).filter(tab => canAccessWorkspaceWithPermissions(currentUser, tab))
+  const workspaceId = workspace as AdminWorkspaceId
+  const copy = WORKSPACE_COPY[workspaceId]
+  if (!copy) notFound()
+  const sections = getAdminWorkspaceSections(workspaceId)
+  const visibleSections = sections.filter(item => item.showInTabs !== false)
+  const defaultSection = getDefaultAdminWorkspaceSection(workspaceId)
+  const section = requestedSection || defaultSection || 'overview'
+  if (requestedSection && !sections.some(item => item.id === requestedSection)) notFound()
+  const activeSection = sections.find(item => item.id === section)
   return (
     <section className="mx-auto w-full max-w-7xl space-y-6 p-6 lg:p-10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="grid gap-1">
-          <h1 className="text-3xl font-bold">{copy.title}</h1>
+          <div className="flex items-center gap-3"><h1 className="text-2xl font-semibold">{copy.title}</h1><AdminLiveRefresh /></div>
           <p className="text-sm text-muted-foreground">
-            {copy.description}
+            {activeSection?.description || copy.description}
           </p>
         </div>
+        {workspace === 'communications' && section === 'history' && (
+          <Button asChild>
+            <AppLink href={'/admin/communications/compose' as Route}><PlusIcon className="size-4" />Create communication</AppLink>
+          </Button>
+        )}
       </div>
-      <div className="overflow-hidden border bg-background">
-        <nav className="relative overflow-x-auto" aria-label="Admin workspace tabs">
-          <div className="flex min-w-max items-center gap-6 border-b px-4 pt-4 sm:px-6">
-            {workspaceTabs.map(tab => (
+      {visibleSections.length > 1 && (
+        <nav className="relative overflow-x-auto border-b" aria-label={`${copy.title} sections`}>
+          <div className="flex min-w-max items-center gap-6">
+            {visibleSections.map(item => (
               <AppLink
-                key={tab}
-                href={`/admin/${tab}` as Route}
-                className={`relative pb-3 text-sm font-semibold whitespace-nowrap transition-colors ${workspace === tab
+                key={item.id}
+                href={item.id === defaultSection ? `/admin/${workspace}` as Route : `/admin/${workspace}/${item.id}` as Route}
+                className={`relative pb-3 text-sm font-semibold whitespace-nowrap transition-colors ${section === item.id
                   ? `text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary`
                   : `text-muted-foreground hover:text-foreground`}`}
               >
-                {WORKSPACE_COPY[tab].title}
+                <span className="inline-flex items-center gap-2"><item.icon className="size-4" />{item.label}</span>
               </AppLink>
             ))}
           </div>
         </nav>
-        <div className="px-4 pt-4 pb-6 sm:px-6">
-          {workspace === 'operations' && <div className="mb-6"><MetricCards metrics={data.metrics} /></div>}
-          <WorkspaceBody workspace={workspace} data={data} role={role} supportQuery={supportQuery} />
-        </div>
-      </div>
+      )}
+      {workspace === 'operations' && section === 'overview' && <MetricCards metrics={data.metrics} />}
+      <WorkspaceBody workspace={workspaceId} section={section} data={data} role={role} supportQuery={supportQuery} />
     </section>
   )
 }

@@ -193,8 +193,9 @@ export const auth = betterAuth({
   baseURL: SITE_URL,
 
   emailAndPassword: {
-    enabled: true,
-    minPasswordLength: 8,
+    // Password credentials are owned by Firebase. Keeping Better Auth's parallel
+    // password endpoints enabled would bypass Firebase email verification.
+    enabled: false,
   },
 
   advanced: {

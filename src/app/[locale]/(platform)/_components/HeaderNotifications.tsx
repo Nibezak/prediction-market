@@ -7,6 +7,7 @@ import { BellIcon, ExternalLinkIcon, MergeIcon } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
+import AppLink from '@/components/AppLink'
 import EventIconImage, { isEventMarketIconUrl } from '@/components/EventIconImage'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -124,6 +125,13 @@ function useLoadNotificationsOnMount() {
 
   useEffect(function loadNotificationsOnMount() {
     void setNotifications()
+    const refresh = () => void setNotifications()
+    const timer = window.setInterval(refresh, 15_000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
   }, [setNotifications])
 }
 
@@ -138,6 +146,7 @@ export default function HeaderNotifications() {
   const isLoading = useNotificationsLoading()
   const error = useNotificationsError()
   const hasNotifications = notifications.length > 0
+  const recentNotifications = notifications.slice(0, 5)
 
   useLoadNotificationsOnMount()
 
@@ -261,7 +270,7 @@ export default function HeaderNotifications() {
         <div
           ref={notificationsListRef}
           className="
-            max-h-[calc(min(25rem,var(--radix-dropdown-menu-content-available-height))-2.75rem)] overflow-y-auto
+            max-h-[calc(min(25rem,var(--radix-dropdown-menu-content-available-height))-5.75rem)] overflow-y-auto
             overscroll-contain
           "
         >
@@ -288,7 +297,7 @@ export default function HeaderNotifications() {
 
           {!isLoading && hasNotifications && (
             <div className="divide-y divide-border">
-              {notifications.map((notification) => {
+              {recentNotifications.map((notification) => {
                 const timeLabel = getNotificationTimeLabel(notification, currentTimestamp)
                 const hasLink = Boolean(notification.link_url)
                 const isLocalOrderFill = isLocalOrderFillNotification(notification)
@@ -413,6 +422,11 @@ export default function HeaderNotifications() {
               })}
             </div>
           )}
+        </div>
+        <div className="border-t border-border p-2">
+          <Button asChild variant="ghost" className="w-full justify-center text-sm">
+            <AppLink href="/notifications">View all notifications</AppLink>
+          </Button>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

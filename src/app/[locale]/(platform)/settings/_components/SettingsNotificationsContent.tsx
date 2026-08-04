@@ -6,6 +6,7 @@ import Form from 'next/form'
 import { startTransition, useOptimistic, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { updateNotificationSettingsAction } from '@/app/[locale]/(platform)/settings/_actions/update-notification-settings'
+import PushNotificationsCard from '@/components/PushNotificationsCard'
 import { InputError } from '@/components/ui/input-error'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -72,6 +73,8 @@ export default function SettingsNotificationsContent({ user }: { user: User }) {
   return (
     <div className="grid gap-8">
       {status?.error && <InputError message={status.error} />}
+
+      <PushNotificationsCard />
 
       <Form ref={formRef} action={() => {}} className="grid gap-6">
         <input

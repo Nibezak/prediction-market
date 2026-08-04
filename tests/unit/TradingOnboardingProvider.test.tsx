@@ -84,6 +84,7 @@ vi.mock('@/hooks/useSignaturePromptRunner', () => ({
 vi.mock('@/lib/auth-client', () => ({
   authClient: {
     getSession: mocks.getSession,
+    useSession: () => ({ data: { user: null } }),
   },
 }))
 
@@ -154,7 +155,7 @@ describe('tradingOnboardingProvider', () => {
     expect(mocks.dialogProps.usernameDefaultValue).toBe('')
   })
 
-  it('keeps the initial enable trading flow inside the large modal when trading auth is missing', async () => {
+  it('does not invoke legacy wallet authorization when internal-ledger setup needs trading auth', async () => {
     const depositWalletAddress = '0xbc040c5a56d757986475005f8cde8e41fe3e2486'
     mocks.signTypedDataAsync.mockResolvedValue('0xsignature')
     mocks.enableTradingAuthAction.mockResolvedValue({
@@ -182,6 +183,10 @@ describe('tradingOnboardingProvider', () => {
     useUser.setState(createUser({
       email: 'user@example.com',
       username: 'user',
+      settings: {
+        profile: { phoneNumber: '+254769195528' },
+        withdrawalSecurity: { pinSetAt: '2026-08-02T00:00:00.000Z' },
+      },
     }))
 
     render(
@@ -198,17 +203,31 @@ describe('tradingOnboardingProvider', () => {
       await mocks.dialogProps.onCreateDepositWallet()
     })
 
-    expect(mocks.signTypedDataAsync).toHaveBeenCalledTimes(1)
-    expect(mocks.enableTradingAuthAction).toHaveBeenCalledTimes(1)
-    expect(mocks.createDepositWalletAction).toHaveBeenCalledTimes(2)
+    expect(mocks.signTypedDataAsync).not.toHaveBeenCalled()
+    expect(mocks.enableTradingAuthAction).not.toHaveBeenCalled()
+    expect(mocks.createDepositWalletAction).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('active-modal')).toHaveTextContent('enable')
     expect(screen.getByTestId('active-modal')).not.toHaveTextContent('enable-status')
   })
 
-  it('opens AppKit instead of exposing wagmi connector errors during enable trading', async () => {
-    mocks.createDepositWalletAction.mockResolvedValue({
-      error: 'Enable trading to continue.',
-      data: null,
+  it('does not retry through an external wallet connector', async () => {
+    mocks.createDepositWalletAction
+      .mockResolvedValueOnce({ error: 'Enable trading to continue.', data: null })
+      .mockResolvedValueOnce({
+        error: null,
+        data: {
+          deposit_wallet_address: '0xbc040c5a56d757986475005f8cde8e41fe3e2486',
+          deposit_wallet_status: 'deploying',
+        },
+      })
+    mocks.enableTradingAuthAction.mockResolvedValue({
+      error: null,
+      data: {
+        tradingAuth: {
+          relayer: { enabled: true, updatedAt: '2026-08-02T00:00:00.000Z' },
+          clob: { enabled: true, updatedAt: '2026-08-02T00:00:00.000Z' },
+        },
+      },
     })
     mocks.signTypedDataAsync.mockRejectedValue({
       name: 'ConnectorNotConnectedError',
@@ -218,6 +237,10 @@ describe('tradingOnboardingProvider', () => {
     useUser.setState(createUser({
       email: 'user@example.com',
       username: 'user',
+      settings: {
+        profile: { phoneNumber: '+254769195528' },
+        withdrawalSecurity: { pinSetAt: '2026-08-02T00:00:00.000Z' },
+      },
     }))
 
     render(
@@ -234,10 +257,9 @@ describe('tradingOnboardingProvider', () => {
       await mocks.dialogProps.onCreateDepositWallet()
     })
 
-    await waitFor(() => {
-      expect(mocks.dialogProps.enableTradingError).toBe(WALLET_RECONNECT_MESSAGE)
-    })
-    expect(mocks.openAppKit).toHaveBeenCalledWith({ view: 'Connect' })
+    expect(mocks.createDepositWalletAction).toHaveBeenCalledTimes(1)
+    expect(mocks.signTypedDataAsync).not.toHaveBeenCalled()
+    expect(mocks.openAppKit).not.toHaveBeenCalled()
     expect(mocks.enableTradingAuthAction).not.toHaveBeenCalled()
   })
 

@@ -16,10 +16,14 @@ function appendLoaderParams(src: string, width: number, quality?: number) {
   return isRootRelativeSrc ? `${url.pathname}${url.search}` : url.toString()
 }
 
-function isIrysUrl(src: string) {
+function isDirectUrl(src: string) {
   try {
     const url = new URL(src)
-    return url.hostname.endsWith('.irys.xyz')
+    return (
+      url.hostname.endsWith('.irys.xyz')
+      || url.hostname.endsWith('.supabase.co')
+      || url.hostname.endsWith('.supabase.in')
+    )
   }
   catch {
     return false
@@ -47,7 +51,7 @@ export default function imageLoader({
 
   const normalizedSrc = src.startsWith('//') ? `https:${src}` : src
 
-  if (isIrysUrl(normalizedSrc)) {
+  if (isDirectUrl(normalizedSrc)) {
     return appendLoaderParams(normalizedSrc, width, quality)
   }
 

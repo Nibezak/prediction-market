@@ -7,7 +7,9 @@ import {
   GoogleAuthProvider,
   isSignInWithEmailLink,
   onAuthStateChanged,
+  reload,
   sendEmailVerification,
+  sendPasswordResetEmail,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
@@ -26,7 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { firebaseAuth } from '@/lib/firebase/client'
+import { firebaseAuth, isFirebaseConfigured } from '@/lib/firebase/client'
 import { buildTwoFactorRedirectPath } from '@/lib/locale-path'
 
 interface AuthDialogProps {
@@ -46,6 +48,11 @@ function firebaseErrorMessage(error: unknown) {
       return 'Email authentication is not enabled in Firebase Console.'
     case 'auth/email-already-in-use':
       return 'An account with this email address already exists.'
+    case 'auth/user-not-found':
+      return 'This account does not exist.'
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+      return 'The email or password is incorrect.'
     case 'auth/invalid-email':
       return 'Please enter a valid email address.'
     case 'auth/weak-password':
@@ -62,27 +69,34 @@ function firebaseErrorMessage(error: unknown) {
     case 'auth/popup-closed-by-user':
       return 'Google sign-in was cancelled.'
     default:
-      if (error instanceof Error && error.message) return error.message
+      if (error instanceof Error && error.message) {
+        return error.message
+      }
       return 'Authentication failed. Please try again.'
   }
 }
 
 export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuthenticated }: AuthDialogProps) {
-  const [step, setStep] = useState<'email' | 'password' | 'email-link-sent'>('email')
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>(initialMode)
+  const [step, setStep] = useState<'email' | 'password' | 'email-link-sent' | 'verify-email' | 'forgot-password' | 'password-reset-sent'>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const emailInputRef = useRef<HTMLInputElement>(null)
   const passwordInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) {
+      setMode(initialMode)
       setStep('email')
     }
-  }, [open])
+  }, [initialMode, open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      return
+    }
     const timer = setTimeout(() => {
       if (step === 'password') {
         passwordInputRef.current?.focus()
@@ -96,10 +110,16 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
     if (!nextOpen) {
       setStep('email')
       setPassword('')
+      setConfirmPassword('')
     }
   }, [onOpenChange])
 
   const finishSignIn = useCallback(async (firebaseUser: import('firebase/auth').User) => {
+    if (firebaseUser.providerData.some(provider => provider.providerId === 'password') && !firebaseUser.emailVerified) {
+      setEmail(firebaseUser.email || email)
+      setStep('verify-email')
+      throw new Error('Verify your email before signing in.')
+    }
     const response = await fetch('/api/auth/firebase/sign-in', {
       method: 'POST',
       credentials: 'include',
@@ -117,15 +137,20 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
     await onAuthenticated()
     reset(false)
     return true
-  }, [onAuthenticated, reset])
+  }, [email, onAuthenticated, reset])
 
   // Detect Firebase Email Verification / Sign-in Links on page load
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !isFirebaseConfigured()) {
+      return
+    }
     if (isSignInWithEmailLink(firebaseAuth, window.location.href)) {
-      let emailForSignIn = window.localStorage.getItem('emailForSignIn')
+      const emailForSignIn = window.localStorage.getItem('emailForSignIn')
       if (!emailForSignIn) {
-        emailForSignIn = window.prompt('Please enter your email to confirm sign-in')
+        setEmail('')
+        setStep('email')
+        toast.error('Enter the same email address to complete sign-in.')
+        return
       }
       if (emailForSignIn) {
         setIsSubmitting(true)
@@ -146,11 +171,20 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
   }, [finishSignIn])
 
   useEffect(() => {
+    if (!isFirebaseConfigured()) {
+      return
+    }
+
     let active = true
     let syncing = false
 
     async function reconcileFirebaseUser(firebaseUser: import('firebase/auth').User | null) {
       if (!active || !firebaseUser || syncing) {
+        return
+      }
+      if (firebaseUser.providerData.some(provider => provider.providerId === 'password') && !firebaseUser.emailVerified) {
+        setEmail(firebaseUser.email || '')
+        setStep('verify-email')
         return
       }
       syncing = true
@@ -218,10 +252,12 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
       window.localStorage.setItem('emailForSignIn', email)
       setStep('email-link-sent')
       toast.success(`Verification link sent to ${email}! Please check your email.`)
-    } catch (err: any) {
+    }
+    catch (err: any) {
       console.error('Failed to send Firebase sign-in link', err)
       toast.error(firebaseErrorMessage(err))
-    } finally {
+    }
+    finally {
       setIsSubmitting(false)
     }
   }
@@ -229,76 +265,114 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (step === 'email') {
+      if (typeof window !== 'undefined' && isSignInWithEmailLink(firebaseAuth, window.location.href)) {
+        setIsSubmitting(true)
+        try {
+          const credential = await signInWithEmailLink(firebaseAuth, email, window.location.href)
+          window.localStorage.removeItem('emailForSignIn')
+          if (await finishSignIn(credential.user)) {
+            toast.success('Email verified. Welcome to Slimefish.')
+          }
+        }
+        catch (error) {
+          toast.error(firebaseErrorMessage(error))
+        }
+        finally {
+          setIsSubmitting(false)
+        }
+        return
+      }
       setStep('password')
       return
     }
 
     setIsSubmitting(true)
     try {
-      let firebaseUser: import('firebase/auth').User | null = null
-      try {
-        const credential = await signInWithEmailAndPassword(firebaseAuth, email, password)
-        firebaseUser = credential.user
-      } catch (signInErr: any) {
-        const errCode = signInErr?.code || ''
-        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential' || errCode === 'auth/invalid-email') {
-          try {
-            const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password)
-            firebaseUser = credential.user
-            // Send email verification link via Firebase
-            if (firebaseUser) {
-              await sendEmailVerification(firebaseUser).catch(err => console.warn('Firebase email verification send failed', err))
-            }
-          } catch (signUpErr: any) {
-            const nativeRes = await fetch('/api/auth/sign-up/email', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ email, password, name: email.split('@')[0] }),
-            })
-            const nativeData = await nativeRes.json().catch(() => ({}))
-            if (!nativeRes.ok) {
-              throw new Error(nativeData?.message || nativeData?.error || firebaseErrorMessage(signUpErr))
-            }
-            await onAuthenticated()
-            reset(false)
-            toast.success('Your account is ready.')
-            return
-          }
-        } else {
-          const nativeRes = await fetch('/api/auth/sign-in/email', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          })
-          const nativeData = await nativeRes.json().catch(() => ({}))
-          if (!nativeRes.ok) {
-            const nativeSignUpRes = await fetch('/api/auth/sign-up/email', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ email, password, name: email.split('@')[0] }),
-            })
-            const nativeSignUpData = await nativeSignUpRes.json().catch(() => ({}))
-            if (!nativeSignUpRes.ok) {
-              throw new Error(nativeData?.message || nativeSignUpData?.message || firebaseErrorMessage(signInErr))
-            }
-            await onAuthenticated()
-            reset(false)
-            toast.success('Your account is ready.')
-            return
-          }
-          await onAuthenticated()
-          reset(false)
-          toast.success('Welcome back.')
-          return
+      if (mode === 'sign-up') {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match.')
         }
+        const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+        await sendEmailVerification(credential.user, { url: `${window.location.origin}/en` })
+        setStep('verify-email')
+        toast.success(`Verification link sent to ${email}.`)
       }
-
-      if (firebaseUser && await finishSignIn(firebaseUser)) {
-        toast.success('Welcome back.')
+      else {
+        const credential = await signInWithEmailAndPassword(firebaseAuth, email, password)
+        if (!credential.user.emailVerified) {
+          setStep('verify-email')
+          throw new Error('Verify your email before signing in.')
+        }
+        if (await finishSignIn(credential.user)) {
+          toast.success('Welcome back.')
+        }
       }
     }
     catch (error: any) {
       toast.error(error instanceof Error ? error.message : firebaseErrorMessage(error))
+    }
+    finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function resendVerification() {
+    const firebaseUser = firebaseAuth.currentUser
+    if (!firebaseUser || firebaseUser.email?.toLowerCase() !== email.trim().toLowerCase()) {
+      toast.error('Sign in again to resend the verification email.')
+      setStep('password')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await sendEmailVerification(firebaseUser, { url: `${window.location.origin}/en` })
+      toast.success(`Verification link sent to ${email}.`)
+    }
+    catch (error) {
+      toast.error(firebaseErrorMessage(error))
+    }
+    finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function confirmEmailVerification() {
+    const firebaseUser = firebaseAuth.currentUser
+    if (!firebaseUser) {
+      setStep('password')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await reload(firebaseUser)
+      if (!firebaseUser.emailVerified) {
+        throw new Error('Your email is not verified yet. Open the link in your inbox first.')
+      }
+      if (await finishSignIn(firebaseUser)) {
+        toast.success('Email verified. Welcome to Slimefish.')
+      }
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : firebaseErrorMessage(error))
+    }
+    finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function requestPasswordReset(event: FormEvent) {
+    event.preventDefault()
+    if (!email || !email.includes('@')) {
+      toast.error('Please enter a valid email address.')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email, { url: `${window.location.origin}/en` })
+      setStep('password-reset-sent')
+    }
+    catch (error) {
+      toast.error(firebaseErrorMessage(error))
     }
     finally {
       setIsSubmitting(false)
@@ -339,38 +413,77 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
       <DialogContent className="sm:max-w-sm">
         <DialogHeader className="text-center sm:text-center">
           <DialogTitle>
-            {step === 'email-link-sent' ? 'Check your email' : 'Welcome'}
+            {step === 'email-link-sent' || step === 'verify-email' || step === 'password-reset-sent'
+              ? 'Check your email'
+              : step === 'forgot-password'
+                ? 'Reset your password'
+                : mode === 'sign-up'
+                  ? 'Create your account'
+                  : 'Welcome back'}
           </DialogTitle>
           <DialogDescription>
             {step === 'email-link-sent'
               ? `We sent a magic sign-in link to ${email}. Click the link in your email to complete authentication.`
-              : step === 'email'
-                ? 'Enter your email to sign in or create an account.'
-                : `Enter your password for ${email}.`}
+              : step === 'verify-email'
+                ? `We sent a verification link to ${email}. Verify your address before continuing.`
+                : step === 'forgot-password'
+                  ? 'Enter your account email and we will send password reset instructions.'
+                  : step === 'password-reset-sent'
+                    ? `If an account exists for ${email}, password reset instructions are on the way.`
+                    : step === 'email'
+                      ? mode === 'sign-up' ? 'Use your email and a password to get started.' : 'Sign in with your email and password.'
+                      : `${mode === 'sign-up' ? 'Create a password for' : 'Enter your password for'} ${email}.`}
           </DialogDescription>
         </DialogHeader>
 
-        {step === 'email-link-sent' ? (
-          <div className="space-y-4 text-center py-2">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <MailIcon className="size-6" />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => setStep('email')}
-            >
-              Back to Sign In
-            </Button>
-          </div>
-        ) : (
-          <>
-            <form className="space-y-3" onSubmit={submit}>
-              {step === 'email'
-                ? (
+        {step === 'email-link-sent' || step === 'password-reset-sent'
+          ? (
+              <div className="space-y-4 py-2 text-center">
+                <div className="
+                  mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary
+                "
+                >
+                  <MailIcon className="size-6" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setStep('email')}
+                >
+                  Back to Sign In
+                </Button>
+              </div>
+            )
+          : step === 'verify-email'
+            ? (
+                <div className="space-y-3 py-2">
+                  <div className="
+                    mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary
+                  "
+                  >
+                    <MailIcon className="size-6" />
+                  </div>
+                  <Button className="w-full" type="button" disabled={isSubmitting} onClick={() => void confirmEmailVerification()}>
+                    {isSubmitting ? 'Checking...' : 'I verified my email'}
+                  </Button>
+                  <Button className="w-full" type="button" variant="outline" disabled={isSubmitting} onClick={() => void resendVerification()}>
+                    Resend verification email
+                  </Button>
+                  <Button type="button" variant="ghost" className="w-full" onClick={() => setStep('password')}>
+                    <ArrowLeftIcon />
+                    Back
+                  </Button>
+                </div>
+              )
+            : step === 'forgot-password'
+              ? (
+                  <form className="space-y-3" onSubmit={requestPasswordReset}>
+                    <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setStep('password')}>
+                      <ArrowLeftIcon />
+                      Back
+                    </Button>
                     <Input
-                      ref={emailInputRef}
                       autoFocus
                       required
                       type="email"
@@ -379,57 +492,113 @@ export function AuthDialog({ open, onOpenChange, initialMode = 'sign-in', onAuth
                       value={email}
                       onChange={event => setEmail(event.target.value)}
                     />
-                  )
-                : (
-                    <div className="space-y-3">
-                      <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setStep('email')}>
-                        <ArrowLeftIcon />
-                        Change email
+                    <Button className="w-full" type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? 'Sending...' : 'Send reset link'}
+                    </Button>
+                  </form>
+                )
+              : (
+                  <>
+                    <form className="space-y-3" onSubmit={submit}>
+                      {step === 'email'
+                        ? (
+                            <Input
+                              ref={emailInputRef}
+                              autoFocus
+                              required
+                              type="email"
+                              autoComplete="email"
+                              placeholder="Email address"
+                              value={email}
+                              onChange={event => setEmail(event.target.value)}
+                            />
+                          )
+                        : (
+                            <div className="space-y-3">
+                              <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setStep('email')}>
+                                <ArrowLeftIcon />
+                                Change email
+                              </Button>
+                              <Input
+                                ref={passwordInputRef}
+                                autoFocus
+                                required
+                                minLength={8}
+                                type="password"
+                                autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
+                                placeholder="Password"
+                                value={password}
+                                onChange={event => setPassword(event.target.value)}
+                              />
+                              {mode === 'sign-up' && (
+                                <Input
+                                  required
+                                  minLength={8}
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder="Confirm password"
+                                  value={confirmPassword}
+                                  onChange={event => setConfirmPassword(event.target.value)}
+                                />
+                              )}
+                              {mode === 'sign-in' && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-auto px-0 text-xs text-muted-foreground"
+                                  onClick={() => setStep('forgot-password')}
+                                >
+                                  Forgot password?
+                                </Button>
+                              )}
+                            </div>
+                          )}
+
+                      <Button className="w-full" type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? 'Please wait...' : 'Continue'}
                       </Button>
-                      <Input
-                        ref={passwordInputRef}
-                        autoFocus
-                        required
-                        minLength={8}
-                        type="password"
-                        autoComplete="current-password"
-                        placeholder="Password"
-                        value={password}
-                        onChange={event => setPassword(event.target.value)}
-                      />
+
+                      {step === 'email' && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-full text-xs text-muted-foreground"
+                          disabled={isSubmitting}
+                          onClick={() => void sendFirebaseMagicLink()}
+                        >
+                          <MailIcon className="mr-1.5 size-3.5" />
+                          Email me a magic login link
+                        </Button>
+                      )}
+                    </form>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full text-sm"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setMode(current => current === 'sign-in' ? 'sign-up' : 'sign-in')
+                        setPassword('')
+                        setConfirmPassword('')
+                      }}
+                    >
+                      {mode === 'sign-in' ? 'New to Slimefish? Create account' : 'Already have an account? Sign in'}
+                    </Button>
+
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="h-px flex-1 bg-border" />
+                      or
+                      <span className="h-px flex-1 bg-border" />
                     </div>
-                  )}
 
-              <Button className="w-full" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Please wait...' : 'Continue'}
-              </Button>
-
-              {step === 'email' && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="w-full text-xs text-muted-foreground"
-                  disabled={isSubmitting}
-                  onClick={() => void sendFirebaseMagicLink()}
-                >
-                  <MailIcon className="mr-1.5 size-3.5" />
-                  Email me a magic login link
-                </Button>
-              )}
-            </form>
-
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />
-              or
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            <Button type="button" variant="outline" className="w-full" disabled={isSubmitting} onClick={continueWithGoogle}>
-              <span className="font-semibold">G</span>
-              Continue with Google
-            </Button>
-          </>
-        )}
+                    <Button type="button" variant="outline" className="w-full" disabled={isSubmitting} onClick={continueWithGoogle}>
+                      <span className="font-semibold">G</span>
+                      Continue with Google
+                    </Button>
+                  </>
+                )}
       </DialogContent>
     </Dialog>
   )

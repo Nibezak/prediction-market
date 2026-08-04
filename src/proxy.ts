@@ -78,12 +78,32 @@ function resolvePredictionResultsRewrite({
 }
 
 export default async function proxy(request: NextRequest) {
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim().split(':')[0]
+  const requestHost = request.headers.get('host')?.split(':')[0]
+  const effectiveHost = (forwardedHost || requestHost || request.nextUrl.hostname).toLowerCase()
+
+  if (effectiveHost === 'www.slimefish.com') {
+    const canonicalUrl = request.nextUrl.clone()
+    canonicalUrl.hostname = 'slimefish.com'
+    canonicalUrl.port = ''
+    canonicalUrl.protocol = 'https:'
+    return NextResponse.redirect(canonicalUrl, 308)
+  }
+
   if (request.nextUrl.pathname.startsWith('/__/')) {
     return NextResponse.next()
   }
 
   const pathnameLocale = getLocaleFromPathname(request.nextUrl.pathname)
   const unlocalizedPath = stripLocale(request.nextUrl.pathname, pathnameLocale)
+
+  if (unlocalizedPath === '/docs/api-reference' || unlocalizedPath.startsWith('/docs/api-reference/')) {
+    return new NextResponse('Not found', {
+      status: 404,
+      headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' },
+    })
+  }
+
   const bypassGeoblock = unlocalizedPath.startsWith('/admin')
     || unlocalizedPath.startsWith('/api/auth')
     || unlocalizedPath.startsWith('/api/geoblock')
@@ -109,7 +129,9 @@ export default async function proxy(request: NextRequest) {
 
   if (request.nextUrl.pathname.startsWith('/api/')) return NextResponse.next()
   if (request.nextUrl.pathname === '/') {
-    return Response.redirect(new URL(`/${routing.defaultLocale}`, request.url))
+    const localizedHome = request.nextUrl.clone()
+    localizedHome.pathname = `/${routing.defaultLocale}`
+    return NextResponse.rewrite(localizedHome)
   }
 
   const predictionResultsRewrite = resolvePredictionResultsRewrite({

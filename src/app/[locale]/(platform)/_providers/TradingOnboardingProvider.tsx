@@ -12,7 +12,6 @@ import { useSignMessage, useSignTypedData } from 'wagmi'
 import { markApprovalStateWithoutTransactionAction } from '@/app/[locale]/(platform)/_actions/approve-tokens'
 import {
   createDepositWalletAction,
-  enableTradingAuthAction,
   markAutoRedeemApprovalCompletedAction,
   updateOnboardingDepositPromptAction,
   updateOnboardingEmailAction,
@@ -51,7 +50,6 @@ import {
 } from '@/lib/contracts'
 import { fetchReferralLocked } from '@/lib/exchange'
 import {
-  buildTradingAuthMessage,
   getTradingAuthDomain,
   TRADING_AUTH_PRIMARY_TYPE,
   TRADING_AUTH_TYPES,
@@ -203,6 +201,10 @@ function mergeUserSettings(previous: User, settingsPatch?: Record<string, any>) 
       ...(previous.settings?.tradingAuth ?? {}),
       ...(settingsPatch.tradingAuth ?? {}),
     },
+    withdrawalSecurity: {
+      ...(previous.settings?.withdrawalSecurity ?? {}),
+      ...(settingsPatch.withdrawalSecurity ?? {}),
+    },
   }
 }
 
@@ -212,7 +214,7 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
     const tradingAuthSettings = user?.settings?.tradingAuth ?? null
     const hasUsername = Boolean(user && hasUserProvidedUsername(user))
     const needsUsername = Boolean(user && !hasUsername)
-    const needsPhone = Boolean(user && !getUserPhoneNumber(user))
+    const needsPhone = Boolean(user && (!getUserPhoneNumber(user) || !user.settings?.withdrawalSecurity?.pinSetAt))
     const needsEmail = Boolean(
       user
       && !hasUsableUserEmail(user.email)
@@ -275,15 +277,7 @@ function resolveNextOnboardingModal({
   if (needsEmail) {
     return 'email'
   }
-  if (!hasDeployedDepositWallet) {
-    return 'enable'
-  }
-  if (allowTradingAuthPrompt && !hasTradingAuth) {
-    return 'enable-status'
-  }
-  if (allowTradingAuthPrompt && !hasTokenApprovals) {
-    return 'approve'
-  }
+  // Web app mode: We do NOT use on-chain smart wallets, Polygon contracts, or token approvals.
   return null
 }
 
@@ -622,8 +616,8 @@ function TradingOnboardingProviderContent({
       return
     }
     if (modal === 'username' && status.needsUsername) {
-      setDismissedModal(null)
-      setActiveModal('username')
+      setDismissedModal('username')
+      setActiveModal(null)
       return
     }
     if (modal === 'email' && status.needsEmail) {
@@ -753,14 +747,14 @@ function TradingOnboardingProviderContent({
     isEventRoute,
   ])
 
-  const handlePhoneSubmit = useCallback(async (phoneNumber: string) => {
+  const handlePhoneSubmit = useCallback(async (phoneNumber: string, withdrawalPin: string) => {
     if (isPhoneSubmitting) {
       return
     }
     setIsPhoneSubmitting(true)
     setPhoneError(null)
     try {
-      const result = await updateOnboardingPhoneAction({ phoneNumber })
+      const result = await updateOnboardingPhoneAction({ phoneNumber, withdrawalPin })
       if (result.error || !result.data) {
         setPhoneError(result.error ?? DEFAULT_ERROR_MESSAGE)
         return
@@ -907,48 +901,8 @@ function TradingOnboardingProviderContent({
   }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute, user])
 
   const enableTradingAuthForCurrentUser = useCallback(async () => {
-    if (!user?.address) {
-      throw new Error(DEFAULT_ERROR_MESSAGE)
-    }
-
-    const timestamp = Math.floor(Date.now() / 1000).toString()
-    const message = buildTradingAuthMessage({
-      address: user.address as `0x${string}`,
-      timestamp,
-    })
-    const signature = '0xsymbolic_signature_bypass' as any
-
-    const result = await enableTradingAuthAction({
-      signature,
-      timestamp,
-      nonce: message.nonce.toString(),
-    })
-
-    if (result.error || !result.data) {
-      throw new Error(result.error ?? DEFAULT_ERROR_MESSAGE)
-    }
-    const data = result.data
-
-    useUser.setState((previous) => {
-      if (!previous) {
-        return previous
-      }
-      return {
-        ...previous,
-        settings: mergeUserSettings(previous, {
-          tradingAuth: data.tradingAuth,
-        }),
-      }
-    })
-    void refreshSessionUserState()
-    setRequiresTradingAuthRefresh(false)
-    setDismissedModal(null)
-  }, [
-    refreshSessionUserState,
-    runWithSignaturePrompt,
-    signTypedDataAsync,
-    user?.address,
-  ])
+    throw new Error('External wallet trading authentication is unavailable while Slimefish uses the internal KES ledger.')
+  }, [])
 
   const handleCreateDepositWallet = useCallback(async () => {
     if (!user?.address || enableTradingStep === 'enabling') {
@@ -1342,22 +1296,13 @@ function TradingOnboardingProviderContent({
   ])
 
   const ensureTradingReady = useCallback(() => {
-    if (isSlimefishBackendAmm) {
-      return true
-    }
-
     if (!user) {
       void openAppKit()
       return false
     }
 
-    if (status.tradingReady) {
-      return true
-    }
-
-    openNextRequirement({ allowTradingAuthPrompt: true })
-    return false
-  }, [isSlimefishBackendAmm, openAppKit, openNextRequirement, status.tradingReady, user])
+    return true
+  }, [openAppKit, user])
 
   const openTradeRequirements = useCallback((options?: { forceTradingAuth?: boolean }) => {
     openNextRequirement({
@@ -1515,7 +1460,10 @@ function TradingOnboardingProviderContent({
         usernameError={usernameError}
         isUsernameSubmitting={isUsernameSubmitting}
         onUsernameSubmit={handleUsernameSubmit}
-        onUsernameSkip={() => setActiveModal(null)}
+        onUsernameSkip={() => {
+          setDismissedModal('username')
+          setActiveModal(null)
+        }}
         emailDefaultValue={hasUsableUserEmail(user?.email) ? user?.email ?? '' : ''}
         emailError={emailError}
         isEmailSubmitting={isEmailSubmitting}

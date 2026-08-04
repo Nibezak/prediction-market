@@ -241,11 +241,26 @@ export async function uploadPublicAsset(
   const config = resolveStorageRuntimeConfig()
 
   if (config.provider === 'supabase') {
-    const { error } = await getSupabaseAdmin().storage.from(ASSETS_BUCKET).upload(normalizedPath, body, {
+    const supabase = getSupabaseAdmin()
+    let { error } = await supabase.storage.from(ASSETS_BUCKET).upload(normalizedPath, body, {
       contentType: options.contentType,
       cacheControl: options.cacheControl,
       upsert: options.upsert,
     })
+
+    if (error && (error.message.includes('not found') || error.message.includes('does not exist') || (error as any).statusCode === 404 || (error as any).statusCode === '404')) {
+      await supabase.storage.createBucket(ASSETS_BUCKET, { public: true }).catch(() => null)
+      const retry = await supabase.storage.from(ASSETS_BUCKET).upload(normalizedPath, body, {
+        contentType: options.contentType,
+        cacheControl: options.cacheControl,
+        upsert: options.upsert,
+      })
+      error = retry.error
+    }
+
+    if (error) {
+      console.error(`[Supabase Storage Upload Failed] Path: ${normalizedPath}, Error:`, error)
+    }
 
     return { error: error?.message ?? null }
   }

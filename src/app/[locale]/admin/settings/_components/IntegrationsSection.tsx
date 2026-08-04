@@ -54,11 +54,6 @@ interface IntegrationsSectionProps {
   trimmedOpenRouterApiKey: string
   onRefreshOpenRouterModels: () => void
   initialOpenRouterApiKeyConfigured: boolean
-  lifiIntegrator: string
-  onLifiIntegratorChange: (value: string) => void
-  lifiApiKey: string
-  onLifiApiKeyChange: (value: string) => void
-  initialLiFiApiKeyConfigured: boolean
   customJavascriptCodes: CustomJavascriptCodeDraft[]
   onAddCustomJavascriptCode: () => void
   onRemoveCustomJavascriptCode: (index: number) => void
@@ -93,11 +88,6 @@ function IntegrationsSection({
   trimmedOpenRouterApiKey,
   onRefreshOpenRouterModels,
   initialOpenRouterApiKeyConfigured,
-  lifiIntegrator,
-  onLifiIntegratorChange,
-  lifiApiKey,
-  onLifiApiKeyChange,
-  initialLiFiApiKeyConfigured,
   customJavascriptCodes,
   onAddCustomJavascriptCode,
   onRemoveCustomJavascriptCode,
@@ -246,60 +236,6 @@ function IntegrationsSection({
                   <p className="text-xs text-destructive">{openRouterModelsError}</p>
                 )
               : null}
-          </div>
-        </div>
-
-        <div className="grid gap-4 border-t border-border/50 pt-6 md:grid-cols-2">
-          <div className="grid gap-2 md:col-span-2">
-            <h4 className="text-sm font-medium">{t('LI.FI integration')}</h4>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="theme-lifi-integrator">{t('Integrator name')}</Label>
-            <Input
-              id="theme-lifi-integrator"
-              name="lifi_integrator"
-              maxLength={120}
-              value={lifiIntegrator}
-              onChange={event => onLifiIntegratorChange(event.target.value)}
-              disabled={isPending}
-              placeholder={t('your-app-id (optional)')}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t('Create an account and generate one at')}
-              {' '}
-              <a
-                href="https://li.fi"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2"
-              >
-                li.fi
-              </a>
-              .
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="theme-lifi-api-key">{t('API key')}</Label>
-            <Input
-              id="theme-lifi-api-key"
-              name="lifi_api_key"
-              type="password"
-              autoComplete="off"
-              maxLength={256}
-              value={lifiApiKey}
-              onChange={event => onLifiApiKeyChange(event.target.value)}
-              disabled={isPending}
-              placeholder={
-                initialLiFiApiKeyConfigured && !lifiApiKey.trim()
-                  ? '••••••••••••••••'
-                  : t('Enter API key (optional)')
-              }
-            />
-            <p className="invisible text-xs text-muted-foreground" aria-hidden="true">
-              {t('Spacer')}
-            </p>
           </div>
         </div>
 

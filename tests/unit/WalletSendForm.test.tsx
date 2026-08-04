@@ -25,10 +25,13 @@ function renderWalletSendForm(overrides: Partial<ComponentProps<typeof WalletSen
       sendAmount=""
       onChangeSendAmount={vi.fn()}
       isSending={false}
-      onSubmitSend={event => event.preventDefault()}
+      onSubmitSend={vi.fn()}
       connectedWalletAddress="0x1234567890123456789012345678901234567890"
       onUseConnectedWallet={vi.fn()}
       availableBalance={100}
+      defaultPhoneNumber="0769195528"
+      withdrawalPin=""
+      onWithdrawalPinChange={vi.fn()}
       {...overrides}
     />,
   )
@@ -41,14 +44,11 @@ describe('walletSendForm', () => {
     })
   })
 
-  it('allows using the connected wallet shortcut for external wallets', () => {
-    const onUseConnectedWallet = vi.fn()
+  it('uses the saved M-Pesa number instead of exposing a connected-wallet shortcut', () => {
+    renderWalletSendForm({ sendTo: '0769195528' })
 
-    renderWalletSendForm({ onUseConnectedWallet })
-
-    fireEvent.click(screen.getByRole('button', { name: /use connected/i }))
-
-    expect(onUseConnectedWallet).toHaveBeenCalledTimes(1)
+    expect(screen.getByDisplayValue('0769195528')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: /use connected/i })).not.toBeInTheDocument()
   })
 
   it('hides the connected wallet shortcut for embedded wallets without auth provider metadata', () => {
@@ -63,5 +63,15 @@ describe('walletSendForm', () => {
     renderWalletSendForm()
 
     expect(screen.queryByRole('button', { name: /use connected/i })).not.toBeInTheDocument()
+  })
+
+  it('requires passcode authorization before submitting a withdrawal', () => {
+    const onSubmitSend = vi.fn()
+    renderWalletSendForm({ sendTo: '0769195528', sendAmount: '20', onSubmitSend })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }))
+
+    expect(screen.getByRole('dialog', { name: 'Authorize withdrawal' })).toBeInTheDocument()
+    expect(onSubmitSend).not.toHaveBeenCalled()
   })
 })

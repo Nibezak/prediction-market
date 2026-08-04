@@ -52,6 +52,14 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDollarValueLabel } from '@/lib/formatters'
+
+function resolvePublicAssetUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) return path
+  const normalized = path.replace(/^\/+/, '')
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://useixlsqfrvoqoaxrpvi.supabase.co'
+  return `${supabaseUrl}/storage/v1/object/public/slimefish-assets/${normalized}`
+}
 import {
   HOME_FEATURED_SIDE_CARD_ICONS,
   HOME_FEATURED_SIDE_CARD_LIMITS,
@@ -101,6 +109,7 @@ interface HomeFeaturedMarketsSectionProps {
   onIncludeNewEventsChange: (value: boolean) => void
   sideCard: HomeFeaturedSideCardSettings
   onSideCardChange: Dispatch<SetStateAction<HomeFeaturedSideCardSettings>>
+  onSideCardImageFileChange?: (slideId: string, file: File) => void
   hotPicksTags?: string[]
   onHotPicksTagsChange?: (value: string[]) => void
   featuredEvents: HomeFeaturedEventAdminItem[]
@@ -565,12 +574,14 @@ function HomeFeaturedSideCardDialog({
   sideCard,
   onOpenChange,
   onSideCardChange,
+  onSideCardImageFileChange,
 }: {
   open: boolean
   disabled: boolean
   sideCard: HomeFeaturedSideCardSettings
   onOpenChange: (open: boolean) => void
   onSideCardChange: Dispatch<SetStateAction<HomeFeaturedSideCardSettings>>
+  onSideCardImageFileChange?: (slideId: string, file: File) => void
 }) {
   const t = useExtracted()
   const [selectedSlideId, setSelectedSlideId] = useState(sideCard.slides[0]?.id ?? '')
@@ -699,16 +710,44 @@ function HomeFeaturedSideCardDialog({
                   </SelectContent>
                 </Select>
               </div>
-              {sideCard.slides.filter(slide => slide.type === 'image').map(slide => (
-                <div key={slide.id} className={cn('grid gap-3', selectedSlide.id !== slide.id && 'hidden')}>
-                  {slide.imageUrl && <Image src={slide.imageUrl} alt={slide.ctaLabel || t('Side card image')} width={600} height={400} className="aspect-3/2 w-full rounded-lg border object-cover" />}
-                  <div className="grid gap-2">
-                    <Label htmlFor={`home-featured-side-card-image-${slide.id}`}>{t('Image')}</Label>
-                    <Input id={`home-featured-side-card-image-${slide.id}`} form="admin-general-settings-form" name={`home_featured_side_card_image_${slide.id}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} />
-                    <p className="text-xs text-muted-foreground">{t('PNG, JPG, or WebP up to 2MB. Recommended 1200 by 800 pixels.')}</p>
+              {sideCard.slides.filter(slide => slide.type === 'image').map((slide) => {
+                const displaySrc = slide.imageUrl || (slide.imagePath ? resolvePublicAssetUrl(slide.imagePath) : null)
+                return (
+                  <div key={slide.id} className={cn('grid gap-3', selectedSlide.id !== slide.id && 'hidden')}>
+                    {displaySrc && (
+                      <div className="relative aspect-3/2 w-full overflow-hidden rounded-lg border bg-muted">
+                        <Image
+                          src={displaySrc}
+                          alt={slide.ctaLabel || t('Side card image')}
+                          fill
+                          className="object-cover"
+                          unoptimized={displaySrc.startsWith('blob:')}
+                        />
+                      </div>
+                    )}
+                    <div className="grid gap-2">
+                      <Label htmlFor={`home-featured-side-card-image-${slide.id}`}>{t('Image')}</Label>
+                      <Input
+                        id={`home-featured-side-card-image-${slide.id}`}
+                        form="admin-general-settings-form"
+                        name={`home_featured_side_card_image_${slide.id}`}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={disabled}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) {
+                            onSideCardImageFileChange?.(slide.id, file)
+                            const previewUrl = URL.createObjectURL(file)
+                            updateSideCard({ imageUrl: previewUrl })
+                          }
+                        }}
+                      />
+                      <p className="text-xs text-muted-foreground">{t('PNG, JPG, or WebP up to 2MB. Recommended 1200 by 800 pixels.')}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {selectedSlide.type === 'video' && (
                 <div className="grid gap-2">
                   <Label htmlFor={`home-featured-side-video-${selectedSlide.id}`}>{t('YouTube or Vimeo URL')}</Label>
@@ -1224,6 +1263,7 @@ export default function HomeFeaturedMarketsSection({
   onIncludeNewEventsChange,
   sideCard,
   onSideCardChange,
+  onSideCardImageFileChange,
   hotPicksTags = [],
   onHotPicksTagsChange,
   featuredEvents,
@@ -1548,6 +1588,7 @@ export default function HomeFeaturedMarketsSection({
         sideCard={sideCard}
         onOpenChange={setSideCardDialogOpen}
         onSideCardChange={onSideCardChange}
+        onSideCardImageFileChange={onSideCardImageFileChange}
       />
 
       <HomeFeaturedContextDialog

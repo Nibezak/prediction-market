@@ -233,7 +233,7 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
   error: null,
   setNotifications: async () => {
     const localNotifications = readLocalOrderFillNotifications()
-    set({ isLoading: true, error: null })
+    set({ isLoading: get().notifications.length === 0, error: null })
     try {
       const response = await fetch('/api/notifications')
 

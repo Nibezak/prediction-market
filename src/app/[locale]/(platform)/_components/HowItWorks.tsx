@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/drawer'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { authClient } from '@/lib/auth-client'
 import { cn, triggerConfetti } from '@/lib/utils'
+import { useUser } from '@/stores/useUser'
 
 interface HowItWorksProps {
   displayMode?: 'auto' | 'mobile' | 'desktop'
@@ -65,6 +67,8 @@ export default function HowItWorks({
   const t = useExtracted()
   const isMobile = useIsMobile()
   const { open } = useAppKit()
+  const { data: session, isPending: isSessionPending } = authClient.useSession()
+  const user = useUser()
   const { isOpen, setOpen } = useControlledOpenState(controlledOpen, onOpenChange)
 
   const steps: ReadonlyArray<HowItWorksStep> = [
@@ -106,9 +110,9 @@ export default function HowItWorks({
   function handleComplete() {
     triggerConfetti('primary')
     setOpen(false)
-    setTimeout(() => {
-      void open()
-    }, 1000)
+    if (!isSessionPending && !session?.user && !user) {
+      setTimeout(() => void open(), 1000)
+    }
   }
 
   if (shouldUseMobileLayout) {

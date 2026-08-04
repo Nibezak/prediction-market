@@ -58,8 +58,6 @@ const THEME_SITE_CUSTOM_JAVASCRIPT_CODES_KEY = 'site_custom_javascript_codes'
 const GENERAL_PWA_ICON_192_PATH_KEY = 'pwa_icon_192_path'
 const GENERAL_PWA_ICON_512_PATH_KEY = 'pwa_icon_512_path'
 const GENERAL_FEE_RECIPIENT_WALLET_KEY = 'fee_recipient_wallet'
-const GENERAL_LIFI_INTEGRATOR_KEY = 'lifi_integrator'
-const GENERAL_LIFI_API_KEY = 'lifi_api_key'
 const WALLET_ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
 type SettingsGroup = Record<string, { value: string, updated_at: string }>
@@ -116,10 +114,6 @@ interface NormalizedThemeSiteConfig {
   customJavascriptCodesValue: string
   feeRecipientWallet: `0x${string}`
   feeRecipientWalletValue: string
-  lifiIntegrator: string | null
-  lifiIntegratorValue: string
-  lifiApiKey: string | null
-  lifiApiKeyValue: string
 }
 
 type RuntimeThemeSource = 'settings' | 'default'
@@ -157,9 +151,6 @@ export interface ThemeSiteSettingsFormState {
   supportUrl: string
   customJavascriptCodes: CustomJavascriptCodeConfig[]
   feeRecipientWallet: string
-  lifiIntegrator: string
-  lifiApiKey: string
-  lifiApiKeyConfigured: boolean
 }
 
 export interface ThemeSettingsValidationResult {
@@ -247,40 +238,6 @@ function isZeroAddress(value: string | null | undefined) {
   return (value ?? '').toLowerCase() === ZERO_ADDRESS.toLowerCase()
 }
 
-function normalizeOptionalLiFiIntegrator(value: string | null | undefined, sourceLabel: string) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  if (!normalized) {
-    return { value: null as string | null, error: null as string | null }
-  }
-
-  if (normalized.length > 120) {
-    return { value: null as string | null, error: `${sourceLabel} is too long.` }
-  }
-
-  if (!/^[\w.-]+$/.test(normalized)) {
-    return { value: null as string | null, error: `${sourceLabel} can only contain letters, numbers, dot, underscore, and hyphen.` }
-  }
-
-  return { value: normalized, error: null as string | null }
-}
-
-function normalizeOptionalLiFiApiKey(value: string | null | undefined, sourceLabel: string) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  if (!normalized) {
-    return { value: null as string | null, error: null as string | null }
-  }
-
-  if (normalized.length > 256) {
-    return { value: null as string | null, error: `${sourceLabel} is too long.` }
-  }
-
-  if (/\s/.test(normalized)) {
-    return { value: null as string | null, error: `${sourceLabel} cannot contain spaces.` }
-  }
-
-  return { value: normalized, error: null as string | null }
-}
-
 function normalizeThemeSiteConfig(params: {
   siteNameValue: string | null | undefined
   mobileAppNameValue?: string | null | undefined
@@ -301,8 +258,6 @@ function normalizeThemeSiteConfig(params: {
   supportUrlValue: string | null | undefined
   customJavascriptCodesJsonValue?: string | null | undefined
   feeRecipientWalletValue: string | null | undefined
-  lifiIntegratorValue?: string | null | undefined
-  lifiApiKeyValue?: string | null | undefined
   siteNameErrorLabel: string
   mobileAppNameErrorLabel?: string
   siteDescriptionErrorLabel: string
@@ -322,8 +277,6 @@ function normalizeThemeSiteConfig(params: {
   supportUrlErrorLabel: string
   customJavascriptCodesErrorLabel?: string
   feeRecipientWalletErrorLabel: string
-  lifiIntegratorErrorLabel?: string
-  lifiApiKeyErrorLabel?: string
 }): ThemeSiteSettingsValidationResult {
   const siteNameValidated = validateThemeSiteName(params.siteNameValue, params.siteNameErrorLabel)
   if (siteNameValidated.error) {
@@ -428,22 +381,6 @@ function normalizeThemeSiteConfig(params: {
     return { data: null, error: feeRecipientWalletValidated.error }
   }
 
-  const lifiIntegratorValidated = normalizeOptionalLiFiIntegrator(
-    params.lifiIntegratorValue,
-    params.lifiIntegratorErrorLabel ?? 'LI.FI integrator',
-  )
-  if (lifiIntegratorValidated.error) {
-    return { data: null, error: lifiIntegratorValidated.error }
-  }
-
-  const lifiApiKeyValidated = normalizeOptionalLiFiApiKey(
-    params.lifiApiKeyValue,
-    params.lifiApiKeyErrorLabel ?? 'LI.FI API key',
-  )
-  if (lifiApiKeyValidated.error) {
-    return { data: null, error: lifiApiKeyValidated.error }
-  }
-
   const logoSvgResolved = resolveLogoSvgOrDefault(params.logoSvgValue, params.logoSvgErrorLabel)
   if (logoSvgResolved.error) {
     return { data: null, error: logoSvgResolved.error }
@@ -496,10 +433,6 @@ function normalizeThemeSiteConfig(params: {
       customJavascriptCodesValue: customJavascriptCodesValidated.valueJson,
       feeRecipientWallet: feeRecipientWalletValidated.value!,
       feeRecipientWalletValue: feeRecipientWalletValidated.value!,
-      lifiIntegrator: lifiIntegratorValidated.value,
-      lifiIntegratorValue: lifiIntegratorValidated.value ?? '',
-      lifiApiKey: lifiApiKeyValidated.value,
-      lifiApiKeyValue: lifiApiKeyValidated.value ?? '',
     },
     error: null,
   }
@@ -614,9 +547,7 @@ function hasStoredThemeSiteSettings(generalSettings?: SettingsGroup) {
     || generalSettings[THEME_SITE_CUSTOM_JAVASCRIPT_CODES_KEY]?.value?.trim()
     || generalSettings[GENERAL_PWA_ICON_192_PATH_KEY]?.value?.trim()
     || generalSettings[GENERAL_PWA_ICON_512_PATH_KEY]?.value?.trim()
-    || generalSettings[GENERAL_FEE_RECIPIENT_WALLET_KEY]?.value?.trim()
-    || generalSettings[GENERAL_LIFI_INTEGRATOR_KEY]?.value?.trim()
-    || generalSettings[GENERAL_LIFI_API_KEY]?.value?.trim(),
+    || generalSettings[GENERAL_FEE_RECIPIENT_WALLET_KEY]?.value?.trim(),
   )
 }
 
@@ -643,13 +574,6 @@ export function getThemeSettingsFormState(allSettings?: SettingsMap): ThemeSetti
 export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeSiteSettingsFormState {
   const defaultSite = createDefaultThemeSiteIdentity()
   const generalSettings = getGeneralSettingsGroup(allSettings)
-  const lifiIntegratorValidated = normalizeOptionalLiFiIntegrator(
-    generalSettings?.[GENERAL_LIFI_INTEGRATOR_KEY]?.value,
-    'LI.FI integrator',
-  )
-  const lifiIntegrator = lifiIntegratorValidated.error ? '' : (lifiIntegratorValidated.value ?? '')
-  const lifiApiKeyConfigured = Boolean(generalSettings?.[GENERAL_LIFI_API_KEY]?.value?.trim())
-
   const normalized = normalizeThemeSiteConfig({
     siteNameValue: generalSettings?.[THEME_SITE_NAME_KEY]?.value ?? defaultSite.name,
     mobileAppNameValue: generalSettings?.[THEME_SITE_MOBILE_APP_NAME_KEY]?.value ?? defaultSite.mobileAppName,
@@ -713,9 +637,6 @@ export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeS
       supportUrl: normalized.data.supportUrlValue,
       customJavascriptCodes: normalized.data.customJavascriptCodes,
       feeRecipientWallet: getFeeRecipientWalletFormValue(allSettings),
-      lifiIntegrator,
-      lifiApiKey: '',
-      lifiApiKeyConfigured,
     }
   }
 
@@ -739,9 +660,6 @@ export function getThemeSiteSettingsFormState(allSettings?: SettingsMap): ThemeS
     supportUrl: defaultSite.supportUrl ?? '',
     customJavascriptCodes: defaultSite.customJavascriptCodes,
     feeRecipientWallet: '',
-    lifiIntegrator,
-    lifiApiKey: '',
-    lifiApiKeyConfigured,
   }
 }
 
@@ -783,8 +701,6 @@ export function validateThemeSiteSettingsInput(params: {
   supportUrl: string | null | undefined
   customJavascriptCodesJson: string | null | undefined
   feeRecipientWallet: string | null | undefined
-  lifiIntegrator: string | null | undefined
-  lifiApiKey: string | null | undefined
 }): ThemeSiteSettingsValidationResult {
   return normalizeThemeSiteConfig({
     siteNameValue: params.siteName,
@@ -806,8 +722,6 @@ export function validateThemeSiteSettingsInput(params: {
     supportUrlValue: params.supportUrl,
     customJavascriptCodesJsonValue: params.customJavascriptCodesJson,
     feeRecipientWalletValue: params.feeRecipientWallet,
-    lifiIntegratorValue: params.lifiIntegrator,
-    lifiApiKeyValue: params.lifiApiKey,
     siteNameErrorLabel: 'Site name',
     mobileAppNameErrorLabel: 'Mobile app name',
     siteDescriptionErrorLabel: 'Site description',
@@ -827,8 +741,6 @@ export function validateThemeSiteSettingsInput(params: {
     supportUrlErrorLabel: 'Support URL',
     customJavascriptCodesErrorLabel: 'Custom javascript code',
     feeRecipientWalletErrorLabel: 'Fee recipient wallet',
-    lifiIntegratorErrorLabel: 'LI.FI integrator',
-    lifiApiKeyErrorLabel: 'LI.FI API key',
   })
 }
 
@@ -930,7 +842,13 @@ export async function loadRuntimeThemeState(): Promise<RuntimeThemeState> {
     return buildDefaultThemeState()
   }
 
-  return loadCachedRuntimeThemeState()
+  try {
+    return await loadCachedRuntimeThemeState()
+  }
+  catch (error) {
+    console.error('Failed to load cached runtime theme state:', error)
+    return buildDefaultThemeState()
+  }
 }
 
 export async function loadRuntimeThemeSiteName() {

@@ -10,11 +10,6 @@ const globalForDb = globalThis as unknown as {
   db: DrizzleDb | undefined
 }
 
-export const pmSql = postgres(process.env.SLIMEFISH_BACKEND_POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5434/slimefish-backend', {
-  max: 10,
-  idle_timeout: 20,
-})
-
 function createDb(): DrizzleDb {
   const url = process.env.POSTGRES_URL
   if (!url) {

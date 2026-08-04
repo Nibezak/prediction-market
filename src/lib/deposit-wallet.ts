@@ -1,5 +1,5 @@
 import type { Address, TypedDataDomain } from 'viem'
-import { createPublicClient, http, isAddress } from 'viem'
+import { createPublicClient, http, isAddress, keccak256, toHex } from 'viem'
 import {
   DEPOSIT_WALLET_FACTORY_ADDRESS,
   ZERO_ADDRESS,
@@ -51,18 +51,27 @@ export function getDepositWalletDomain(depositWallet: Address): TypedDataDomain 
   }
 }
 
-function getDepositWalletId(owner: Address): `0x${string}` {
-  const normalized = owner.toLowerCase().replace(/^0x/, '')
-  return `0x${'0'.repeat(24)}${normalized}` as `0x${string}`
+function getDepositWalletId(owner: Address | string): `0x${string}` {
+  if (typeof owner === 'string' && isAddress(owner)) {
+    const normalized = owner.toLowerCase().replace(/^0x/, '')
+    return `0x${'0'.repeat(24)}${normalized}` as `0x${string}`
+  }
+  return keccak256(toHex(String(owner ?? '')))
 }
 
-export async function getDepositWalletAddress(owner: Address) {
-  return await getDepositWalletClient().readContract({
-    address: DEPOSIT_WALLET_FACTORY_ADDRESS,
-    abi: DEPOSIT_WALLET_FACTORY_ABI,
-    functionName: 'predictWalletAddress',
-    args: [getDepositWalletId(owner)],
-  }) as Address
+export async function getDepositWalletAddress(owner: Address | string) {
+  try {
+    return await getDepositWalletClient().readContract({
+      address: DEPOSIT_WALLET_FACTORY_ADDRESS,
+      abi: DEPOSIT_WALLET_FACTORY_ABI,
+      functionName: 'predictWalletAddress',
+      args: [getDepositWalletId(owner)],
+    }) as Address
+  }
+  catch (error) {
+    console.warn('RPC call predictWalletAddress failed, using fallback address:', error)
+    return ZERO_ADDRESS
+  }
 }
 
 export async function isDepositWalletDeployed(address?: Address | string | null) {

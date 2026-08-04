@@ -12,6 +12,7 @@ export const AUDIT_EVENT_CATALOG = {
     'money.balance.adjustment.requested', 'money.balance.adjustment.completed', 'money.balance.adjustment.failed',
     'money.refund.requested', 'money.refund.completed', 'money.chargeback.opened', 'money.chargeback.closed',
     'money.reconciliation.started', 'money.reconciliation.completed', 'money.reconciliation.exception',
+    'finance.exchange_rate.updated', 'finance.ledger_settings.updated',
   ],
   trading: [
     'trade.quote.requested', 'trade.quote.returned', 'trade.quote.failed', 'trade.buy.requested', 'trade.buy.completed',
@@ -31,6 +32,7 @@ export const AUDIT_EVENT_CATALOG = {
     'user.trading.blocked', 'user.trading.unblocked', 'user.withdrawals.blocked', 'user.withdrawals.unblocked',
     'user.account.suspended', 'user.account.reinstated', 'user.account.deleted', 'user.data.exported',
     'user.staff.impersonation.started', 'user.staff.impersonation.ended', 'user.support.note.added',
+    'user.withdrawal_passcode.reset_authorized',
   ],
   risk: [
     'risk.evaluation.started', 'risk.evaluation.completed', 'risk.signal.triggered', 'risk.case.opened',

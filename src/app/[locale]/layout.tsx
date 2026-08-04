@@ -35,6 +35,11 @@ export async function generateViewport(): Promise<Viewport> {
   const { lightSurface, darkSurface } = resolvePwaThemeColors(runtimeTheme.theme)
 
   return {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    interactiveWidget: 'resizes-content',
     themeColor: [
       { media: '(prefers-color-scheme: light)', color: lightSurface },
       { media: '(prefers-color-scheme: dark)', color: darkSurface },
@@ -49,7 +54,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const site = runtimeTheme.site
   const siteUrl = resolveSiteUrl(process.env)
   const defaultTitle = `${site.name} | ${site.description}`
-  const fallbackOgImage = new URL('/api/og', siteUrl).toString()
+  const fallbackOgImage = new URL('/api/og?v=slimefish', siteUrl).toString()
   const socialImage = {
     url: fallbackOgImage,
     width: 1200,
@@ -59,14 +64,19 @@ export async function generateMetadata(): Promise<Metadata> {
   } as const
 
   return {
+    metadataBase: siteUrl,
     title: {
       template: `%s | ${site.name}`,
       default: defaultTitle,
     },
     description: site.description,
     applicationName: site.name,
+    alternates: {
+      canonical: siteUrl,
+    },
     openGraph: {
       type: 'website',
+      url: siteUrl,
       title: defaultTitle,
       description: site.description,
       siteName: site.name,

@@ -146,6 +146,7 @@ function rewriteMigrationSqlForMode(migrationSql: string, isSupabase: boolean): 
   }
 
   return migrationSql
+    .replace(/DO\s*\$\$[\s\S]*?pg_available_extensions[\s\S]*?name\s*=\s*'pg_cron'[\s\S]*?END\s*\$\$\s*;/gi, '')
     .replace(/\bTO\s+(?:"service_role"|service_role\b)/gi, 'TO CURRENT_USER')
 }
 

@@ -63,3 +63,34 @@ async function warmPublicCache() {
 void warmPublicCache().catch((error) => {
   console.warn('Public route warmup failed:', error)
 })
+
+function startNotificationWorker() {
+  if (process.env.ENABLE_EMBEDDED_NOTIFICATION_WORKER !== 'true') return
+  const secret = process.env.JOB_RUNNER_SECRET?.trim() || process.env.CRON_SECRET?.trim()
+  if (!secret) return
+  const port = process.env.PORT || '3000'
+  const endpoint = `http://127.0.0.1:${port}/api/internal/jobs/notifications`
+  let running = false
+  const tick = async () => {
+    if (running) return
+    running = true
+    try {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${secret}`, 'x-worker-id': `standalone-${process.pid}` },
+        signal: AbortSignal.timeout(25_000),
+      })
+    }
+    catch (error) {
+      console.warn('Notification worker tick failed:', error)
+    }
+    finally {
+      running = false
+    }
+  }
+  const timer = setInterval(() => void tick(), 60_000)
+  timer.unref()
+  setTimeout(() => void tick(), 10_000).unref()
+}
+
+startNotificationWorker()

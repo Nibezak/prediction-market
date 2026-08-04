@@ -1,101 +1,60 @@
-/* eslint-disable style/max-statements-per-line */
 import { randomUUID } from 'node:crypto'
-import { eq } from 'drizzle-orm'
-import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { recordAuditEvent, requestAuditContext } from '@/lib/audit'
-import { auth } from '@/lib/auth'
-import { payment_intents } from '@/lib/db/schema'
-import { db } from '@/lib/drizzle'
-import { normalizeKenyanPhone } from '@/lib/kenyan-phone'
-import { createMinisendOnrampOrder, quoteMinisendOnramp } from '@/lib/minisend'
-import { MAX_MPESA_DEPOSIT_KES, MIN_MPESA_DEPOSIT_KES } from '@/lib/mpesa-money'
-import { assertOperationEnabled } from '@/lib/operations/controls'
-import { createPaymentIntent, transitionPaymentIntent } from '@/lib/payments/lifecycle'
-import { getAccountRestriction } from '@/lib/risk/account-restrictions'
-import { screenUserForSanctions } from '@/lib/risk/sanctions'
-import { enforceRateLimit } from '@/lib/security/rate-limit'
+import { slimefishBackendUserRequest } from '@/lib/slimefish-backend-user-request'
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text()
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  }
+  catch {
+    return null
+  }
+}
+
+function publicStatus(status: string) {
+  if (status === 'SUCCEEDED') return 'COMPLETED'
+  if (status === 'FAILED' || status === 'EXPIRED') return 'FAILED'
+  return 'PENDING_STK'
+}
 
 export async function POST(request: Request) {
+  const input = await request.json().catch(() => null) as { fiatAmount?: unknown; phoneNumber?: unknown } | null
+  const body = JSON.stringify({
+    amountKes: input?.fiatAmount,
+    phoneNumber: input?.phoneNumber,
+    idempotencyKey: request.headers.get('idempotency-key') || randomUUID(),
+  })
   try {
-    const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
-    if (!session?.user?.id) { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-    await assertOperationEnabled('deposits')
-    await enforceRateLimit({ scope: 'deposit-initiate', identifier: session.user.id, limit: 10, windowSeconds: 60 })
-    const restriction = await getAccountRestriction(session.user.id)
-    if (restriction.restricted) { return NextResponse.json({ error: restriction.reason }, { status: 423 }) }
-    const screening = await screenUserForSanctions(session.user.id)
-    if (screening.status === 'possible_match') { return NextResponse.json({ error: 'This account requires a compliance review before money movement can continue.' }, { status: 423 }) }
-    const body = await request.json()
-    const idempotencyKey = request.headers.get('idempotency-key')?.trim() || randomUUID()
+    const { response } = await slimefishBackendUserRequest('payments/deposits', { method: 'POST', body })
+    if (!response) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const payload = await readJsonResponse(response)
+    if (!response.ok) return NextResponse.json({ error: payload?.error || 'Unable to start deposit.' }, { status: response.status })
+    if (!payload?.data) return NextResponse.json({ error: 'The payment service returned an invalid response.' }, { status: 502 })
+    const intent = payload.data
+    return NextResponse.json({
+      depositId: intent.id,
+      status: publicStatus(intent.status),
+      phoneNumber: intent.phoneNumber,
+      message: intent.status === 'SUCCEEDED' ? 'Deposit completed.' : 'Check your phone to approve the M-Pesa request.',
+      fiatCurrency: 'KES',
+      fiatAmount: String(intent.requestedAmount),
+      cryptoCurrency: 'KES',
+      cryptoAmount: String(intent.netAmount),
+      feeFiat: String(intent.providerFee || 0),
+      provider: 'cloud9',
+    }, { status: intent.status === 'SUCCEEDED' ? 200 : 202 })
+  }
+  catch {
+    return NextResponse.json({ error: 'The payment service is temporarily unavailable.' }, { status: 503 })
+  }
+}
 
-    const fiatAmount = Number(body?.fiatAmount)
-    const phoneNumber = normalizeKenyanPhone(String(body?.phoneNumber ?? ''))
-    if (!Number.isFinite(fiatAmount) || !phoneNumber) {
-      return NextResponse.json({ error: 'Enter a valid KES amount and M-Pesa phone number.' }, { status: 400 })
-    }
-    if (fiatAmount < MIN_MPESA_DEPOSIT_KES || fiatAmount > MAX_MPESA_DEPOSIT_KES) {
-      return NextResponse.json({ error: `Deposit must be between KES ${MIN_MPESA_DEPOSIT_KES.toLocaleString('en-US')} and KES ${MAX_MPESA_DEPOSIT_KES.toLocaleString('en-US')}.` }, { status: 400 })
-    }
-    const quote = await quoteMinisendOnramp({ amountKes: fiatAmount })
-    const intent = await createPaymentIntent({
-      userId: session.user.id,
-      direction: 'deposit',
-      sourceCurrency: 'KES',
-      destinationCurrency: 'USDC',
-      grossAmount: String(quote.amount_kes),
-      providerFee: String(quote.fee_kes),
-      netAmount: String(quote.amount_usdc),
-      idempotencyKey: `deposit:onramp:${session.user.id}:${idempotencyKey}`,
-      settlementAdapter: 'minisend',
-      enqueueSettlement: false,
-      metadata: { provider: 'minisend', method: 'onramp', phoneNumber, quotedRate: quote.rate, settlementChain: 'base', quote },
-    })
-    try {
-      const order = await createMinisendOnrampOrder({
-        amountKes: fiatAmount,
-        phone: phoneNumber,
-        reference: intent.id,
-        idempotencyKey: `minisend:onramp:${intent.id}`,
-      })
-      await db.update(payment_intents).set({
-        external_reference: order.order_id,
-        metadata: { ...(intent.metadata || {}), order },
-        updated_at: new Date(),
-      }).where(eq(payment_intents.id, intent.id))
-      await recordAuditEvent({ eventType: 'money.deposit.requested', category: 'money', action: 'Minisend M-Pesa deposit requested', actorUserId: session.user.id, subjectUserId: session.user.id, entityType: 'payment_intent', entityId: intent.id, idempotencyKey, metadata: { fiatAmount: quote.amount_kes, fiatCurrency: 'KES', netAmount: quote.amount_usdc, orderId: order.order_id }, ...requestAuditContext(request.headers) })
-      return NextResponse.json({
-        fiatCurrency: 'KES',
-        fiatAmount: String(quote.amount_kes),
-        cryptoCurrency: 'USDC',
-        cryptoAmount: String(quote.amount_usdc),
-        exchangeRate: String(quote.rate),
-        feeFiat: String(quote.fee_kes),
-        provider: 'minisend',
-        settlementChain: 'base',
-        expiresAt: quote.expires_at,
-        depositId: intent.id,
-        orderId: order.order_id,
-        status: 'PENDING_STK',
-        phoneNumber,
-        message: order.instructions || 'M-Pesa prompt sent.',
-      }, { status: 202 })
-    }
-    catch (error) {
-      await transitionPaymentIntent({ id: intent.id, from: ['pending'], to: 'failed', eventType: 'payment.failed', actorType: 'provider', actorId: 'minisend', patch: { failure_message: error instanceof Error ? error.message : 'Minisend order creation failed.' } })
-      throw error
-    }
-  }
-  catch (error) {
-    const rawMessage = error instanceof Error ? error.message : 'Unable to start deposit.'
-    const message = /not authorized|missing scope/i.test(rawMessage)
-      ? 'Minisend is not authorized for M-Pesa deposits yet. Check the configured API key scopes.'
-      : /failed query|insert into|duplicate key|violates|syntax error|database/i.test(rawMessage)
-        ? 'We could not start that deposit right now. Please try again.'
-        : rawMessage
-    return NextResponse.json(
-      { error: message },
-      { status: (error as any)?.status || 400, headers: (error as any)?.retryAfter ? { 'retry-after': String((error as any).retryAfter) } : undefined },
-    )
-  }
+export async function GET() {
+  const { response } = await slimefishBackendUserRequest('payments/deposits')
+  if (!response) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const payload = await readJsonResponse(response)
+  if (!response.ok) return NextResponse.json({ error: payload?.error || 'Deposits are temporarily unavailable.' }, { status: response.status })
+  return NextResponse.json(payload ?? { data: [] }, { status: response.status })
 }
