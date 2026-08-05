@@ -105,7 +105,9 @@ export default function EventSingleMarketOrderBook({
   if (isSlimefishBackendAmm) {
     const pool = liveMarkets[market.condition_id]
     const options = Array.isArray(pool?.options) ? pool.options : []
-    const liquidity = Number(pool?.liquidity ?? 0)
+    const rawLiquidity = Number(pool?.liquidity ?? 0)
+    const { kesPerUsdc } = useDisplayCurrency()
+    const liquidityUsd = rawLiquidity > 50 ? rawLiquidity / kesPerUsdc : rawLiquidity
 
     return (
       <section className="overflow-hidden rounded-xl border">
@@ -115,7 +117,7 @@ export default function EventSingleMarketOrderBook({
             <p className="text-sm text-muted-foreground">Trades execute instantly against shared market liquidity.</p>
           </div>
           <span className="text-sm font-semibold">
-            {formatMoney(liquidity)}
+            {formatMoney(liquidityUsd)}
             {' '}
             liquidity
           </span>

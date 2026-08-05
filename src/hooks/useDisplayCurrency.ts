@@ -120,16 +120,17 @@ export function useDisplayCurrency() {
   const formatMoney = useCallback((value: number | null | undefined, options: Intl.NumberFormatOptions = {}) => {
     const safeValue = typeof value === 'number' && Number.isFinite(value) ? value : 0
     if (currency === 'KES') {
-      const kesValue = truncateMoney(safeValue, 'KES').toNumber()
-      return new Intl.NumberFormat('en-KE', {
+      const kesValue = truncateMoney(safeValue * kesPerUsdc, 'KES').toNumber()
+      const formatted = new Intl.NumberFormat('en-KE', {
         style: 'currency',
         currency: 'KES',
         ...options,
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }).format(kesValue)
+      return formatted.replace('KES', 'Ksh')
     }
-    const usdValue = truncateMoney(safeValue / kesPerUsdc, 'USD').toNumber()
+    const usdValue = truncateMoney(safeValue, 'USD').toNumber()
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
