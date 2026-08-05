@@ -2535,6 +2535,16 @@ export const EventRepository = {
 
   async deleteAdminEvent(eventId: string): Promise<QueryResult<boolean>> {
     return runQuery(async () => {
+      // First check if event has AMM markets
+      const eventMarkets = await db
+        .select({ condition_id: markets.condition_id })
+        .from(markets)
+        .where(eq(markets.event_id, eventId))
+      
+      if (eventMarkets.length > 0) {
+        return { data: null, error: 'Cannot delete event with existing markets. Close markets first.' }
+      }
+
       const [deleted] = await db
         .delete(events)
         .where(eq(events.id, eventId))

@@ -81,6 +81,9 @@ export async function POST(request: NextRequest) {
     const marketOutcomes = outcomeRows
       .filter(outcome => outcome.conditionId === market.conditionId)
       .sort((left, right) => left.index - right.index)
+    
+    // Skip legacy market sync for AMM - it's disabled
+    // The AMM backend should handle market closing directly
     const syncUrl = `${AMM_BASE_URL}/sync/legacy-market`
     const syncBody = JSON.stringify({
       id: market.conditionId.trim(),
@@ -93,18 +96,27 @@ export async function POST(request: NextRequest) {
         color: index === 0 ? '#22C55E' : '#F43F5E',
       })),
     })
-    const syncResponse = await fetch(syncUrl, {
-      method: 'POST',
-      headers: signSlimefishBackendRequest({ url: syncUrl, method: 'POST', body: syncBody, headers: serviceHeaders }),
-      body: syncBody,
-      signal: AbortSignal.timeout(10_000),
-    }).catch(() => null)
-    if (!syncResponse) {
-      return NextResponse.json({ error: 'The AMM service could not be reached while synchronizing this market.' }, { status: 502 })
-    }
-    if (!syncResponse.ok) {
-      const syncPayload = await syncResponse.json().catch(() => null) as { error?: string } | null
-      return NextResponse.json({ error: syncPayload?.error || 'The internal market could not be synchronized.' }, { status: syncResponse.status })
+    
+    // Try to sync, but don't fail if legacy sync is disabled
+    try {
+      const syncResponse = await fetch(syncUrl, {
+        method: 'POST',
+        headers: signSlimefishBackendRequest({ url: syncUrl, method: 'POST', body: syncBody, headers: serviceHeaders }),
+        body: syncBody,
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => null)
+      
+      if (syncResponse && !syncResponse.ok) {
+        const syncPayload = await syncResponse.json().catch(() => null) as { error?: string } | null
+        // If legacy sync is disabled, log warning but continue
+        if (syncPayload?.error?.includes('Legacy market synchronization is disabled')) {
+          console.warn('Legacy market sync disabled, proceeding with AMM close')
+        } else {
+          return NextResponse.json({ error: syncPayload?.error || 'The internal market could not be synchronized.' }, { status: syncResponse.status })
+        }
+      }
+    } catch (error) {
+      console.warn('Legacy market sync failed, proceeding with AMM close:', error)
     }
   }
 
