@@ -59,10 +59,13 @@ const UpdateUserSchema = z.object({
 
       return ACCEPTED_IMAGE_TYPES.includes(file.type)
     }, { error: 'Only JPG, PNG, and WebP images are allowed' }),
-  avatar_url: z.url().refine((value) => {
-    const protocol = new URL(value).protocol
-    return protocol === 'http:' || protocol === 'https:'
-  }, { error: 'Avatar URL must start with http:// or https://' }).optional(),
+  avatar_url: z.preprocess(
+    emptyStringToUndefined,
+    z.string().url('Avatar URL must be a valid URL').refine((value) => {
+      const protocol = new URL(value).protocol
+      return protocol === 'http:' || protocol === 'https:'
+    }, { error: 'Avatar URL must start with http:// or https://' }).optional(),
+  ),
 })
 
 export async function updateUserAction(formData: FormData): Promise<ActionState> {

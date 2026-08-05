@@ -28,6 +28,8 @@ import {
   fetchCommunityProfileByAddress,
   updateCommunityProfile,
 } from '@/lib/community-profile'
+import { sendSignInLinkToEmail } from 'firebase/auth'
+import { getOrInitAuth, isFirebaseConfigured } from '@/lib/firebase/client'
 import { buildPublicProfilePath } from '@/lib/platform-routing'
 import { useUser } from '@/stores/useUser'
 
@@ -171,6 +173,23 @@ export default function SettingsProfileContent({ user }: { user: User }) {
       if (shouldUpdateCommunity) {
         // Skip community sync
         communityUsername = username
+      }
+
+      if (emailValue && emailValue !== user.email && isFirebaseConfigured()) {
+        try {
+          const actionCodeSettings = {
+            url: typeof window !== 'undefined' ? `${window.location.origin}/settings` : 'https://slimefish.com/settings',
+            handleCodeInApp: true,
+          }
+          await sendSignInLinkToEmail(getOrInitAuth(), emailValue, actionCodeSettings)
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('emailForSignIn', emailValue)
+          }
+          toast.success(`Verification link sent to ${emailValue}! Please check your email to complete verification.`)
+        }
+        catch (emailErr) {
+          console.error('Failed to send email verification link:', emailErr)
+        }
       }
 
       const localForm = new FormData()

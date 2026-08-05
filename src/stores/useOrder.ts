@@ -228,7 +228,11 @@ export function useIsLimitOrder() {
 }
 
 export function useAmountAsNumber() {
-  return useOrder(state => Number.parseFloat(state.amount) || 0)
+  return useOrder((state) => {
+    const cleaned = (state.amount || '').replace(/[^0-9.]/g, '')
+    const parsed = Number.parseFloat(cleaned)
+    return Number.isFinite(parsed) ? parsed : 0
+  })
 }
 
 interface SyncLimitPriceWithOutcomeParams {

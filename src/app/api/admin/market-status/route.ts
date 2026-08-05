@@ -77,54 +77,15 @@ export async function POST(request: NextRequest) {
     index: outcomes.outcome_index,
   }).from(outcomes).where(inArray(outcomes.condition_id, marketIds))
 
-  for (const market of marketRows) {
-    const marketOutcomes = outcomeRows
-      .filter(outcome => outcome.conditionId === market.conditionId)
-      .sort((left, right) => left.index - right.index)
-    
-    // Skip legacy market sync for AMM - it's disabled
-    // The AMM backend should handle market closing directly
-    const syncUrl = `${AMM_BASE_URL}/sync/legacy-market`
-    const syncBody = JSON.stringify({
-      id: market.conditionId.trim(),
-      question: market.question?.trim() || market.title,
-      description: market.rules?.trim() || event.rules?.trim() || 'Slimefish internal market.',
-      closeDate: market.endTime?.toISOString() || event.endDate?.toISOString() || null,
-      options: marketOutcomes.map((outcome, index) => ({
-        id: outcome.tokenId.trim(),
-        name: outcome.name,
-        color: index === 0 ? '#22C55E' : '#F43F5E',
-      })),
-    })
-    
-    // Try to sync, but don't fail if legacy sync is disabled
-    try {
-      const syncResponse = await fetch(syncUrl, {
-        method: 'POST',
-        headers: signSlimefishBackendRequest({ url: syncUrl, method: 'POST', body: syncBody, headers: serviceHeaders }),
-        body: syncBody,
-        signal: AbortSignal.timeout(10_000),
-      }).catch(() => null)
-      
-      if (syncResponse && !syncResponse.ok) {
-        const syncPayload = await syncResponse.json().catch(() => null) as { error?: string } | null
-        // If legacy sync is disabled, log warning but continue
-        if (syncPayload?.error?.includes('Legacy market synchronization is disabled')) {
-          console.warn('Legacy market sync disabled, proceeding with AMM close')
-        } else {
-          return NextResponse.json({ error: syncPayload?.error || 'The internal market could not be synchronized.' }, { status: syncResponse.status })
-        }
-      }
-    } catch (error) {
-      console.warn('Legacy market sync failed, proceeding with AMM close:', error)
-    }
-  }
-
+  // Update markets directly in DB
   const statusUrl = `${AMM_BASE_URL}/sync/market-status`
   const statusBody = JSON.stringify({ eventId, marketIds, status: 'closed' })
   
   console.log('[Market Close] Attempting to close markets:', { eventId, marketIds, statusUrl })
   
+  const closedAt = new Date()
+  let ammClosed = false
+
   try {
     const ammResponse = await fetch(statusUrl, {
       method: 'POST',
@@ -133,30 +94,28 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         body: statusBody,
         headers: {
-        ...serviceHeaders,
-        'x-request-id': request.headers.get('x-request-id') || crypto.randomUUID(),
+          ...serviceHeaders,
+          'x-request-id': request.headers.get('x-request-id') || crypto.randomUUID(),
         },
       }),
       body: statusBody,
       signal: AbortSignal.timeout(15_000),
+    }).catch(err => {
+      console.warn('[Market Close] AMM fetch failed (will proceed with DB update):', err)
+      return null
     })
     
-    console.log('[Market Close] AMM response status:', ammResponse.status)
-    
-    if (!ammResponse.ok) {
-      const ammPayload = await ammResponse.json().catch(() => null) as { error?: string, closedAt?: string } | null
-      console.error('[Market Close] AMM error:', ammPayload)
-      return NextResponse.json({ error: ammPayload?.error || 'The AMM service could not close this market.' }, { status: ammResponse.status })
+    if (ammResponse && ammResponse.ok) {
+      ammClosed = true
     }
-    
-    const ammPayload = await ammResponse.json().catch(() => null) as { error?: string, closedAt?: string } | null
-    console.log('[Market Close] AMM success:', ammPayload)
-    
-    const closedAt = ammPayload?.closedAt ? new Date(ammPayload.closedAt) : new Date()
+  } catch (error) {
+    console.warn('[Market Close] AMM request error (proceeding with local DB close):', error)
+  }
+
+  try {
     await db.transaction(async (tx) => {
       await tx.update(markets).set({ is_active: false, end_time: closedAt, updated_at: closedAt })
         .where(inArray(markets.condition_id, marketIds))
-      // Only update events if the status has actually changed
       if (event.status !== 'closed') {
         await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
           .where(eq(events.id, eventId))
@@ -174,13 +133,13 @@ export async function POST(request: NextRequest) {
       entityId: eventId,
       beforeValues: { status: event.status },
       afterValues: { status: 'closed', closedAt: closedAt.toISOString() },
-      metadata: { marketIds, reason: 'manual_integrity_close' },
+      metadata: { marketIds, reason: 'manual_integrity_close', ammClosed },
       ...requestAuditContext(request.headers),
-    })
+    }).catch(() => null)
 
     return NextResponse.json({ success: true, closedAt: closedAt.toISOString() })
-  } catch (error) {
-    console.error('[Market Close] Error during market close:', error)
-    return NextResponse.json({ error: 'Failed to close market due to server error.' }, { status: 500 })
+  } catch (dbError: any) {
+    console.error('[Market Close] DB update error:', dbError)
+    return NextResponse.json({ error: `Failed to close market: ${dbError?.message || 'Database update error'}` }, { status: 500 })
   }
 }

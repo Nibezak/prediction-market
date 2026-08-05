@@ -60,7 +60,7 @@ export default function EventOrderPanelInput({
     const numericValue = Number.parseFloat(cleaned)
 
     if (cleaned === '' || numericValue <= MAX_AMOUNT_INPUT) {
-      onAmountChange(currency === 'KES' && cleaned ? String(numericValue / kesPerUsdc) : cleaned)
+      onAmountChange(cleaned)
     }
   }
 
@@ -84,8 +84,7 @@ export default function EventOrderPanelInput({
   }
 
   function incrementAmount(delta: number) {
-    const normalizedDelta = side === ORDER_SIDE.BUY && currency === 'KES' ? delta / kesPerUsdc : delta
-    const nextValue = amountNumber + normalizedDelta
+    const nextValue = amountNumber + delta
 
     if (side === ORDER_SIDE.SELL) {
       onAmountChange(formatAmountInputValue(nextValue))
@@ -97,8 +96,7 @@ export default function EventOrderPanelInput({
   }
 
   function decrementAmount(delta: number) {
-    const normalizedDelta = side === ORDER_SIDE.BUY && currency === 'KES' ? delta / kesPerUsdc : delta
-    const nextValue = Math.max(0, amountNumber - normalizedDelta)
+    const nextValue = Math.max(0, amountNumber - delta)
     onAmountChange(formatAmountInputValue(nextValue))
   }
 
@@ -109,7 +107,6 @@ export default function EventOrderPanelInput({
 
     const maxBalance = Number.isFinite(balance.raw) ? balance.raw : 0
     const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
-    // Balance is already in the correct format, no need for formatAmountInputValue
     onAmountChange(String(limitedBalance))
     focusInput()
   }
@@ -169,10 +166,7 @@ export default function EventOrderPanelInput({
   const amountSizeClass = getAmountSizeClass(amount)
   const formattedBalanceText = formatMoney(Number.isFinite(balance.raw) ? balance.raw : 0)
 
-  const displayAmount = side === ORDER_SIDE.BUY && currency === 'KES' && amount
-    ? String(Math.round(amountNumber * kesPerUsdc))
-    : amount
-  const formattedAmount = formatDisplayAmount(displayAmount)
+  const formattedAmount = formatDisplayAmount(amount)
   const inputValue = side === ORDER_SIDE.SELL
     ? formattedAmount
     : formattedAmount ? `${currency === 'KES' ? 'KES ' : '$'}${formattedAmount}` : ''
