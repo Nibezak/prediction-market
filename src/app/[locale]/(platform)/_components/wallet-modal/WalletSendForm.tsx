@@ -87,9 +87,9 @@ function WalletSendForm({
   const [phoneChangeAuthorizationOpen, setPhoneChangeAuthorizationOpen] = useState(false)
   const [withdrawalAuthorizationOpen, setWithdrawalAuthorizationOpen] = useState(false)
   const [withdrawalAuthorizationError, setWithdrawalAuthorizationError] = useState('')
+  const [phoneChangeStep, setPhoneChangeStep] = useState<'idle' | 'verify' | 'edit' | 'changed'>(defaultPhoneNumber ? 'idle' : 'edit')
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const previousCurrencyRef = useRef(currency)
-  const phoneChangeStep = defaultPhoneNumber ? 'idle' : 'edit'
   const isChangingPhone = Boolean(normalizedPhone && defaultPhoneNumber && normalizedPhone !== normalizeKenyanPhone(defaultPhoneNumber))
   const inputValue = formatDisplayAmount(sendAmount)
   const withdrawalQuote = quoteWithdrawalKes(amountKes)
