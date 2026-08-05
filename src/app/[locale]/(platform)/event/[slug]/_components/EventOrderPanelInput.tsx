@@ -105,8 +105,11 @@ export default function EventOrderPanelInput({
       return
     }
 
-    const maxBalance = Number.isFinite(balance.raw) ? balance.raw : 0
-    const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
+    // Balance is always in KES (authoritative currency)
+    const maxBalanceKes = Number.isFinite(balance.raw) ? balance.raw : 0
+    // Convert KES to USD for the input (since AMM expects USD)
+    const maxBalanceUsd = maxBalanceKes / kesPerUsdc
+    const limitedBalance = Math.min(maxBalanceUsd, MAX_AMOUNT_INPUT)
     onAmountChange(String(limitedBalance))
     focusInput()
   }

@@ -557,7 +557,10 @@ function useOrderBookComputations({
       rawShares > 0 ? rawShares : (cost > 0 && avgPrice > 0 ? cost / avgPrice : 0),
       isAmm && ammBuyQuote?.totalPayout && ammBuyQuote.totalPayout > 0 ? ammBuyQuote.totalPayout : 0,
     )
-    const payout = uncappedPayout
+    // Cap payout to cost + available market liquidity to prevent showing unrealistic returns
+    // This ensures users can't expect to win more than what's actually available in the market
+    const maxPayout = cost + (ammBuyQuote?.totalPayout || 0)
+    const payout = Math.min(uncappedPayout, maxPayout)
     const profit = payout - cost
     const changePct = cost > 0 ? (profit / cost) * 100 : 0
     const multiplier = cost > 0 ? payout / cost : 0
@@ -1374,8 +1377,18 @@ export default function EventOrderPanelForm({
         return
       }
 
-      // Check for insufficient funds before API call
-      if (state.side === ORDER_SIDE.BUY && balance?.raw && amountNumber > balance.raw) {
+      // Convert amount to KES for validation (KES is authoritative)
+      const kesAmount = amountNumber * kesPerUsdc
+      
+      // Check minimum trade amount in KES (130 KES minimum)
+      if (kesAmount < 130) {
+        setShowMarketMinimumWarning(true)
+        triggerInputShake()
+        return
+      }
+
+      // Check for insufficient funds (balance is always in KES)
+      if (state.side === ORDER_SIDE.BUY && balance?.raw && kesAmount > balance.raw) {
         setTradeErrorMessage(t('Insufficient funds'))
         triggerInputShake()
         return
