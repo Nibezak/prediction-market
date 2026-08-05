@@ -110,7 +110,8 @@ export default function EventOrderPanelInput({
     // Convert KES to USD for the input (since AMM expects USD)
     const maxBalanceUsd = maxBalanceKes / kesPerUsdc
     const limitedBalance = Math.min(maxBalanceUsd, MAX_AMOUNT_INPUT)
-    onAmountChange(String(limitedBalance))
+    // Format to 2 decimal places for USD input
+    onAmountChange(formatAmountInputValue(limitedBalance))
     focusInput()
   }
 
