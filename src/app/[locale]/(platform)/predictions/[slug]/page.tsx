@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
+import { connection } from 'next/server'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import {
@@ -34,6 +35,7 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/predicti
 export default async function PredictionResultsPage({
   params,
 }: PageProps<'/[locale]/predictions/[slug]'>) {
+  await connection()
   const { locale, slug } = await params
   const resolvedLocale = locale as SupportedLocale
   setRequestLocale(resolvedLocale)

@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
       // Only update events if the status has actually changed
       if (event.status !== 'closed') {
         await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
-          .where(and(eq(events.id, eventId), eq(events.status, event.status)))
+          .where(eq(events.id, eventId))
       }
     })
 
