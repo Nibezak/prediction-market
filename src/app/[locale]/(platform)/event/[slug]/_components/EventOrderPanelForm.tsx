@@ -1157,8 +1157,9 @@ export default function EventOrderPanelForm({
     && Number.isFinite(outcomeFallbackBuyPrice)
     ? Number((outcomeFallbackBuyPrice * 100).toFixed(1))
     : null
+  const amountUsdForQuote = currency === 'KES' ? amountNumber / kesPerUsdc : amountNumber
   const ammQuoteQuery = useQuery({
-    queryKey: ['amm-market-quote', activeMarket?.condition_id, activeOutcome?.token_id, amountNumber, state.side],
+    queryKey: ['amm-market-quote', activeMarket?.condition_id, activeOutcome?.token_id, amountUsdForQuote, state.side],
     queryFn: async ({ signal }) => {
       const response = await fetch(`/api/amm/markets/${activeMarket?.condition_id}/quote`, {
         method: 'POST',
@@ -1166,7 +1167,7 @@ export default function EventOrderPanelForm({
         signal,
         body: JSON.stringify({
           optionId: activeOutcome?.token_id,
-          amount: amountNumber,
+          amount: amountUsdForQuote,
           isBuy: state.side === ORDER_SIDE.BUY,
         }),
       })
@@ -1442,12 +1443,13 @@ export default function EventOrderPanelForm({
       }
 
       try {
+        const tradeAmountUsd = currency === 'KES' ? amountNumber / kesPerUsdc : amountNumber
         const response = await fetch(`/api/amm/markets/${activeMarket.condition_id}/${operation}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             optionId: activeOutcome.token_id,
-            amount: Math.round(amountNumber * 100) / 100, // Ensure 2 decimal places
+            amount: Math.round(tradeAmountUsd * 10000) / 10000,
           }),
         })
         const result = await response.json().catch(() => null) as { error?: string } | null
