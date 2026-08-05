@@ -43,21 +43,21 @@ const UpdateUserSchema = z.object({
     .regex(/^(?![.-])/, 'Cannot start with a dot or hyphen')
     .regex(/(?<![.-])$/, 'Cannot end with a dot or hyphen'),
   image: z
-    .instanceof(File)
+    .custom<File>(file => Boolean(file && typeof file === 'object' && 'arrayBuffer' in file && 'size' in file))
     .optional()
     .refine((file) => {
-      if (!file || file.size === 0) {
+      if (!file || !(file as File).size) {
         return true
       }
 
-      return file.size <= MAX_FILE_SIZE
+      return (file as File).size <= MAX_FILE_SIZE
     }, { error: 'Image must be less than 2MB' })
     .refine((file) => {
-      if (!file || file.size === 0) {
+      if (!file || !(file as File).size) {
         return true
       }
 
-      return ACCEPTED_IMAGE_TYPES.includes(file.type)
+      return ACCEPTED_IMAGE_TYPES.includes((file as File).type)
     }, { error: 'Only JPG, PNG, and WebP images are allowed' }),
   avatar_url: z.preprocess(
     emptyStringToUndefined,
