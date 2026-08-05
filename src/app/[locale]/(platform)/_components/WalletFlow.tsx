@@ -64,12 +64,6 @@ function useWithdrawFormState(onWithdrawOpenChange: (open: boolean) => void, def
   const [walletSendError, setWalletSendError] = useState('')
   const [withdrawalPin, setWithdrawalPin] = useState('')
 
-  useEffect(() => {
-    if (defaultPhoneNumber) {
-      setWalletSendTo(current => current || defaultPhoneNumber)
-    }
-  }, [defaultPhoneNumber])
-
   const handleWithdrawModalChange = useCallback((next: boolean) => {
     onWithdrawOpenChange(next)
     if (next) {
@@ -163,7 +157,8 @@ function useWalletSendHandler({
         description: result?.data?.message || messages.withdrawalSubmittedDescription,
       })
       setWalletSendSubmitted(true)
-      setWalletSendIntentId(result?.data?.id || null)
+      const intentId = result?.data?.id || null
+      setWalletSendIntentId(intentId)
     }
     catch (error) {
       const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE
@@ -239,9 +234,10 @@ function useSetMaxAmountHandler({
   setWalletSendAmount: (value: string) => void
 }) {
   return useCallback(() => {
-    const amount = Number.isFinite(balanceRaw) ? balanceRaw : 0
-    const limitedAmount = Math.min(amount, MAX_AMOUNT_INPUT)
-    setWalletSendAmount(formatAmountInputValue(limitedAmount, { roundingMode: 'floor' }))
+    const maxBalance = Number.isFinite(balanceRaw) ? balanceRaw : 0
+    const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
+    // Balance is already in the correct format, no need for formatAmountInputValue
+    setWalletSendAmount(String(limitedBalance))
   }, [balanceRaw, setWalletSendAmount])
 }
 
@@ -300,10 +296,13 @@ export function WalletFlow({
           return
         }
         const status = String(intent.status)
+        const progressStatus = status === 'SUCCEEDED' ? 'completed' : status === 'FAILED' || status === 'EXPIRED' ? 'failed' : 'pending'
+        const phoneNumber = String(intent.phoneNumber || defaultPhoneNumber || '')
+        const netAmount = Number(intent.netAmount || intent.requestedAmount || 0)
         setOnrampProgress({
-          status: status === 'SUCCEEDED' ? 'completed' : status === 'FAILED' || status === 'EXPIRED' ? 'failed' : 'pending',
-          phoneNumber: String(intent.phoneNumber || defaultPhoneNumber || ''),
-          netAmount: Number(intent.netAmount || intent.requestedAmount || 0),
+          status: progressStatus,
+          phoneNumber,
+          netAmount,
           error: intent.failureMessage || undefined,
           response: {
             depositId: String(intent.id),
@@ -399,7 +398,9 @@ export function WalletFlow({
       const payload = await response.json().catch(() => null)
       if (cancelled || !response.ok || !payload?.data) return
       const status = String(payload.data.status)
-      if (status === 'SUCCEEDED') setWalletSendSettlementStatus('completed')
+      if (status === 'SUCCEEDED') {
+        setWalletSendSettlementStatus('completed')
+      }
       else if (status === 'FAILED' || status === 'EXPIRED') {
         setWalletSendSettlementStatus('failed')
         setWalletSendError(payload.data.failureMessage || 'The withdrawal was not completed.')
@@ -411,7 +412,7 @@ export function WalletFlow({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [walletSendIntentId, walletSendSettlementStatus])
+  }, [walletSendIntentId, setWalletSendSettlementStatus, setWalletSendError])
 
   return (
     <>

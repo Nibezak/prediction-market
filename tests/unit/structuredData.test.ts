@@ -111,7 +111,7 @@ describe('structuredData', () => {
       instagramLink: null,
       tiktokLink: null,
       linkedinLink: 'https://linkedin.com/company/kuest',
-      youtubeLink: 'https://youtube.com/@kuest',
+      youtubeLink: 'https://youtube.com/@theslimefish',
     }
 
     const structuredData = buildSiteStructuredData({
@@ -124,7 +124,7 @@ describe('structuredData', () => {
       'https://x.com/kuest',
       'https://facebook.com/kuest',
       'https://linkedin.com/company/kuest',
-      'https://youtube.com/@kuest',
+      'https://youtube.com/@theslimefish',
     ])
     expect(structuredData.organization.logo).toBe('https://kuest.example/images/pwa/default-icon-512.png')
     expect(structuredData.website.publisher).toEqual({ '@id': 'https://kuest.example#organization' })

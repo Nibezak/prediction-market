@@ -69,7 +69,7 @@ export function validateOrder({
   limitExpirationTimestamp = null,
 }: ValidateOrderArgs): OrderValidationResult {
   const normalizedAvailableShares = Number.isFinite(availableShares) ? Math.max(0, availableShares) : 0
-  const minimumTradeUsd = 1.0
+  const minimumTradeUsd = 0.15
 
   if (isLoading) {
     return { ok: false, reason: 'IS_LOADING' }
@@ -140,7 +140,9 @@ export function validateOrder({
     return { ok: false, reason: 'INVALID_AMOUNT' }
   }
 
-  if (!isLimitOrder && side === ORDER_SIDE.BUY && amountNumber < minimumTradeUsd) {
+  // For AMM trades, remove minimum amount restriction
+  // Only apply minimum amount for limit orders
+  if (isLimitOrder && side === ORDER_SIDE.BUY && amountNumber < minimumTradeUsd) {
     return { ok: false, reason: 'MARKET_MIN_AMOUNT' }
   }
 

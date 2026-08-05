@@ -100,9 +100,9 @@ describe('theme site identity helpers', () => {
 
   it('normalizes support emails to mailto links', () => {
     expect(validateThemeSiteSupportUrl('', 'Support URL')).toEqual({ value: null, error: null })
-    expect(validateThemeSiteSupportUrl('support@kuest.com', 'Support URL')).toEqual({ value: 'mailto:support@kuest.com', error: null })
-    expect(validateThemeSiteSupportUrl('mailto:support@kuest.com', 'Support URL')).toEqual({ value: 'mailto:support@kuest.com', error: null })
-    expect(validateThemeSiteSupportUrl('x.com/@kuest', 'Support URL')).toEqual({ value: 'https://x.com/@kuest', error: null })
+    expect(validateThemeSiteSupportUrl('support@theslimefish.com', 'Support URL')).toEqual({ value: 'mailto:support@theslimefish.com', error: null })
+    expect(validateThemeSiteSupportUrl('mailto:support@theslimefish.com', 'Support URL')).toEqual({ value: 'mailto:support@theslimefish.com', error: null })
+    expect(validateThemeSiteSupportUrl('x.com/@theslimefish', 'Support URL')).toEqual({ value: 'https://x.com/@theslimefish', error: null })
     expect(validateThemeSiteSupportUrl('mailto:not-an-email', 'Support URL').error).toContain('valid email address')
   })
 })

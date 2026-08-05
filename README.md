@@ -1,18 +1,4 @@
-<h1 align="center">
-  <img src="https://github.com/user-attachments/assets/0cc687fb-89c4-43fa-a056-d89c307215ad" alt="Kuest" height="96" /><br/>
-  Slimefish — Open-Source Prediction Market
-</h1>
 
-
-<p align="center">
-  <a href="https://github.com/kuestcom/prediction-market">
-    <a href="https://discord.gg/kuest"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&style=social" /></a>
-    &nbsp;
-    <img src="https://img.shields.io/github/stars/kuestcom/prediction-market?style=social" alt="GitHub Stars" />
-  </a>
-</p>
-
----
 
 ## Why this exists
 
@@ -112,15 +98,15 @@ Kalshi can do that one deal at a time. Slimefish makes the same capability avail
 ## Follow
 
 <p>
-  <a href="https://x.com/kuest"><img alt="X" src="https://img.shields.io/badge/X-@kuest-000?logo=x&style=social" /></a>
+  <a href="https://x.com/kuest"><img alt="X" src="https://img.shields.io/badge/X-@theslimefish-000?logo=x&style=social" /></a>
   &nbsp;
   <a href="https://discord.gg/kuest"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&style=social" /></a>
   &nbsp;
   <a href="https://kuest.com"><img alt="Website" src="https://img.shields.io/badge/Website-kuest.com-111?style=social" /></a>
   &nbsp;
-  <a href="mailto:hello@kuest.com"><img alt="Email" src="https://img.shields.io/badge/Email-hello%40kuest.com-444?logo=gmail&style=social" /></a>
+  <a href="mailto:hello@theslimefish.com"><img alt="Email" src="https://img.shields.io/badge/Email-hello%40kuest.com-444?logo=gmail&style=social" /></a>
 </p>
 
 ---
 
-**License:** [Kuest MIT+Commons](LICENSE). Custom branding, frontend changes, and custom UX are welcome. Production deployments must use Slimefish infrastructure. Running an independent trading stack or white-glove institutional deployment requires a [commercial agreement](mailto:hello@kuest.com).
+**License:** [Kuest MIT+Commons](LICENSE). Custom branding, frontend changes, and custom UX are welcome. Production deployments must use Slimefish infrastructure. Running an independent trading stack or white-glove institutional deployment requires a [commercial agreement](mailto:hello@theslimefish.com).

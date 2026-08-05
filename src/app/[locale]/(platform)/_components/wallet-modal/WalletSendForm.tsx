@@ -75,18 +75,13 @@ function WalletSendForm({
 }) {
   const site = useSiteIdentity()
   const { currency, kesPerUsdc, formatMoney } = useDisplayCurrency()
-  const { balance: userBalance } = useBalance()
-  const minWithdrawalKes = userBalance?.minimumDepositKes || 10
+  const minWithdrawalKes = 20
   const trimmedRecipient = sendTo.trim()
   const normalizedPhone = normalizeKenyanPhone(trimmedRecipient)
   const parsedAmount = Number(sendAmount)
   const amountKes = currency === 'KES' ? parsedAmount : parsedAmount * kesPerUsdc
-  const availableDisplayBalance = currency === 'KES'
-    ? Math.max(0, availableBalance ?? 0)
-    : Math.max(0, availableBalance ?? 0) / kesPerUsdc
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false)
   const [showAmountWarning, setShowAmountWarning] = useState(false)
-  const [phoneChangeStep, setPhoneChangeStep] = useState<'idle' | 'verify' | 'edit' | 'changed'>(defaultPhoneNumber ? 'idle' : 'edit')
   const [passcodeError, setPasscodeError] = useState('')
   const [isVerifyingPasscode, setIsVerifyingPasscode] = useState(false)
   const [phoneChangeAuthorizationOpen, setPhoneChangeAuthorizationOpen] = useState(false)
@@ -94,6 +89,7 @@ function WalletSendForm({
   const [withdrawalAuthorizationError, setWithdrawalAuthorizationError] = useState('')
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const previousCurrencyRef = useRef(currency)
+  const phoneChangeStep = defaultPhoneNumber ? 'idle' : 'edit'
   const isChangingPhone = Boolean(normalizedPhone && defaultPhoneNumber && normalizedPhone !== normalizeKenyanPhone(defaultPhoneNumber))
   const inputValue = formatDisplayAmount(sendAmount)
   const withdrawalQuote = quoteWithdrawalKes(amountKes)
@@ -134,29 +130,30 @@ function WalletSendForm({
 
   useEffect(() => {
     const previousCurrency = previousCurrencyRef.current
-    if (previousCurrency === currency) return
+    if (previousCurrency === currency) {
+      return
+    }
     previousCurrencyRef.current = currency
-    onChangeSendAmount((() => {
-      const value = Number.parseFloat(sendAmount)
-      if (!Number.isFinite(value)) return ''
-      const converted = currency === 'KES' ? value * kesPerUsdc : value / kesPerUsdc
-      return currency === 'KES' ? String(Math.floor(converted)) : converted.toFixed(2)
-    })())
+    const value = Number.parseFloat(sendAmount)
+    if (!Number.isFinite(value)) {
+      onChangeSendAmount('')
+      return
+    }
+    const converted = currency === 'KES' ? value * kesPerUsdc : value / kesPerUsdc
+    const newAmount = currency === 'KES' ? String(Math.floor(converted)) : converted.toFixed(2)
+    onChangeSendAmount(newAmount)
   }, [currency, kesPerUsdc, onChangeSendAmount, sendAmount])
 
   useEffect(() => {
     setShowAmountWarning(false)
-    if (!amountValidationMessage) return
+    if (!amountValidationMessage) {
+      return
+    }
     const timer = window.setTimeout(() => setShowAmountWarning(true), 1000)
     return () => window.clearTimeout(timer)
   }, [amountValidationMessage])
 
-  useEffect(() => {
-    if (defaultPhoneNumber && !sendTo) {
-      onChangeSendTo(defaultPhoneNumber)
-      setPhoneChangeStep('idle')
-    }
-  }, [defaultPhoneNumber, onChangeSendTo, sendTo])
+  const phoneChangeStep = defaultPhoneNumber ? 'idle' : 'edit'
 
   function cancelPhoneChange() {
     setPhoneChangeAuthorizationOpen(false)
@@ -225,7 +222,9 @@ function WalletSendForm({
 
   function requestWithdrawalAuthorization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSubmitDisabled) return
+    if (isSubmitDisabled) {
+      return
+    }
     onWithdrawalPinChange('')
     setWithdrawalAuthorizationError('')
     setWithdrawalAuthorizationOpen(true)

@@ -1,6 +1,6 @@
 export const MIN_MPESA_DEPOSIT_KES = 10
 export const MAX_MPESA_DEPOSIT_KES = 250_000
-export const MIN_MPESA_WITHDRAWAL_KES = 10
+export const MIN_MPESA_WITHDRAWAL_KES = 20
 export const MAX_MONEY_INPUT_KES = 100_000_000
 export const PAYMENT_GATEWAY_FEE_ESTIMATE_RATE = 0.02
 
@@ -29,9 +29,10 @@ export function formatKesAmountInput(value: string) {
 export function formatKesMoney(value: number | string | null | undefined) {
   const amount = typeof value === 'string' ? Number.parseFloat(value) : Number(value)
   const safeAmount = Number.isFinite(amount) ? amount : 0
-  return `Ksh ${new Intl.NumberFormat('en-KE', {
+  const formattedAmount = new Intl.NumberFormat('en-KE', {
     maximumFractionDigits: 0,
-  }).format(Math.floor(safeAmount))}`
+  }).format(Math.floor(safeAmount))
+  return `Ksh ${formattedAmount}`
 }
 
 export function estimatePaymentGatewayFeeKes(amountKes: number) {
@@ -60,15 +61,18 @@ export function quoteWithdrawalKes(amountKes: number) {
   const gross = Math.max(0, Math.floor(amountKes || 0))
   const providerFee = estimateWithdrawalProviderFeeKes(gross)
   const platformFee = estimateWithdrawalPlatformFeeKes(gross)
+  const recipientAmount = Math.max(0, gross - providerFee - platformFee)
   return {
     gross,
     providerFee,
     platformFee,
-    recipientAmount: Math.max(0, gross - providerFee - platformFee),
+    recipientAmount,
   }
 }
 
 export function calculateMaximumWithdrawalRecipientKes(balanceKes: number) {
-  if (!Number.isFinite(balanceKes)) return 0
+  if (!Number.isFinite(balanceKes)) {
+    return 0
+  }
   return Math.max(0, Math.min(Math.floor(balanceKes), MAX_MPESA_DEPOSIT_KES))
 }

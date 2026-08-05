@@ -36,10 +36,10 @@ describe('themeSettings social links', () => {
       twitterLink: 'x.com/kuest',
       facebookLink: 'facebook.com/kuest',
       instagramLink: 'instagram.com/kuest',
-      tiktokLink: 'tiktok.com/@kuest',
+      tiktokLink: 'tiktok.com/@theslimefish',
       linkedinLink: 'linkedin.com/company/kuest',
-      youtubeLink: 'youtube.com/@kuest',
-      supportUrl: 'support@kuest.com',
+      youtubeLink: 'youtube.com/@theslimefish',
+      supportUrl: 'support@theslimefish.com',
       customJavascriptCodesJson: JSON.stringify([{
         name: 'Crisp',
         snippet: '<script>window.$crisp = [];</script>',
@@ -51,10 +51,10 @@ describe('themeSettings social links', () => {
     expect(result.data?.twitterLinkValue).toBe('https://x.com/kuest')
     expect(result.data?.facebookLinkValue).toBe('https://facebook.com/kuest')
     expect(result.data?.instagramLinkValue).toBe('https://instagram.com/kuest')
-    expect(result.data?.tiktokLinkValue).toBe('https://tiktok.com/@kuest')
+    expect(result.data?.tiktokLinkValue).toBe('https://tiktok.com/@theslimefish')
     expect(result.data?.linkedinLinkValue).toBe('https://linkedin.com/company/kuest')
-    expect(result.data?.youtubeLinkValue).toBe('https://youtube.com/@kuest')
-    expect(result.data?.supportUrlValue).toBe('mailto:support@kuest.com')
+    expect(result.data?.youtubeLinkValue).toBe('https://youtube.com/@theslimefish')
+    expect(result.data?.supportUrlValue).toBe('mailto:support@theslimefish.com')
     expect(result.data?.customJavascriptCodes).toEqual([{
       name: 'Crisp',
       snippet: '<script>window.$crisp = [];</script>',
@@ -78,7 +78,7 @@ describe('themeSettings social links', () => {
           updated_at: '2026-03-08T00:00:00.000Z',
         },
         site_tiktok_link: {
-          value: 'tiktok.com/@kuest',
+          value: 'tiktok.com/@theslimefish',
           updated_at: '2026-03-08T00:00:00.000Z',
         },
         site_linkedin_link: {
@@ -86,11 +86,11 @@ describe('themeSettings social links', () => {
           updated_at: '2026-03-08T00:00:00.000Z',
         },
         site_youtube_link: {
-          value: 'youtube.com/@kuest',
+          value: 'youtube.com/@theslimefish',
           updated_at: '2026-03-08T00:00:00.000Z',
         },
         site_support_url: {
-          value: 'support@kuest.com',
+          value: 'support@theslimefish.com',
           updated_at: '2026-03-08T00:00:00.000Z',
         },
         site_custom_javascript_codes: {
@@ -107,10 +107,10 @@ describe('themeSettings social links', () => {
     expect(state.twitterLink).toBe('https://x.com/kuest')
     expect(state.facebookLink).toBe('https://facebook.com/kuest')
     expect(state.instagramLink).toBe('https://instagram.com/kuest')
-    expect(state.tiktokLink).toBe('https://tiktok.com/@kuest')
+    expect(state.tiktokLink).toBe('https://tiktok.com/@theslimefish')
     expect(state.linkedinLink).toBe('https://linkedin.com/company/kuest')
-    expect(state.youtubeLink).toBe('https://youtube.com/@kuest')
-    expect(state.supportUrl).toBe('mailto:support@kuest.com')
+    expect(state.youtubeLink).toBe('https://youtube.com/@theslimefish')
+    expect(state.supportUrl).toBe('mailto:support@theslimefish.com')
     expect(state.customJavascriptCodes).toEqual([{
       name: 'Crisp',
       snippet: '<script>window.$crisp = [];</script>',

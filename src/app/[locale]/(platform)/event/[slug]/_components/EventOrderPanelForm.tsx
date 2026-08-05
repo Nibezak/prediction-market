@@ -16,8 +16,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
+import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/PositionShareDialog'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { buildShareCardPayload } from '@/lib/share-card'
 import { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import EventOrderPanelBuySellTabs from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelBuySellTabs'
 import EventOrderPanelMarketInfo from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelMarketInfo'
@@ -824,6 +826,8 @@ function useOrderValidationFeedback() {
   const [tradeErrorMessage, setTradeErrorMessage] = useState<string | null>(null)
   const [shouldShakeInput, setShouldShakeInput] = useState(false)
   const [shouldShakeLimitShares, setShouldShakeLimitShares] = useState(false)
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [shareDialogPayload, setShareDialogPayload] = useState<import('@/lib/share-card').ShareCardPayload | null>(null)
 
   function clearValidationWarnings() {
     setShowMarketMinimumWarning(false)
@@ -860,6 +864,10 @@ function useOrderValidationFeedback() {
     shouldShakeLimitShares,
     setShouldShakeLimitShares,
     clearValidationFeedback,
+    shareDialogOpen,
+    setShareDialogOpen,
+    shareDialogPayload,
+    setShareDialogPayload,
   }
 }
 
@@ -944,6 +952,10 @@ export default function EventOrderPanelForm({
     shouldShakeLimitShares,
     setShouldShakeLimitShares,
     clearValidationFeedback,
+    shareDialogOpen,
+    setShareDialogOpen,
+    shareDialogPayload,
+    setShareDialogPayload,
   } = useOrderValidationFeedback()
   const [isClaimSubmitting, setIsClaimSubmitting] = useState(false)
   const [slippageWarning, setSlippageWarning] = useState<MarketOrderSlippageWarning | null>(null)
@@ -955,7 +967,6 @@ export default function EventOrderPanelForm({
   const ammTradeInFlightRef = useRef(false)
   const limitSharesNumber = Number.parseFloat(state.limitShares) || 0
   const { balance, isLoadingBalance } = useBalance()
-  const { kesPerUsdc } = useDisplayCurrency()
   const yesOutcome = useMemo(
     () => resolveMarketOutcome(activeMarket, OUTCOME_INDEX.YES),
     [activeMarket],
@@ -984,7 +995,7 @@ export default function EventOrderPanelForm({
     outcomeTokenId ? [outcomeTokenId] : [],
     { enabled: shouldLoadOrderBookSummary },
   )
-  const { ensureTradingReady, openTradeRequirements, promptAutoRedeem, startDepositFlow } = useTradingOnboarding()
+  const { ensureTradingReady, openTradeRequirements, promptAutoRedeem } = useTradingOnboarding()
   const hasDeployedDepositWallet = Boolean(user?.deposit_wallet_address && user?.deposit_wallet_status === 'deployed')
   const depositWalletAddress = hasDeployedDepositWallet ? normalizeAddress(user?.deposit_wallet_address) : null
   const userAddress = normalizeAddress(user?.address)
@@ -1361,17 +1372,7 @@ export default function EventOrderPanelForm({
         triggerInputShake()
         return
       }
-      
-      // Check for minimum trade amount
-      if (state.side === ORDER_SIDE.BUY) {
-        const kesAmount = amountNumber * kesPerUsdc
-        if (kesAmount < 130) {
-          setShowMarketMinimumWarning(true)
-          triggerInputShake()
-          return
-        }
-      }
-      
+
       // Check for insufficient funds before API call
       if (state.side === ORDER_SIDE.BUY && balance?.raw && amountNumber > balance.raw) {
         setTradeErrorMessage(t('Insufficient funds'))
@@ -1431,7 +1432,9 @@ export default function EventOrderPanelForm({
         queryClient.setQueryData(
           balanceQueryKey,
           (current: { raw: number, text: string, symbol: string } | undefined) => {
-            if (!current) return current
+            if (!current) {
+              return current
+            }
             const raw = Math.max(0, Number((current.raw - amountNumber).toFixed(2)))
             return { ...current, raw, text: raw.toFixed(2) }
           },
@@ -1466,8 +1469,6 @@ export default function EventOrderPanelForm({
             // Check if it's an insufficient funds error
             if (errorMessage.toLowerCase().includes('insufficient') || errorMessage.toLowerCase().includes('balance')) {
               setTradeErrorMessage(t('Insufficient funds'))
-            } else if (errorMessage.toLowerCase().includes('minimum') || errorMessage.toLowerCase().includes('130')) {
-              setTradeErrorMessage(t('Minimum trade amount is 130 KES'))
             } else {
               setTradeErrorMessage(errorMessage)
             }
@@ -1487,6 +1488,23 @@ export default function EventOrderPanelForm({
         })
         if (operation === 'buy') {
           triggerConfetti(outcomeIndex === OUTCOME_INDEX.NO ? 'no' : 'yes', state.lastMouseEvent)
+          
+          // Open share dialog after successful buy
+          const sharePayload = buildShareCardPayload({
+            title: event.title,
+            outcome: outcomeText,
+            outcomeIndex: activeOutcome.outcome_index,
+            avgPrice: null,
+            curPrice: null,
+            size: estimatedShares,
+            icon: activeMarket.icon_url,
+            eventSlug: event.slug,
+          }, {
+            userName: user?.username,
+            userImage: user?.image,
+          })
+          setShareDialogPayload(sharePayload)
+          setShareDialogOpen(true)
         }
         state.setAmount('')
         void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
@@ -1559,7 +1577,10 @@ export default function EventOrderPanelForm({
           return
         }
         case 'MARKET_MIN_AMOUNT': {
-          setShowMarketMinimumWarning(true)
+          // Only show minimum warning for limit orders, not AMM trades
+          if (isLimitOrder) {
+            setShowMarketMinimumWarning(true)
+          }
           return
         }
         case 'INVALID_AMOUNT':
@@ -2371,7 +2392,7 @@ export default function EventOrderPanelForm({
                   onLimitExpirationTimestampChange={state.setLimitExpirationTimestamp}
                   onAmountUpdateFromLimit={state.setAmount}
                   isInteractiveWalletReady={isInteractiveWalletReady}
-                  // @ts-ignore
+                  // @ts-expect-error
                   shouldShowDepositCta={shouldShowDepositCta}
                   isLoading={state.isLoading}
                   selectedSubmitAccent={selectedSubmitAccent}
@@ -2405,6 +2426,11 @@ export default function EventOrderPanelForm({
           }}
         />
       )}
+      <PositionShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        payload={shareDialogPayload}
+      />
     </Form>
   )
 }

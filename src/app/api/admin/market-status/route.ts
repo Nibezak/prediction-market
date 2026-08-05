@@ -122,50 +122,62 @@ export async function POST(request: NextRequest) {
 
   const statusUrl = `${AMM_BASE_URL}/sync/market-status`
   const statusBody = JSON.stringify({ eventId, marketIds, status: 'closed' })
-  const ammResponse = await fetch(statusUrl, {
-    method: 'POST',
-    headers: signSlimefishBackendRequest({
-      url: statusUrl,
+  
+  console.log('[Market Close] Attempting to close markets:', { eventId, marketIds, statusUrl })
+  
+  try {
+    const ammResponse = await fetch(statusUrl, {
       method: 'POST',
+      headers: signSlimefishBackendRequest({
+        url: statusUrl,
+        method: 'POST',
+        body: statusBody,
+        headers: {
+        ...serviceHeaders,
+        'x-request-id': request.headers.get('x-request-id') || crypto.randomUUID(),
+        },
+      }),
       body: statusBody,
-      headers: {
-      ...serviceHeaders,
-      'x-request-id': request.headers.get('x-request-id') || crypto.randomUUID(),
-      },
-    }),
-    body: statusBody,
-    signal: AbortSignal.timeout(10_000),
-  }).catch(() => null)
-  if (!ammResponse) {
-    return NextResponse.json({ error: 'The AMM service could not be reached.' }, { status: 502 })
+      signal: AbortSignal.timeout(15_000),
+    })
+    
+    console.log('[Market Close] AMM response status:', ammResponse.status)
+    
+    if (!ammResponse.ok) {
+      const ammPayload = await ammResponse.json().catch(() => null) as { error?: string, closedAt?: string } | null
+      console.error('[Market Close] AMM error:', ammPayload)
+      return NextResponse.json({ error: ammPayload?.error || 'The AMM service could not close this market.' }, { status: ammResponse.status })
+    }
+    
+    const ammPayload = await ammResponse.json().catch(() => null) as { error?: string, closedAt?: string } | null
+    console.log('[Market Close] AMM success:', ammPayload)
+    
+    const closedAt = ammPayload?.closedAt ? new Date(ammPayload.closedAt) : new Date()
+    await db.transaction(async (tx) => {
+      await tx.update(markets).set({ is_active: false, end_time: closedAt, updated_at: closedAt })
+        .where(inArray(markets.condition_id, marketIds))
+      await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
+        .where(and(eq(events.id, eventId), eq(events.status, event.status)))
+    })
+
+    await recordAuditEvent({
+      eventType: 'market.closed',
+      category: 'market',
+      action: `Closed market: ${event.title}`,
+      severity: 'warning',
+      actorUserId: currentUser.id,
+      actorRole: role,
+      entityType: 'event',
+      entityId: eventId,
+      beforeValues: { status: event.status },
+      afterValues: { status: 'closed', closedAt: closedAt.toISOString() },
+      metadata: { marketIds, reason: 'manual_integrity_close' },
+      ...requestAuditContext(request.headers),
+    })
+
+    return NextResponse.json({ success: true, closedAt: closedAt.toISOString() })
+  } catch (error) {
+    console.error('[Market Close] Error during market close:', error)
+    return NextResponse.json({ error: 'Failed to close market due to server error.' }, { status: 500 })
   }
-  const ammPayload = await ammResponse.json().catch(() => null) as { error?: string, closedAt?: string } | null
-  if (!ammResponse.ok) {
-    return NextResponse.json({ error: ammPayload?.error || 'The AMM service could not close this market.' }, { status: ammResponse.status })
-  }
-
-  const closedAt = ammPayload?.closedAt ? new Date(ammPayload.closedAt) : new Date()
-  await db.transaction(async (tx) => {
-    await tx.update(markets).set({ is_active: false, end_time: closedAt, updated_at: closedAt })
-      .where(inArray(markets.condition_id, marketIds))
-    await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
-      .where(and(eq(events.id, eventId), eq(events.status, event.status)))
-  })
-
-  await recordAuditEvent({
-    eventType: 'market.closed',
-    category: 'market',
-    action: `Closed market: ${event.title}`,
-    severity: 'warning',
-    actorUserId: currentUser.id,
-    actorRole: role,
-    entityType: 'event',
-    entityId: eventId,
-    beforeValues: { status: event.status },
-    afterValues: { status: 'closed', closedAt: closedAt.toISOString() },
-    metadata: { marketIds, reason: 'manual_integrity_close' },
-    ...requestAuditContext(request.headers),
-  })
-
-  return NextResponse.json({ success: true, closedAt: closedAt.toISOString() })
 }

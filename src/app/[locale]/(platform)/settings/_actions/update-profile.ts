@@ -79,6 +79,8 @@ export async function updateUserAction(formData: FormData): Promise<ActionState>
       ? avatarUrlRaw.trim()
       : undefined
 
+    console.log('[Profile Update] User:', user.id, 'Has image file:', Boolean(imageFile && imageFile.size > 0))
+
     const rawData = {
       email: typeof emailRaw === 'string' ? emailRaw : undefined,
       username: formData.get('username') as string,
@@ -88,6 +90,7 @@ export async function updateUserAction(formData: FormData): Promise<ActionState>
 
     const validated = UpdateUserSchema.safeParse(rawData)
     if (!validated.success) {
+      console.log('[Profile Update] Validation failed:', validated.error.issues)
       const errors: ActionState['errors'] = {}
       validated.error.issues.forEach((issue) => {
         if (issue.path[0]) {
@@ -118,18 +121,24 @@ export async function updateUserAction(formData: FormData): Promise<ActionState>
       updateData.image = validated.data.avatar_url
     }
     else if (validated.data.image && validated.data.image.size > 0) {
+      console.log('[Profile Update] Processing image upload')
       updateData.image = await uploadImage(user, validated.data.image)
     }
 
+    console.log('[Profile Update] Updating user profile:', updateData)
     const { error } = await UserRepository.updateUserProfileById(user.id, updateData)
     if (error) {
+      console.error('[Profile Update] Database update failed:', error)
       return { error }
     }
 
     revalidatePath('/settings')
-    return { image: typeof updateData.image === 'string' ? getPublicAssetUrl(updateData.image) : user.image }
+    const finalImage = typeof updateData.image === 'string' ? getPublicAssetUrl(updateData.image) : user.image
+    console.log('[Profile Update] Profile updated successfully, image:', finalImage)
+    return { image: finalImage }
   }
-  catch {
+  catch (error) {
+    console.error('[Profile Update] Unexpected error:', error)
     return { error: DEFAULT_ERROR_MESSAGE }
   }
 }
@@ -145,16 +154,23 @@ async function uploadImage(user: any, image: File) {
     .toBuffer()
 
   console.log('[Profile Upload] Attempting to upload image:', fileName, 'Size:', resizedBuffer.length)
-  const { error } = await uploadPublicAsset(fileName, resizedBuffer, {
-    contentType: 'image/jpeg',
-    cacheControl: '31536000',
-  })
+  
+  try {
+    const { error } = await uploadPublicAsset(fileName, resizedBuffer, {
+      contentType: 'image/jpeg',
+      cacheControl: '31536000',
+      upsert: true,
+    })
 
-  if (error) {
-    console.error('[Profile Upload] Upload failed:', error)
-    throw new Error(`Profile image upload failed: ${error}`)
+    if (error) {
+      console.error('[Profile Upload] Upload failed:', error)
+      throw new Error(`Profile image upload failed: ${error}`)
+    }
+
+    console.log('[Profile Upload] Upload successful:', fileName)
+    return fileName
+  } catch (uploadError) {
+    console.error('[Profile Upload] Upload error:', uploadError)
+    throw new Error(`Profile image upload failed: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`)
   }
-
-  console.log('[Profile Upload] Upload successful:', fileName)
-  return fileName
 }

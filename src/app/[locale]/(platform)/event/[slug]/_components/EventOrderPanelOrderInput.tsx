@@ -207,7 +207,7 @@ export default function EventOrderPanelOrderInput({
                   isQuoteLoading={isEarningsLoading}
                 />
               </div>
-              {shouldShowResolvedMarketMinimumWarning && (
+              {shouldShowResolvedMarketMinimumWarning && isLimitOrder && (
                 <div
                   className={cn(`
                     mt-3 flex animate-order-shake items-center justify-center gap-2 pb-1 text-sm font-semibold

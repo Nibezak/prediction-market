@@ -7,6 +7,7 @@ interface Balance {
   text: string
   symbol: string
   minimumDepositKes: number
+  minimumTradeKes: number
 }
 
 export const DEPOSIT_WALLET_BALANCE_QUERY_KEY = 'deposit-wallet-usdc-balance'
@@ -17,7 +18,7 @@ interface UseBalanceOptions {
   depositWalletAddress?: string | null
 }
 
-const INITIAL_STATE: Balance = { raw: 0, text: '0.00', symbol: 'KES', minimumDepositKes: 130 }
+const INITIAL_STATE: Balance = { raw: 0, text: '0.00', symbol: 'KES', minimumDepositKes: 130, minimumTradeKes: 20 }
 
 export function useBalance(options: UseBalanceOptions = {}) {
   const user = useUser()
@@ -42,18 +43,24 @@ export function useBalance(options: UseBalanceOptions = {}) {
       const payload = await response.json().catch(() => null)
       const available = Number(payload?.data?.available ?? 0)
       const minKes = Number(payload?.data?.minimumDepositKes ?? 130)
+      const minTradeKes = Number(payload?.data?.minimumTradeKes ?? 20)
+      const formattedAvailable = Number.isFinite(available) ? available : 0
+      const formattedMinKes = Number.isFinite(minKes) && minKes > 0 ? minKes : 130
+      const formattedMinTradeKes = Number.isFinite(minTradeKes) && minTradeKes > 0 ? minTradeKes : 20
       return {
-        available: Number.isFinite(available) ? available : 0,
-        minimumDepositKes: Number.isFinite(minKes) && minKes > 0 ? minKes : 130,
+        available: formattedAvailable,
+        minimumDepositKes: formattedMinKes,
+        minimumTradeKes: formattedMinTradeKes,
       }
     },
   })
 
   const raw = typeof query.data?.available === 'number' && Number.isFinite(query.data.available) ? query.data.available : 0
   const minimumDepositKes = typeof query.data?.minimumDepositKes === 'number' && Number.isFinite(query.data.minimumDepositKes) ? query.data.minimumDepositKes : 130
+  const minimumTradeKes = typeof query.data?.minimumTradeKes === 'number' && Number.isFinite(query.data.minimumTradeKes) ? query.data.minimumTradeKes : 20
   const balance = query.data == null
     ? INITIAL_STATE
-    : { raw, text: raw.toFixed(2), symbol: 'KES', minimumDepositKes }
+    : { raw, text: raw.toFixed(2), symbol: 'KES', minimumDepositKes, minimumTradeKes }
 
   return {
     balance,

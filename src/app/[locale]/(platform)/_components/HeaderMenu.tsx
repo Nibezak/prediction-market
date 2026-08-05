@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpIcon, BadgePlusIcon, WalletIcon } from 'lucide-react'
+import { ArrowDownIcon, BadgePlusIcon, WalletIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
@@ -58,10 +58,6 @@ function HeaderMenuClient() {
     ? formatMoney(balance?.raw ?? 0)
     : formatMoney(0)
 
-  function launchWalletFlow(flow?: () => void) {
-    window.setTimeout(() => flow?.(), 0)
-  }
-
   function handleCashClick() {
     router.push('/portfolio')
   }
@@ -111,7 +107,7 @@ function HeaderMenuClient() {
               aria-label={t('Withdraw')}
               title={t('Withdraw')}
             >
-              <ArrowUpIcon className="size-5" strokeWidth={2.25} />
+              <ArrowDownIcon className="size-5" strokeWidth={2.25} />
             </Button>
           )}
           {!isMobile && <HeaderNotifications />}
