@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { recordAuditEvent, requestAuditContext } from '@/lib/audit'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -114,11 +114,19 @@ export async function POST(request: NextRequest) {
 
   try {
     await db.transaction(async (tx) => {
-      await tx.update(markets).set({ is_active: false, end_time: closedAt, updated_at: closedAt })
-        .where(inArray(markets.condition_id, marketIds))
+      await tx.update(markets).set({
+        is_active: false,
+        end_time: sql`COALESCE(${markets.end_time}, NOW())`,
+        updated_at: sql`NOW()`,
+      }).where(inArray(markets.condition_id, marketIds))
+
       if (event.status !== 'closed') {
-        await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
-          .where(eq(events.id, eventId))
+        await tx.update(events).set({
+          status: 'closed',
+          active_markets_count: 0,
+          end_date: sql`COALESCE(${events.end_date}, NOW())`,
+          updated_at: sql`NOW()`,
+        }).where(eq(events.id, eventId))
       }
     })
 
