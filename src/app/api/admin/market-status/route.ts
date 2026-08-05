@@ -156,8 +156,11 @@ export async function POST(request: NextRequest) {
     await db.transaction(async (tx) => {
       await tx.update(markets).set({ is_active: false, end_time: closedAt, updated_at: closedAt })
         .where(inArray(markets.condition_id, marketIds))
-      await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
-        .where(and(eq(events.id, eventId), eq(events.status, event.status)))
+      // Only update events if the status has actually changed
+      if (event.status !== 'closed') {
+        await tx.update(events).set({ status: 'closed', end_date: closedAt, active_markets_count: 0, updated_at: closedAt })
+          .where(and(eq(events.id, eventId), eq(events.status, event.status)))
+      }
     })
 
     await recordAuditEvent({
