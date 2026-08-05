@@ -153,8 +153,6 @@ function WalletSendForm({
     return () => window.clearTimeout(timer)
   }, [amountValidationMessage])
 
-  const phoneChangeStep = defaultPhoneNumber ? 'idle' : 'edit'
-
   function cancelPhoneChange() {
     setPhoneChangeAuthorizationOpen(false)
     onChangeSendTo(defaultPhoneNumber ?? '')

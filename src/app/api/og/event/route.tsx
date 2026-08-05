@@ -295,7 +295,9 @@ async function fetchMarketPriceHistory(tokenId: string, createdAt: string, resol
   }
 
   const filters = buildPriceHistoryFilters(createdAt, resolvedAt)
-  const url = new URL(`${clobUrl}/prices-history`)
+  // Ensure clobUrl is a full URL, not a relative path
+  const baseUrl = clobUrl.startsWith('http') ? clobUrl : `${process.env.SITE_URL || 'http://localhost:3000'}${clobUrl}`
+  const url = new URL(`${baseUrl}/prices-history`)
   url.searchParams.set('market', tokenId)
 
   Object.entries(filters).forEach(([key, value]) => {

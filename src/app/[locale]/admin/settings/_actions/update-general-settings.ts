@@ -256,6 +256,10 @@ async function revalidateGeneralSettingsPaths() {
 
 async function syncGeoblockSettings() {
   const { geoblockUrl } = resolvePublicRuntimeEnv(process.env)
+  if (!geoblockUrl) {
+    console.warn('Geoblock URL not configured, skipping sync')
+    return
+  }
   const response = await fetch(geoblockUrl, {
     method: 'POST',
     headers: {
