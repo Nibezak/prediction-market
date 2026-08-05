@@ -120,7 +120,7 @@ export function useDisplayCurrency() {
   const formatMoney = useCallback((value: number | null | undefined, options: Intl.NumberFormatOptions = {}) => {
     const safeValue = typeof value === 'number' && Number.isFinite(value) ? value : 0
     if (currency === 'KES') {
-      const kesValue = truncateMoney(safeValue * kesPerUsdc, 'KES').toNumber()
+      const kesValue = truncateMoney(safeValue, 'KES').toNumber()
       const formatted = new Intl.NumberFormat('en-KE', {
         style: 'currency',
         currency: 'KES',
@@ -130,7 +130,7 @@ export function useDisplayCurrency() {
       }).format(kesValue)
       return formatted.replace('KES', 'Ksh')
     }
-    const usdValue = truncateMoney(safeValue, 'USD').toNumber()
+    const usdValue = truncateMoney(safeValue / kesPerUsdc, 'USD').toNumber()
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
